@@ -16,9 +16,21 @@ endif()
 add_executable(newcode_app
   src/main.cpp
   src/bitgen.cpp
+  
 )
-
 # 头文件目录
 target_include_directories(newcode_app PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+# 开启 CTest 支持
+enable_testing()
+
+# 定义一个 test_matrix 可执行程序
+add_executable(test_matrix tests/test_matrix.cpp)
+target_include_directories(test_matrix PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# 注册测试
+add_test(NAME MatrixTest COMMAND test_matrix)
