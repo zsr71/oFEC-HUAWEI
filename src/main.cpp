@@ -1,15 +1,18 @@
-#include "newcode/newcode.hpp"
+#include "newcode/params.hpp"
+#include "newcode/bitgen.hpp"
 #include <iostream>
 
 int main() {
-  using namespace newcode;
+    using namespace newcode;
 
-  std::cout << hello("oFEC") << "\n";
+    Params p;
+    p.Global_Information_bits = 16;   // 例如生成16个比特
 
-  const auto v = version();
-  std::cout << "version " << v.major << "." << v.minor << "." << v.patch << "\n";
+    auto bits = generate_bits(p);
 
-  unsigned x = 0xA5;
-  std::cout << "parity(" << x << ") = " << parity(x) << "\n";
-  return 0;
+    std::cout << "Generated bits: ";
+    for (auto b : bits) std::cout << int(b);
+    std::cout << "\n";
+
+    return 0;
 }
