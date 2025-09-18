@@ -16,7 +16,7 @@ endif()
 add_executable(newcode_app
   src/main.cpp
   src/bitgen.cpp
-  
+  src/ofec_encoder.cpp 
 )
 # 头文件目录
 target_include_directories(newcode_app PUBLIC
