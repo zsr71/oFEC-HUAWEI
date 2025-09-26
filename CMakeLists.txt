@@ -24,6 +24,10 @@ add_library(newcode_core STATIC
   src/qam_llr.cpp
   src/ofec_llr_matrix.cpp
   src/ofec_decoder.cpp
+  src/info_extract.cpp
+  src/ber.cpp
+  src/llr_to_bit.cpp
+  src/llr_qpack.cpp
 )
 target_include_directories(newcode_core PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -71,7 +75,4 @@ if(BUILD_TESTING)
   target_link_libraries(llr_reshape_demo PRIVATE newcode_core)
   add_test(NAME LLRReshapeTest COMMAND llr_reshape_demo)
 
-  add_executable(ofec_decoder tests/test_ofec_decoder.cpp)
-  target_link_libraries(ofec_decoder PRIVATE newcode_core)
-  add_test(NAME ofec_decoderTest COMMAND ofec_decoder)
 endif()

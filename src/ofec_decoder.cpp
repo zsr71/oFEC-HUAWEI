@@ -1,88 +1,117 @@
 #include "newcode/ofec_decoder.hpp"
 #include <stdexcept>
 #include <cassert>
+#include <algorithm>
+#include <vector>
+#include <cstddef>
+#include <cstdint>
 
 namespace newcode {
 
-static inline uint8_t hard_decide(float L) noexcept { return L >= 0.f ? 0u : 1u; }
-
-Matrix<uint8_t> ofec_decode_llr(const Matrix<float>& llr_mat, const Params& p)
+// 处理单个 Tile（占位：直通）
+// TODO: 在此处添加真正的 BCH 解码与 LLR 更新逻辑（支持定点/浮点）
+template <typename LLR>
+Matrix<LLR> process_tile(const Matrix<LLR>& tile_in, const Params& p)
 {
-    // 与编码保持一致的参数
-    const int B = static_cast<int>(p.BITS_PER_SUBBLOCK_DIM);
-    const int N = static_cast<int>(p.NUM_SUBBLOCK_COLS * p.BITS_PER_SUBBLOCK_DIM); // 典型 128
-    const int G = static_cast<int>(p.NUM_GUARD_SUBROWS);
+    (void)p; // 当前未使用，避免告警
+    return tile_in;
+}
 
-    // BCH(255,239) + overall(1) 的布局假设
-    const int K          = 239;     // 信息位数
-    const int PAR_LEN    = 16;      // BCH 校验位
-    const int OVERALLLEN = 1;       // 整体偶校验
-    const int TAKE_BITS  = K - N;   // 每行“新信息位”的数量（典型 111）
+// 处理一个 Window 内的所有 Tile（自下而上），内部执行 p.WINDOW_ITERS 轮
+template <typename LLR>
+void process_window(Matrix<LLR>& work_llr,
+                    size_t win_start, size_t win_end, const Params& p,
+                    size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN)
+{
+    assert(p.valid());
 
-    // 关键一致性检查
-    if (2 * N != (K + PAR_LEN + OVERALLLEN))
-        throw std::invalid_argument("ofec_decode_llr: layout mismatch, require 2N = K+PAR_LEN+OVERALLLEN (i.e., N=128).");
-    if (B <= 0 || (N % B) != 0)
-        throw std::invalid_argument("ofec_decode_llr: N must be multiple of B.");
+    for (size_t it = 0; it < p.WINDOW_ITERS; ++it) {
+        // 遍历每个 Tile，进行自下而上的处理
+        for (size_t t = 0; t < TILES_PER_WIN; ++t) {
+            const size_t tile_bottom_row = win_end - t * tile_stride_rows;
+            const size_t tile_top_row    = tile_bottom_row - tile_height_rows + 1;
+
+            // 边界防御
+            assert(tile_top_row >= win_start);
+            assert(tile_bottom_row < work_llr.rows());
+            assert(tile_top_row + tile_height_rows - 1 <= win_end);
+
+            // 1) 从 work_llr 中提取当前 Tile 的数据
+            Matrix<LLR> tile_in(tile_height_rows, work_llr.cols());
+            for (size_t r = 0; r < tile_height_rows; ++r) {
+                for (size_t c = 0; c < work_llr.cols(); ++c) {
+                    tile_in[r][c] = work_llr[tile_top_row + r][c];
+                }
+            }
+
+            // 2) Tile 解码（占位）
+            Matrix<LLR> tile_out = process_tile<LLR>(tile_in, p);
+
+            // 3) 将解码后的 Tile LLR 写回到对应位置
+            for (size_t r = 0; r < tile_height_rows; ++r) {
+                for (size_t c = 0; c < work_llr.cols(); ++c) {
+                    work_llr[tile_top_row + r][c] = tile_out[r][c];
+                }
+            }
+        }
+    }
+}
+
+// 顶层 oFEC 解码：输入 LLR 矩阵（float/int8_t），输出更新后的 LLR 矩阵（同类型）
+template <typename LLR>
+Matrix<LLR> ofec_decode_llr(const Matrix<LLR>& llr_mat, const Params& p)
+{
+    // ---- 基本尺寸，与编码一致 ----
+    const size_t N = Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM;
 
     const size_t RROWS = llr_mat.rows();
     const size_t CCOLS = llr_mat.cols();
-    if (CCOLS != static_cast<size_t>(N))
+    if (CCOLS != N)
         throw std::invalid_argument("ofec_decode_llr: llr_mat cols != N.");
 
-    Matrix<uint8_t> out = Matrix<uint8_t>::zero(RROWS, CCOLS); // 默认 0，仅填每行前 111 列
+    assert(p.valid());
 
-    // 从最后一行往前解码（按你的要求）
-    for (size_t global_row = (RROWS == 0 ? 0 : RROWS - 1); global_row  >(p.INFO_SUBROWS_PER_CODE+2*G)*B-1; )
-    {
-        const long R = static_cast<long>(global_row / B); // block row
-        const int  r = static_cast<int>(global_row % B);  // bit-row in block
+    // ---- 从 Params 派生解码组织参数（比特行）----
+    const size_t TILE_HEIGHT_ROWS = p.tile_height_rows();
+    const size_t TILE_STRIDE_ROWS = p.tile_stride_rows();
+    const size_t WIN_HEIGHT_ROWS  = p.win_height_rows();
+    const size_t POP_PUSH_ROWS    = p.pop_push_rows();
+    const size_t TILES_PER_WIN    = p.TILES_PER_WIN;
 
-        // 组装 239 信息位 + 16 parity + 1 overall 的 LLR（按编码布局）
-        std::vector<float> info239_llr; info239_llr.reserve(K);
-        // 1) 先取 N 个“旧信息位”的 LLR：按与编码相同的式(1)索引
-        for (int k = 0; k < N; ++k)
-        {
-            const long br = (R ^ 1L) - 2 * G - 2 * (N / B) + 2 * (k / B); // block row
-            const long bc = (k / B);                                      // block col
-            const long bit_row_in_block = (k % B) ^ r;                    // 子块内行
-            const long bit_col_in_block = r;                              // 子块内列
+    Matrix<LLR> work_llr = llr_mat; // 工作副本
 
-            if (br < 0)
-                throw std::runtime_error("ofec_decode_llr: negative back-reference (br<0). Increase INFO_SUBROWS_PER_CODE.");
-            const size_t rr = static_cast<size_t>(br * B + bit_row_in_block);
-            const size_t cc = static_cast<size_t>(bc * B + bit_col_in_block);
-
-            if (rr >= RROWS || cc >= CCOLS)
-                throw std::runtime_error("ofec_decode_llr: back-reference out of range.");
-            info239_llr.push_back(llr_mat[rr][cc]);
-        }
-
-        // 2) 再取本行前 111 列（新信息位）的 LLR
-        for (int i = 0; i < TAKE_BITS; ++i)
-            info239_llr.push_back(llr_mat[global_row][i]);
-
-        // 3) 取 parity 与 overall（若将来做真 BCH 可用；此占位解码实际未使用）
-        std::vector<float> p16_llr; p16_llr.reserve(PAR_LEN);
-        for (int i = 0; i < PAR_LEN; ++i)
-            p16_llr.push_back(llr_mat[global_row][TAKE_BITS + i]);
-        const float overall_llr = llr_mat[global_row][TAKE_BITS + PAR_LEN];
-
-        // ---- 占位版“BCH 硬解码”：仅做硬判决并截取前 239 位 ----
-        std::vector<uint8_t> info239_bits; info239_bits.reserve(K);
-        for (int i = 0; i < K; ++i)
-            info239_bits.push_back(hard_decide(info239_llr[i]));
-
-        // 取“后 111 位”作为本行的新信息位（与编码一致）
-        for (int i = 0; i < TAKE_BITS; ++i)
-            out[global_row][i] = info239_bits[N + i];
-
-        // 递减到上一行（size_t 下行写法避免 underflow）
-        if (global_row == 0) break;
-        --global_row;
+    // 如果总行数小于一个窗口的高度，直接返回（相当于“未迭代”）
+    if (RROWS < WIN_HEIGHT_ROWS) {
+        return work_llr;
     }
 
-    return out;
+    // 初始窗口起点（比特行）：跳过 warmup 的 B 行 + 2G 行保护
+    size_t win_start     = p.initial_win_start_rows();
+    const size_t last_ws = RROWS - WIN_HEIGHT_ROWS;
+
+    // 当窗口无法安放时，将不会进入循环，直接返回原样 work_llr
+    while (win_start <= last_ws) {
+        const size_t win_end = win_start + WIN_HEIGHT_ROWS - 1;
+
+        process_window<LLR>(work_llr, win_start, win_end, p,
+                            TILE_HEIGHT_ROWS, TILE_STRIDE_ROWS, TILES_PER_WIN);
+
+        win_start += POP_PUSH_ROWS;
+    }
+
+    return work_llr;
 }
+
+// ===== 显式实例化（与 .hpp 中 extern template 对应）=====
+template Matrix<float>  process_tile<float >(const Matrix<float>&,  const Params&);
+template Matrix<int8_t> process_tile<int8_t>(const Matrix<int8_t>&, const Params&);
+
+template void process_window<float >(Matrix<float>&,  size_t, size_t, const Params&,
+                                     size_t, size_t, size_t);
+template void process_window<int8_t>(Matrix<int8_t>&, size_t, size_t, const Params&,
+                                     size_t, size_t, size_t);
+
+template Matrix<float>  ofec_decode_llr<float >(const Matrix<float>&,  const Params&);
+template Matrix<int8_t> ofec_decode_llr<int8_t>(const Matrix<int8_t>&, const Params&);
 
 } // namespace newcode
