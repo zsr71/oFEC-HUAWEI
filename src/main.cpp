@@ -15,7 +15,9 @@
 #include "newcode/ber.hpp"            // BER 统计
 #include "newcode/ofec_decoder.hpp"
 
-// ★ 新增：定点量化打包（int8_t），以及回到 float 的适配
+// A) qfloat 路径（推荐）：像浮点一样用 4/5 位“类浮点”
+#include "newcode/qfloat.hpp"
+// B) 备选 int8_t 路径（回退用）
 #include "newcode/llr_qpack.hpp"
 
 using namespace newcode;
@@ -29,6 +31,39 @@ static std::vector<uint8_t> flatten_row_major(const Matrix<uint8_t>& M)
         for (size_t c = 0; c < M.cols(); ++c)
             out.push_back(M[r][c] & 1u);
     return out;
+}
+
+// —— 小助手：用 qfloat<NBITS> 跑完整解码 + BER —— //
+template<int NBITS>
+static void run_with_qfloat(const Matrix<float>& llr_mat_f,
+                            const Matrix<uint8_t>& code_matrix,
+                            const Params& p,
+                            const std::vector<uint8_t>& info_bits)
+{
+    // 量化为 qfloat<NBITS>
+    auto q_mat = quantize_matrix_to_qfloat<NBITS>(llr_mat_f, /*clip=*/qfloat<NBITS>::DEFAULT_CLIP);
+    std::cout << "[INFO] Quantized qfloat<" << NBITS << ">: clip=" << qfloat<NBITS>::DEFAULT_CLIP
+              << "  code range [-" << qfloat<NBITS>::Q() << ", +" << qfloat<NBITS>::Q() << "]\n";
+
+    // oFEC 解码（模板会推导出 qfloat<NBITS>）
+    auto q_dec = ofec_decode_llr(q_mat, p);
+
+    // 为复用 info_extract/BER（需要 float LLR），做轻量类型转换即可（阈值仍为 0）
+    auto pre_f  = cast_matrix_from_qfloat(q_mat);
+    auto post_f = cast_matrix_from_qfloat(q_dec);
+
+    auto rx_info_bits_pre  = rx_info_from_bit_llr(pre_f,  p);
+    auto rx_info_bits_post = rx_info_from_bit_llr(post_f, p);
+
+    std::cout << "[INFO] rx_info_bits: " << rx_info_bits_pre.size()
+              << " (flattened, warmup skipped)\n";
+
+    auto ber_pre  = compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC");
+    auto ber_post = compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC");
+
+    (void)ber_pre; (void)ber_post;
+    std::cout << "[DONE] Pipeline(qfloat<" << NBITS
+              << ">) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> quant(qfloat) -> decode -> info extract & BER\n";
 }
 
 int main()
@@ -81,30 +116,35 @@ int main()
     // 7) 展成行×列 LLR 矩阵（float）
     Matrix<float> llr_mat = llr_to_matrix_row_major(llr, code_matrix.rows(), code_matrix.cols());
 
-    // 7.1) ★ 量化为定点 LLR（int8_t），以模拟硬件 4/5 位
-    Matrix<int8_t> qllr_mat = quantize_llr_to_int8(llr_mat, p);
-    std::cout << "[INFO] Quantized LLR: bits=" << p.LLR_BITS
-              << " clip=" << p.LLR_CLIP << "  (int8_t in [-Q,+Q])\n";
+    // 8) 根据 p.LLR_BITS 分发：优先走 qfloat<4>/qfloat<5>，否则回退到 int8_t 路径
+    if (p.LLR_BITS == 5) {
+        run_with_qfloat<5>(llr_mat, code_matrix, p, info_bits);
+    } else if (p.LLR_BITS == 4) {
+        run_with_qfloat<4>(llr_mat, code_matrix, p, info_bits);
+    } else {
+        // —— 回退到 int8_t 量化路径（你原先的实现）——
+        Matrix<int8_t> qllr_mat = quantize_llr_to_int8(llr_mat, p);
+        std::cout << "[INFO] Quantized LLR (fallback int8): bits=" << p.LLR_BITS
+                  << " clip=" << p.LLR_CLIP << "  (int8_t in [-Q,+Q])\n";
 
-    // 8) oFEC 解码（定点 LLR 版本，模板会推导出 int8_t）
-    Matrix<int8_t> dec_qllr = ofec_decode_llr(qllr_mat, p);
+        Matrix<int8_t> dec_qllr = ofec_decode_llr(qllr_mat, p);
 
-    // 9) 提取信息位（Pre-FEC / Post-FEC）
-    //    rx_info_from_bit_llr 需要 float LLR；这里做轻量转换以复用接口。
-    auto llr_mat_pre_f  = cast_qllr_to_float(qllr_mat);   // 或 dequantize_llr_to_float(...)
-    auto llr_mat_post_f = cast_qllr_to_float(dec_qllr);
+        auto llr_mat_pre_f  = cast_qllr_to_float(qllr_mat);   // 或 dequantize_llr_to_float(...)
+        auto llr_mat_post_f = cast_qllr_to_float(dec_qllr);
 
-    auto rx_info_bits_pre  = rx_info_from_bit_llr(llr_mat_pre_f,  p);
-    auto rx_info_bits_post = rx_info_from_bit_llr(llr_mat_post_f, p);
+        auto rx_info_bits_pre  = rx_info_from_bit_llr(llr_mat_pre_f,  p);
+        auto rx_info_bits_post = rx_info_from_bit_llr(llr_mat_post_f, p);
 
-    std::cout << "[INFO] rx_info_bits: " << rx_info_bits_pre.size()
-              << " (flattened, warmup skipped)\n";
+        std::cout << "[INFO] rx_info_bits: " << rx_info_bits_pre.size()
+                  << " (flattened, warmup skipped)\n";
 
-    // === 10) BER 统计 ===
-    auto ber_pre  = compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC");
-    auto ber_post = compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC");
+        auto ber_pre  = compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC");
+        auto ber_post = compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC");
 
-    std::cout << "[DONE] Pipeline: bits -> oFEC -> QAM -> AWGN -> QAM LLR"
-                 " -> quant(int8) -> decode(int8) -> info extract & BER\n";
+        (void)ber_pre; (void)ber_post;
+        std::cout << "[DONE] Pipeline(int8 fallback): bits -> oFEC -> QAM -> AWGN -> QAM LLR"
+                     " -> quant(int8) -> decode(int8) -> info extract & BER\n";
+    }
+
     return 0;
 }
