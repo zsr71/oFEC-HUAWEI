@@ -17,7 +17,7 @@ endif()
 # ------------------------------------------------------------------------------
 add_library(newcode_core STATIC
   src/bitgen.cpp
-  src/ofec_encoder.cpp
+  src/ofec_encoder.cpp     # ofec_encoder.cpp 中的 OVERALLLEN 未使用，仅是告警，源码里可 [[maybe_unused]] 或删除
   src/bch_255_239.cpp
   src/qam.cpp
   src/awgn.cpp
@@ -28,6 +28,9 @@ add_library(newcode_core STATIC
   src/ber.cpp
   src/llr_to_bit.cpp
   src/llr_qpack.cpp
+  src/chase256.cpp         # ★ 必须加入：提供 chase_decode_256<T>() 的定义与显式实例化
+  # 如果你把 qfloat 做成 .cpp（非 header-only），也需要在这里加：
+  # src/qfloat.cpp
 )
 target_include_directories(newcode_core PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -44,29 +47,24 @@ target_link_libraries(newcode_app PRIVATE newcode_core)
 # ------------------------------------------------------------------------------
 # Tests
 # ------------------------------------------------------------------------------
-include(CTest)         # 等价于 enable_testing() 且支持 BUILD_TESTING 开关
+include(CTest)
 if(BUILD_TESTING)
-  # Matrix test
   add_executable(test_matrix tests/test_matrix.cpp)
   target_link_libraries(test_matrix PRIVATE newcode_core)
   add_test(NAME MatrixTest COMMAND test_matrix)
 
-  # BCH test
   add_executable(test_bch tests/test_bch.cpp)
   target_link_libraries(test_bch PRIVATE newcode_core)
   add_test(NAME BCHTest COMMAND test_bch)
 
-  # QAM test
   add_executable(test_qam tests/test_qam.cpp)
   target_link_libraries(test_qam PRIVATE newcode_core)
   add_test(NAME QAMTest COMMAND test_qam)
 
-  # AWGN test
   add_executable(test_awgn tests/test_awgn.cpp)
   target_link_libraries(test_awgn PRIVATE newcode_core)
   add_test(NAME AWGNTest COMMAND test_awgn)
 
-  # 新测试
   add_executable(test_qam_llr tests/test_qam_llr.cpp)
   target_link_libraries(test_qam_llr PRIVATE newcode_core)
   add_test(NAME QAMLLRTest COMMAND test_qam_llr)
@@ -74,5 +72,4 @@ if(BUILD_TESTING)
   add_executable(llr_reshape_demo tests/llr_reshape_demo.cpp)
   target_link_libraries(llr_reshape_demo PRIVATE newcode_core)
   add_test(NAME LLRReshapeTest COMMAND llr_reshape_demo)
-
 endif()

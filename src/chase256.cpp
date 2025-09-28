@@ -6,6 +6,11 @@
 #include <limits>
 #include <cstdint>
 #include <type_traits>
+// chase256.cpp 顶部
+#include "newcode/chase256.hpp"
+#include "newcode/params.hpp"
+#include "newcode/qfloat.hpp"   // ← 新增，保证能看到 qfloat 模板
+// 其它 include ...
 
 namespace newcode {
 namespace detail {
@@ -196,5 +201,13 @@ void chase_decode_256(const LLR* Y256, LLR* Y2_256, const Params& p)
 // ===== 显式实例化（与你工程常用类型一致）=====
 template void chase_decode_256<float >(const float*,  float*,  const Params&);
 template void chase_decode_256<int8_t>(const int8_t*, int8_t*, const Params&);
+// chase256.cpp 末尾（在命名空间 newcode 内）
+// 注意：类型要精确匹配错误里显示的类型（你的默认 Store=short）
+template void chase_decode_256<newcode::qfloat<4>>(const newcode::qfloat<4>*,
+                                                   newcode::qfloat<4>*,
+                                                   const Params&);
+template void chase_decode_256<newcode::qfloat<5>>(const newcode::qfloat<5>*,
+                                                   newcode::qfloat<5>*,
+                                                   const Params&);
 
 } // namespace newcode

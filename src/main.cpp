@@ -1,7 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <complex>
-#include <algorithm>  // for std::min
+#include <algorithm>
 #include <cstdint>
 
 #include "newcode/params.hpp"
@@ -9,10 +9,10 @@
 #include "newcode/ofec_encoder.hpp"
 #include "newcode/qam.hpp"
 #include "newcode/awgn.hpp"
-#include "newcode/qam_llr.hpp"        // QAM 解调（LLR）
-#include "newcode/ofec_llr_matrix.hpp"// LLR 一维->矩阵
-#include "newcode/info_extract.hpp"   // 从 bit_llr_mat 提取信息比特（跳过 warmup）
-#include "newcode/ber.hpp"            // BER 统计
+#include "newcode/qam_llr.hpp"
+#include "newcode/ofec_llr_matrix.hpp"
+#include "newcode/info_extract.hpp"
+#include "newcode/ber.hpp"
 #include "newcode/ofec_decoder.hpp"
 
 // A) qfloat 路径（推荐）：像浮点一样用 4/5 位“类浮点”
@@ -33,10 +33,9 @@ static std::vector<uint8_t> flatten_row_major(const Matrix<uint8_t>& M)
     return out;
 }
 
-// —— 小助手：用 qfloat<NBITS> 跑完整解码 + BER —— //
+// —— 用 qfloat<NBITS> 跑完整解码 + BER —— //
 template<int NBITS>
 static void run_with_qfloat(const Matrix<float>& llr_mat_f,
-                            const Matrix<uint8_t>& code_matrix,
                             const Params& p,
                             const std::vector<uint8_t>& info_bits)
 {
@@ -45,10 +44,10 @@ static void run_with_qfloat(const Matrix<float>& llr_mat_f,
     std::cout << "[INFO] Quantized qfloat<" << NBITS << ">: clip=" << qfloat<NBITS>::DEFAULT_CLIP
               << "  code range [-" << qfloat<NBITS>::Q() << ", +" << qfloat<NBITS>::Q() << "]\n";
 
-    // oFEC 解码（模板会推导出 qfloat<NBITS>）
+    // oFEC 解码（模板推导 qfloat<NBITS>）
     auto q_dec = ofec_decode_llr(q_mat, p);
 
-    // 为复用 info_extract/BER（需要 float LLR），做轻量类型转换即可（阈值仍为 0）
+    // 为复用 info_extract/BER（需要 float LLR），做轻量类型转换（阈值仍为 0）
     auto pre_f  = cast_matrix_from_qfloat(q_mat);
     auto post_f = cast_matrix_from_qfloat(q_dec);
 
@@ -58,12 +57,38 @@ static void run_with_qfloat(const Matrix<float>& llr_mat_f,
     std::cout << "[INFO] rx_info_bits: " << rx_info_bits_pre.size()
               << " (flattened, warmup skipped)\n";
 
-    auto ber_pre  = compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC");
-    auto ber_post = compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC");
+    compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC");
+    compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC");
 
-    (void)ber_pre; (void)ber_post;
     std::cout << "[DONE] Pipeline(qfloat<" << NBITS
               << ">) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> quant(qfloat) -> decode -> info extract & BER\n";
+}
+
+// —— 用 int8_t（线性量化）跑完整解码 + BER（通用回退） —— //
+static void run_with_int8(const Matrix<float>& llr_mat_f,
+                          const Params& p,
+                          const std::vector<uint8_t>& info_bits)
+{
+    // 量化为 int8（使用 p.LLR_BITS 和 p.LLR_CLIP，Q = 2^(bits-1)-1）
+    auto q8_mat = quantize_llr_to_int8(llr_mat_f, p);
+    std::cout << "[INFO] Quantized int8: bits=" << p.LLR_BITS << " clip=" << p.LLR_CLIP << "\n";
+
+    // int8_t 版本解码
+    auto q8_dec = ofec_decode_llr(q8_mat, p);
+    // 转回 float 以复用 info_extract/BER
+    auto pre_f  = cast_qllr_to_float(q8_mat);
+    auto post_f = cast_qllr_to_float(q8_dec);
+
+    auto rx_info_bits_pre  = rx_info_from_bit_llr(pre_f,  p);
+    auto rx_info_bits_post = rx_info_from_bit_llr(post_f, p);
+
+    std::cout << "[INFO] rx_info_bits: " << rx_info_bits_pre.size()
+              << " (flattened, warmup skipped)\n";
+
+    compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC");
+    compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC");
+
+    std::cout << "[DONE] Pipeline(int8) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> quant(int8) -> decode -> info extract & BER\n";
 }
 
 int main()
@@ -83,17 +108,16 @@ int main()
     auto coded_bits = flatten_row_major(code_matrix);
     std::cout << "[INFO] Coded bits (flattened): " << coded_bits.size() << "\n";
 
-    // 4) QAM 调制（示例：QPSK/4-QAM => n_bps = 2；16-QAM 可改为 4）
+    // 4) QAM 调制（示例：QPSK/4-QAM => n_bps = 2）
     const unsigned n_bps = 2; // QPSK
     auto tx_syms = qam_modulate(coded_bits, n_bps);
     std::cout << "[INFO] Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
 
-    // 5) 通过 AWGN 信道（按 Eb/N0 设置噪声）
-    const float ebn0_dB = 20.0f; // 目标 Eb/N0(dB)
-    // 真实码率：每行 111 个信息位 / 128 个发送位
-    const int   N        = static_cast<int>(p.NUM_SUBBLOCK_COLS * p.BITS_PER_SUBBLOCK_DIM); // 典型 128
+    // 5) AWGN（按 Eb/N0 设置噪声）
+    const float ebn0_dB = 5.0f;
+    const int   N        = static_cast<int>(p.NUM_SUBBLOCK_COLS * p.BITS_PER_SUBBLOCK_DIM); // 128
     const int   K        = 239;
-    const int   TAKEBITS = K - N; // 典型 111
+    const int   TAKEBITS = K - N; // 111
     const float code_rate = static_cast<float>(TAKEBITS) / static_cast<float>(N);
     const uint32_t awgn_seed = static_cast<uint32_t>(p.BITGEN_SEED + 100);
     auto rx_syms = add_awgn(tx_syms, ebn0_dB, n_bps, code_rate, awgn_seed);
@@ -116,11 +140,14 @@ int main()
     // 7) 展成行×列 LLR 矩阵（float）
     Matrix<float> llr_mat = llr_to_matrix_row_major(llr, code_matrix.rows(), code_matrix.cols());
 
-    // 8) 根据 p.LLR_BITS 分发：优先走 qfloat<4>/qfloat<5>，否则回退到 int8_t 路径
+    // 8) 分发：优先走 qfloat<4>/qfloat<5>，否则回退 int8 路径
     if (p.LLR_BITS == 5) {
-        run_with_qfloat<5>(llr_mat, code_matrix, p, info_bits);
+        run_with_qfloat<5>(llr_mat, p, info_bits);
     } else if (p.LLR_BITS == 4) {
-        run_with_qfloat<4>(llr_mat, code_matrix, p, info_bits);
-    } 
+        run_with_qfloat<4>(llr_mat, p, info_bits);
+    } else {
+        run_with_int8(llr_mat, p, info_bits);
+    }
+
     return 0;
 }

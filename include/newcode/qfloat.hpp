@@ -3,7 +3,7 @@
 #include <cmath>
 #include <algorithm>
 #include <type_traits>
-
+#include "newcode/matrix.hpp"
 namespace newcode {
 
 // 线性量化的“类浮点”类型：NBITS ∈ [3,10]，mid-tread 对称量化到 [-Q,+Q]
