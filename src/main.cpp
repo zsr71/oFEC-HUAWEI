@@ -121,30 +121,6 @@ int main()
         run_with_qfloat<5>(llr_mat, code_matrix, p, info_bits);
     } else if (p.LLR_BITS == 4) {
         run_with_qfloat<4>(llr_mat, code_matrix, p, info_bits);
-    } else {
-        // —— 回退到 int8_t 量化路径（你原先的实现）——
-        Matrix<int8_t> qllr_mat = quantize_llr_to_int8(llr_mat, p);
-        std::cout << "[INFO] Quantized LLR (fallback int8): bits=" << p.LLR_BITS
-                  << " clip=" << p.LLR_CLIP << "  (int8_t in [-Q,+Q])\n";
-
-        Matrix<int8_t> dec_qllr = ofec_decode_llr(qllr_mat, p);
-
-        auto llr_mat_pre_f  = cast_qllr_to_float(qllr_mat);   // 或 dequantize_llr_to_float(...)
-        auto llr_mat_post_f = cast_qllr_to_float(dec_qllr);
-
-        auto rx_info_bits_pre  = rx_info_from_bit_llr(llr_mat_pre_f,  p);
-        auto rx_info_bits_post = rx_info_from_bit_llr(llr_mat_post_f, p);
-
-        std::cout << "[INFO] rx_info_bits: " << rx_info_bits_pre.size()
-                  << " (flattened, warmup skipped)\n";
-
-        auto ber_pre  = compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC");
-        auto ber_post = compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC");
-
-        (void)ber_pre; (void)ber_post;
-        std::cout << "[DONE] Pipeline(int8 fallback): bits -> oFEC -> QAM -> AWGN -> QAM LLR"
-                     " -> quant(int8) -> decode(int8) -> info extract & BER\n";
-    }
-
+    } 
     return 0;
 }
