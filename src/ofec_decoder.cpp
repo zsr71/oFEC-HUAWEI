@@ -1,33 +1,45 @@
 #include "newcode/ofec_decoder.hpp"
-#include "newcode/chase256.hpp"          // ★ 需要调用 chase_decode_256
+#include "newcode/chase256.hpp"          // chase_decode_256: 返回纯外信息 L_e
 #include <stdexcept>
 #include <cassert>
 #include <algorithm>
 #include <vector>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
 #include <type_traits>
 
+// 目标：保持 Turbo 信息流正确：
+// - tile/work 矩阵里只存“外信息”(L_e / L_a)；
+// - 组件译码输入用 Y256 = L_ch + L_a；
+// - 最终 *返回值* = L_ch + L_e（便于你当前 main 直接拿来判决/统计）。
+
 namespace newcode {
 
-// --------- 小工具：LLR <-> float 适配（支持 float/int8_t/qfloat<NBITS>） ---------
 namespace {
-template<typename LLR>
-inline float llr_to_float(LLR x) { return static_cast<float>(x); }
+  template<typename LLR>
+  inline float llr_to_float(LLR x) { return static_cast<float>(x); }
 
-template<typename LLR, typename std::enable_if<std::is_arithmetic<LLR>::value, int>::type = 0>
-inline LLR llr_from_float(float x) { return static_cast<LLR>(x); }
+  template<typename LLR, typename std::enable_if<std::is_arithmetic<LLR>::value, int>::type = 0>
+  inline LLR llr_from_float(float x) { return static_cast<LLR>(x); }
 
-template<typename LLR, typename std::enable_if<!std::is_arithmetic<LLR>::value, int>::type = 0>
-inline LLR llr_from_float(float x) { return LLR::from_float(x); }
-} // anon
+  template<typename LLR, typename std::enable_if<!std::is_arithmetic<LLR>::value, int>::type = 0>
+  inline LLR llr_from_float(float x) { return LLR::from_float(x); }
+}
 
 // ===================== 处理单个 Tile =====================
-// 实现：从 tile 底部 1/2 个 sub-block rows 提取 16/32 个码字，Chase 解码，再回写
+// 输入：
+//   tile_in  : 该 tile 的“先验/外信息 L_a”切片（上一轮外信息；首轮为0）
+//   ch_tile  : 该 tile 的“通道 LLR L_ch”切片（常量、永不改变）
+// 输出：
+//   tile_out : 把本次得到的“外信息 L_e”写回到相应位置
+
 template <typename LLR>
-Matrix<LLR> process_tile(const Matrix<LLR>& tile_in, const Params& p,
-                         size_t tile_top_row_global)  // ★ 新增：tile 全局顶行号
+Matrix<LLR> process_tile(const Matrix<LLR>& tile_in,
+                         const Matrix<LLR>& ch_tile,
+                         const Params& p,
+                         size_t tile_top_row_global)
 {
     const int B = static_cast<int>(Params::BITS_PER_SUBBLOCK_DIM);                 // 16
     const int N = static_cast<int>(Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM); // 128
@@ -38,13 +50,15 @@ Matrix<LLR> process_tile(const Matrix<LLR>& tile_in, const Params& p,
     const size_t H = tile_in.rows();
     const size_t W = tile_in.cols(); // 应等于 N
     assert(W == static_cast<size_t>(N));
+    assert(ch_tile.rows() == H && ch_tile.cols() == W);
 
-    Matrix<LLR> tile_out = tile_in; // 先拷贝，回写时覆盖相关位置
+    Matrix<LLR> tile_out = tile_in; // 先拷贝，回写外信息时覆盖相关位置
 
     // 需要处理的“底部 sub-block rows”个数：1 或 2（超出范围则报错）
     const int SBR = p.CHASE_SBR;
     if (SBR != 1 && SBR != 2)
         throw std::invalid_argument("process_tile: CHASE_SBR must be 1 or 2.");
+
     // 遍历底部 SBR 个 sub-block rows：从最底开始
     for (int s = 0; s < SBR; ++s)
     {
@@ -57,7 +71,7 @@ Matrix<LLR> process_tile(const Matrix<LLR>& tile_in, const Params& p,
             const long   R  = static_cast<long>(row_global / B);                       // 全局 block-row
             const int    r  = static_cast<int>(row_global % B);                        // 子块内行 (0..B-1)
 
-            // ===== 构造一个 256 维码字的 LLR =====
+            // ===== 构造一个 256 维码字的“输入” LLR：Y256 = L_ch + L_a =====
             std::array<LLR, 256> Y256;
 
             // (A) 0..N-1：“旧信息”128 位（按 encoder 公式，从 tile 内其它位置取 LLR）
@@ -80,8 +94,9 @@ Matrix<LLR> process_tile(const Matrix<LLR>& tile_in, const Params& p,
                 if (rr_local >= 0 && rr_local < static_cast<long>(H) &&
                     cc_local >= 0 && cc_local < static_cast<long>(W))
                 {
-                    Y256[static_cast<size_t>(k)] =
-                        tile_in[static_cast<size_t>(rr_local)][static_cast<size_t>(cc_local)];
+                    const float Yin = llr_to_float(ch_tile[static_cast<size_t>(rr_local)][static_cast<size_t>(cc_local)])
+                                     + llr_to_float(tile_in [static_cast<size_t>(rr_local)][static_cast<size_t>(cc_local)]);
+                    Y256[static_cast<size_t>(k)] = llr_from_float<LLR>(Yin);
                 }
                 else
                 {
@@ -91,35 +106,44 @@ Matrix<LLR> process_tile(const Matrix<LLR>& tile_in, const Params& p,
             }
 
             // (B) N..K-1 = 111 个“新信息”：来自当前行的列 [0..110]
-            for (int i = 0; i < TAKE_BITS; ++i)
-                Y256[static_cast<size_t>(N + i)] = tile_in[row_local][static_cast<size_t>(i)];
+            for (int i = 0; i < TAKE_BITS; ++i) {
+                const float Yin = llr_to_float(ch_tile[row_local][static_cast<size_t>(i)])
+                                 + llr_to_float(tile_in [row_local][static_cast<size_t>(i)]);
+                Y256[static_cast<size_t>(N + i)] = llr_from_float<LLR>(Yin);
+            }
 
             // (C) K..K+15：16 个 BCH parity，来自列 [111..126]
-            for (int j = 0; j < PAR_LEN; ++j)
-                Y256[static_cast<size_t>(K + j)] = tile_in[row_local][static_cast<size_t>(TAKE_BITS + j)];
+            for (int j = 0; j < PAR_LEN; ++j) {
+                const size_t cc = static_cast<size_t>(TAKE_BITS + j);
+                const float Yin = llr_to_float(ch_tile[row_local][cc])
+                                 + llr_to_float(tile_in [row_local][cc]);
+                Y256[static_cast<size_t>(K + j)] = llr_from_float<LLR>(Yin);
+            }
 
             // (D) K+16：整体偶校验位，来自列 [127]
-            Y256[static_cast<size_t>(K + PAR_LEN)] = tile_in[row_local][static_cast<size_t>(TAKE_BITS + PAR_LEN)];
+            {
+                const size_t cc = static_cast<size_t>(TAKE_BITS + PAR_LEN);
+                const float Yin = llr_to_float(ch_tile[row_local][cc])
+                                 + llr_to_float(tile_in [row_local][cc]);
+                Y256[static_cast<size_t>(K + PAR_LEN)] = llr_from_float<LLR>(Yin);
+            }
 
-            // ====== 调用 Chase–Pyndiah 取得外信息 ======
+            // ====== 调用 Chase–Pyndiah：返回“纯外信息” Y2 = L_e ======
             std::array<LLR, 256> Y2;
-            chase_decode_256<LLR>(Y256.data(), Y2.data(), p); // 只做流程 2~6
+            chase_decode_256<LLR>(Y256.data(), Y2.data(), p); // 输出 L_e
 
-            // ====== 流程 7：把外信息回写到 tile ======
+            // ====== 流程 7：把外信息写回到 tile_out（作为下一轮/下一组件的先验 L_a） ======
 
-            // (1) 当前行的 111 个“新信息” + 16 BCH + 1 overall：直接按（B）(C)(D) 的逆映射写回
+            // (1) 当前行的 111 个“新信息” + 16 BCH + 1 overall：直接按（B）(C)(D) 的逆映射写回外信息
             for (int i = 0; i < TAKE_BITS; ++i)
-                tile_out[row_local][static_cast<size_t>(i)] =
-                    Y2[static_cast<size_t>(N + i)];
+                tile_out[row_local][static_cast<size_t>(i)] = Y2[static_cast<size_t>(N + i)];
 
             for (int j = 0; j < PAR_LEN; ++j)
-                tile_out[row_local][static_cast<size_t>(TAKE_BITS + j)] =
-                    Y2[static_cast<size_t>(K + j)];
+                tile_out[row_local][static_cast<size_t>(TAKE_BITS + j)] = Y2[static_cast<size_t>(K + j)];
 
-            tile_out[row_local][static_cast<size_t>(TAKE_BITS + PAR_LEN)] =
-                Y2[static_cast<size_t>(K + PAR_LEN)];
+            tile_out[row_local][static_cast<size_t>(TAKE_BITS + PAR_LEN)] = Y2[static_cast<size_t>(K + PAR_LEN)];
 
-            // (2) 旧信息 128：把 Y2[0..N-1] 散射回对应的 (rr,cc)
+            // (2) 旧信息 128：把 Y2[0..N-1] 按映射散射回对应 (rr,cc)
             for (int k = 0; k < N; ++k)
             {
                 const long br = (R ^ 1L) - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)
@@ -138,21 +162,21 @@ Matrix<LLR> process_tile(const Matrix<LLR>& tile_in, const Params& p,
                 if (rr_local >= 0 && rr_local < static_cast<long>(H) &&
                     cc_local >= 0 && cc_local < static_cast<long>(W))
                 {
-                    // 直接覆盖外信息（也可考虑与原 a priori 融合：如 0.5*(old + new)）
                     tile_out[static_cast<size_t>(rr_local)][static_cast<size_t>(cc_local)] =
                         Y2[static_cast<size_t>(k)];
                 }
-                // else: 映射到 tile 之外则跳过（由其它 tile 负责）
             }
         } // r_off
     } // s
 
-    return tile_out;
+    return tile_out; // 外信息矩阵切片（L_e）
 }
 
 // ===================== Window 内的所有 Tiles =====================
+
 template <typename LLR>
-void process_window(Matrix<LLR>& work_llr,
+void process_window(Matrix<LLR>& work_llr,              // 外信息 L_e/L_a
+                    const Matrix<LLR>& channel_llr,      // 通道 LLR L_ch（常量）
                     size_t win_start, size_t win_end, const Params& p,
                     size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN)
 {
@@ -168,17 +192,20 @@ void process_window(Matrix<LLR>& work_llr,
             assert(tile_bottom_row < work_llr.rows());
             assert(tile_top_row + tile_height_rows - 1 <= win_end);
 
-            // 1) 提取当前 Tile
+            // 1) 提取当前 Tile：先验/外信息 与 通道 LLR 两个切片
             Matrix<LLR> tile_in(tile_height_rows, work_llr.cols());
-            for (size_t r = 0; r < tile_height_rows; ++r)
-                for (size_t c = 0; c < work_llr.cols(); ++c)
-                    tile_in[r][c] = work_llr[tile_top_row + r][c];
+            Matrix<LLR> ch_tile (tile_height_rows, work_llr.cols());
+            for (size_t r = 0; r < tile_height_rows; ++r) {
+                for (size_t c = 0; c < work_llr.cols(); ++c) {
+                    tile_in[r][c] = work_llr    [tile_top_row + r][c];
+                    ch_tile [r][c] = channel_llr[tile_top_row + r][c];
+                }
+            }
 
-            // 2) Tile 解码（使用全局顶行号传入）
-            Matrix<LLR> tile_out = process_tile<LLR>(tile_in, p, /*tile_top_row_global=*/tile_top_row);
-            //Matrix<LLR> tile_out = tile_in;
+            // 2) Tile 解码（传入通道切片 + 先验切片）
+            Matrix<LLR> tile_out = process_tile<LLR>(tile_in, ch_tile, p, /*tile_top_row_global=*/tile_top_row);
 
-            // 3) 回写
+            // 3) 回写外信息
             for (size_t r = 0; r < tile_height_rows; ++r)
                 for (size_t c = 0; c < work_llr.cols(); ++c)
                     work_llr[tile_top_row + r][c] = tile_out[r][c];
@@ -187,6 +214,8 @@ void process_window(Matrix<LLR>& work_llr,
 }
 
 // ===================== 顶层解码 =====================
+// 返回：矩阵中存放的是 “L_ch + L_e”（方便你的 main 直接用于 Post-FEC 判决）
+
 template <typename LLR>
 Matrix<LLR> ofec_decode_llr(const Matrix<LLR>& llr_mat, const Params& p)
 {
@@ -205,10 +234,19 @@ Matrix<LLR> ofec_decode_llr(const Matrix<LLR>& llr_mat, const Params& p)
     const size_t POP_PUSH_ROWS    = p.pop_push_rows();
     const size_t TILES_PER_WIN    = p.TILES_PER_WIN;
 
-    Matrix<LLR> work_llr = llr_mat;
+    // 通道 LLR：固定不变（L_ch）
+    Matrix<LLR> channel_llr = llr_mat;
 
-    if (RROWS < WIN_HEIGHT_ROWS)
-        return work_llr;
+    // 工作矩阵：仅存外信息（L_a/L_e）。首轮先验为 0。
+    Matrix<LLR> work_llr(RROWS, N);
+    for (size_t r = 0; r < RROWS; ++r)
+        for (size_t c = 0; c < N; ++c)
+            work_llr[r][c] = llr_from_float<LLR>(0.0f);
+
+    if (RROWS < WIN_HEIGHT_ROWS) {
+        // 没法开窗迭代：直接返回 L_ch（等价 L_ch + 0）
+        return channel_llr;
+    }
 
     size_t win_start     = p.initial_win_start_rows();
     const size_t last_ws = RROWS - WIN_HEIGHT_ROWS;
@@ -216,37 +254,53 @@ Matrix<LLR> ofec_decode_llr(const Matrix<LLR>& llr_mat, const Params& p)
     while (win_start <= last_ws) {
         const size_t win_end = win_start + WIN_HEIGHT_ROWS - 1;
 
-        process_window<LLR>(work_llr, win_start, win_end, p,TILE_HEIGHT_ROWS, TILE_STRIDE_ROWS, TILES_PER_WIN);
+        process_window<LLR>(work_llr, channel_llr,
+                            win_start, win_end, p,
+                            TILE_HEIGHT_ROWS, TILE_STRIDE_ROWS, TILES_PER_WIN);
 
         win_start += POP_PUSH_ROWS;
     }
 
-    return work_llr;
+    // === 输出：L_ch + L_e ===
+    Matrix<LLR> out(RROWS, N);
+    for (size_t r = 0; r < RROWS; ++r)
+        for (size_t c = 0; c < N; ++c) {
+            const float sum = llr_to_float(channel_llr[r][c]) + llr_to_float(work_llr[r][c]);
+            out[r][c] = llr_from_float<LLR>(sum);
+        }
+    return out;
 }
 
 // ===== 显式实例化（与 .hpp 中 extern template 对应）=====
 // 基础类型
-template Matrix<float>  process_tile<float >(const Matrix<float>&,  const Params&, size_t);
-template Matrix<int8_t> process_tile<int8_t>(const Matrix<int8_t>&, const Params&, size_t);
+template Matrix<float>  process_tile<float >(const Matrix<float>&,  const Matrix<float>&,  const Params&, size_t);
+template Matrix<int8_t> process_tile<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&, const Params&, size_t);
 
-template void process_window<float >(Matrix<float>&,  size_t, size_t, const Params&,
+template void process_window<float >(Matrix<float>&,  const Matrix<float>&,  size_t, size_t, const Params&,
                                      size_t, size_t, size_t);
-template void process_window<int8_t>(Matrix<int8_t>&, size_t, size_t, const Params&,
+template void process_window<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&, size_t, size_t, const Params&,
                                      size_t, size_t, size_t);
 
 template Matrix<float>  ofec_decode_llr<float >(const Matrix<float>&,  const Params&);
 template Matrix<int8_t> ofec_decode_llr<int8_t>(const Matrix<int8_t>&, const Params&);
 
 // qfloat 量化类型（按需开启）
-template Matrix<newcode::qfloat<4>> process_tile<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&, const Params&, size_t);
-template Matrix<newcode::qfloat<5>> process_tile<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&, const Params&, size_t);
+template Matrix<newcode::qfloat<4>> process_tile<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
+                                                                     const Matrix<newcode::qfloat<4>>&,
+                                                                     const Params&, size_t);
 
-template void process_window<newcode::qfloat<4>>(Matrix<newcode::qfloat<4>>&, size_t, size_t, const Params&,
+template Matrix<newcode::qfloat<5>> process_tile<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
+                                                                     const Matrix<newcode::qfloat<5>>&,
+                                                                     const Params&, size_t);
+
+template void process_window<newcode::qfloat<4>>(Matrix<newcode::qfloat<4>>&, const Matrix<newcode::qfloat<4>>&, size_t, size_t, const Params&,
                                                  size_t, size_t, size_t);
-template void process_window<newcode::qfloat<5>>(Matrix<newcode::qfloat<5>>&, size_t, size_t, const Params&,
+
+template void process_window<newcode::qfloat<5>>(Matrix<newcode::qfloat<5>>&, const Matrix<newcode::qfloat<5>>&, size_t, size_t, const Params&,
                                                  size_t, size_t, size_t);
 
 template Matrix<newcode::qfloat<4>> ofec_decode_llr<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&, const Params&);
+
 template Matrix<newcode::qfloat<5>> ofec_decode_llr<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&, const Params&);
 
 } // namespace newcode
