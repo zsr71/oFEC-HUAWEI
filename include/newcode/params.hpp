@@ -14,7 +14,7 @@ struct Params {
   static constexpr size_t BCH_K = 239; // 信息长 (Chien/Berlekamp 实现对应)
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     = 181152; // 信息比特总数
+  size_t NUM_INFO_BITS     = 16*102*16*128; // 信息比特总数
   int    BITGEN_SEED       = 42;     // 随机种子
   size_t NUM_GUARD_SUBROWS = 2;      // 保护块子行数 G
 
