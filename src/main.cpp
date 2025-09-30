@@ -33,6 +33,29 @@ static std::vector<uint8_t> flatten_row_major(const Matrix<uint8_t>& M)
     return out;
 }
 
+// —— 用 float 跑完整解码 + BER（不量化、无截幅） —— //
+static void run_with_float(const Matrix<float>& llr_mat_f,
+                           const Params& p,
+                           const std::vector<uint8_t>& info_bits)
+{
+    std::cout << "[INFO] Running decoder in FLOAT (no quantization, no clipping)\n";
+
+    // 直接用 float 送入解码器；ofec_decode_llr 会走浮点 SISO/Chase 路径
+    Matrix<float> post_f = ofec_decode_llr(llr_mat_f, p);
+
+    // 提取 Pre-/Post-FEC 的信息比特并计算 BER
+    auto rx_info_bits_pre  = rx_info_from_bit_llr(llr_mat_f, p);
+    auto rx_info_bits_post = rx_info_from_bit_llr(post_f,    p);
+
+    std::cout << "[INFO] rx_info_bits: " << rx_info_bits_pre.size()
+              << " (flattened, warmup skipped)\n";
+
+    compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC",  p);
+    compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC", p);
+
+    std::cout << "[DONE] Pipeline(float) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> decode(float) -> info extract & BER\n";
+}
+
 // —— 用 qfloat<NBITS> 跑完整解码 + BER —— //
 template<int NBITS>
 static void run_with_qfloat(const Matrix<float>& llr_mat_f,
@@ -114,11 +137,11 @@ int main()
     std::cout << "[INFO] Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
 
     // 5) AWGN（按 Eb/N0 设置噪声）
-    const float ebn0_dB = 4.0f;
+    const float ebn0_dB  =8.0f;
     const int   N        = static_cast<int>(p.NUM_SUBBLOCK_COLS * p.BITS_PER_SUBBLOCK_DIM); // 128
     const int   K        = 239;
     const int   TAKEBITS = K - N; // 111
-    const float code_rate = static_cast<float>(TAKEBITS) / static_cast<float>(N);
+    const float code_rate = static_cast<float>(TAKEBITS) / static_cast<float>(N); // 111/128
     const uint32_t awgn_seed = static_cast<uint32_t>(p.BITGEN_SEED + 100);
     auto rx_syms = add_awgn(tx_syms, ebn0_dB, n_bps, code_rate, awgn_seed);
 
@@ -140,8 +163,16 @@ int main()
     // 7) 展成行×列 LLR 矩阵（float）
     Matrix<float> llr_mat = llr_to_matrix_row_major(llr, code_matrix.rows(), code_matrix.cols());
 
-    // 8) 分发：优先走 qfloat<4>/qfloat<5>，否则回退 int8 路径
-    if (p.LLR_BITS == 5) {
+    // 8) 分发：当 p.LLR_BITS == 16 时，走 float；否则走 qfloat/int8 路径
+    if (p.LLR_BITS == 16) {
+        auto llr_mat_clipped = llr_mat;           // 拷贝一份
+        for (size_t r = 0; r < llr_mat_clipped.rows(); ++r)
+        for (size_t c = 0; c < llr_mat_clipped.cols(); ++c) {
+            float v = llr_mat_clipped[r][c];
+            llr_mat_clipped[r][c] = 2*v;
+  }
+        run_with_float(llr_mat_clipped, p, info_bits);
+    } else if (p.LLR_BITS == 5) {
         run_with_qfloat<5>(llr_mat, p, info_bits);
     } else if (p.LLR_BITS == 4) {
         run_with_qfloat<4>(llr_mat, p, info_bits);

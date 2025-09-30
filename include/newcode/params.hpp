@@ -14,7 +14,7 @@ struct Params {
   static constexpr size_t BCH_K = 239; // 信息长 (Chien/Berlekamp 实现对应)
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     = 16*102*16*111; // 信息比特总数
+  size_t NUM_INFO_BITS     = 6*102*16*111; // 信息比特总数
   int    BITGEN_SEED       = 42;     // 随机种子
   size_t NUM_GUARD_SUBROWS = 2;      // 保护块子行数 G
 
@@ -26,7 +26,7 @@ struct Params {
   size_t WINDOW_ITERS    = 4;  // 每个 window 内重复迭代轮数（>=1）
 
   // ===== LLR 量化参数 =====
-  size_t LLR_BITS = 4;     // 4 或 5（也可取 3~10 用于 qfloat<N>）
+  size_t LLR_BITS = 16;     // 4 或 5（也可取 3~10 用于 qfloat<N>）
   float  LLR_CLIP = 8.0f;  // LLR 裁剪幅度（对应 qfloat<int>::DEFAULT_CLIP）
 
   // ===== Chase-Pyndiah 控制参数 =====
