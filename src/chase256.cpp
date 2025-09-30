@@ -1,9 +1,10 @@
-// chase256.cpp  (modified)
+// chase256.cpp
 // ------------------------------------------------------------
 // - Fix: nth_element boundary when L == v.size()
 // - Improve: gen_test_patterns coverage (layered growth like AFF3CT)
 // - Improve: precompute |LLR| for metric
 // - Improve: integral LLR saturation on write-back
+// - NEW: iteration schedule (A,B,C,D,E) via Params::CP_*_SCHED and CP_ITER
 // ------------------------------------------------------------
 
 #include "newcode/chase256.hpp"
@@ -50,6 +51,28 @@ inline LLR llr_from_float(float x)
 // from-float：非算术类型（如 qfloat）→ 走自定义 from_float()
 template<typename LLR, typename std::enable_if<!std::is_arithmetic<LLR>::value, int>::type = 0>
 inline LLR llr_from_float(float x) { return LLR::from_float(x); }
+
+// ---- 选取（A,B,C,D,E）系数（支持迭代日程）----
+static inline void pick_cp(const Params& p, float& A, float& B, float& C, float& D, int& E)
+{
+    if (p.CP_USE_SCHED && p.CP_SCHED_LEN > 0)
+    {
+        const int it = std::min(std::max(0, p.CP_ITER), p.CP_SCHED_LEN - 1);
+        A = p.CP_A_SCHED[it];
+        B = p.CP_B_SCHED[it];
+        C = p.CP_C_SCHED[it];
+        D = p.CP_D_SCHED[it];
+        E = p.CP_E_SCHED[it];
+    }
+    else
+    {
+        A = p.CP_A;
+        B = p.CP_B;
+        C = p.CP_C;
+        D = p.CP_D;
+        E = p.CP_E;
+    }
+}
 
 // ---- 最不可靠位置（在 0..254 中选择 L 个）----
 template<typename LLR>
@@ -101,8 +124,6 @@ static void gen_test_patterns(int L, int n_test, std::vector<std::vector<bool>>&
     // layer 从 1 开始（layer 表示此层总共翻转的位数）
     for (int layer = 1; c < n_test && layer <= L; ++layer)
     {
-        // 先固定最不可靠的前 (layer - 1) 位为 true
-        // 然后在剩余位上逐个再翻 1 位（形成“固定集 + 单翻”的集合）
         for (int j = layer - 1; j < L && c < n_test; ++j)
         {
             std::fill(patt[c].begin(), patt[c].end(), false);
@@ -137,6 +158,10 @@ template<typename LLR>
 void chase_decode_256(const LLR* Y256, LLR* Y2_256, const Params& p)
 {
     using namespace detail;
+
+    // —— 依据迭代日程选 a..e —— //
+    float A,B,C,D; int E;
+    pick_cp(p, A,B,C,D,E);
 
     const int L      = std::max(1, p.CHASE_L);
     const int NTEST  = std::max(1, p.CHASE_NTEST);
@@ -194,7 +219,7 @@ void chase_decode_256(const LLR* Y256, LLR* Y2_256, const Params& p)
     if (comps.empty()) {
         // 所有候选都失败：Y2 = -a*Y
         for (int i = 0; i < BCH_N_TOTAL; ++i)
-            Y2_256[i] = llr_from_float<LLR>(-p.CP_A * llr_to_float(Y256[i]));
+            Y2_256[i] = llr_from_float<LLR>(-A * llr_to_float(Y256[i]));
         return;
     }
 
@@ -206,13 +231,13 @@ void chase_decode_256(const LLR* Y256, LLR* Y2_256, const Params& p)
     const float    M0  = comps[0].metric;
 
     std::vector<float> comp_delta(NG, 0.f);
-    for (int j = 1; j < NG; ++j) comp_delta[j] = (comps[j].metric - M0) * p.CP_B;
+    for (int j = 1; j < NG; ++j) comp_delta[j] = (comps[j].metric - M0) * B;
 
     // beta = sum(|最不可靠|[前 e 个]) - c*M0
-    int e_cap = (p.CP_E > 0) ? std::min(p.CP_E, L_eff) : L_eff;
+    const int e_cap = (E > 0) ? std::min(E, L_eff) : L_eff;
     float beta = 0.f;
     for (int i = 0; i < e_cap; ++i) beta += lrp_abs[i];
-    beta -= p.CP_C * M0;
+    beta -= C * M0;
 
     // (6) 外信息
     for (int i = 0; i < BCH_N_TOTAL; ++i)
@@ -227,12 +252,12 @@ void chase_decode_256(const LLR* Y256, LLR* Y2_256, const Params& p)
         if (j < NG) {
             reliability = comp_delta[j];
         } else {
-            reliability = beta + p.CP_D * absY[i];
+            reliability = beta + D * absY[i];
             if (reliability < 0.f) reliability = 0.f;
         }
         if (db) reliability = -reliability;
 
-        const float y2 = reliability - p.CP_A * llr_to_float(Y256[i]);
+        const float y2 = reliability - A * llr_to_float(Y256[i]);
         Y2_256[i] = llr_from_float<LLR>(y2);
     }
 }
@@ -240,8 +265,6 @@ void chase_decode_256(const LLR* Y256, LLR* Y2_256, const Params& p)
 // ===== 显式实例化（与你工程常用类型一致）=====
 template void chase_decode_256<float >(const float*,  float*,  const Params&);
 template void chase_decode_256<int8_t>(const int8_t*, int8_t*, const Params&);
-
-// 注意：类型要精确匹配你的工程里 qfloat 的模板参数
 template void chase_decode_256<newcode::qfloat<4>>(const newcode::qfloat<4>*,
                                                    newcode::qfloat<4>*,
                                                    const Params&);
