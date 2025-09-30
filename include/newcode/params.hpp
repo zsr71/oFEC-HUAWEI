@@ -14,7 +14,7 @@ struct Params {
   static constexpr size_t BCH_K = 239; // 信息长 (Chien/Berlekamp 实现对应)
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     = 16*102*16*128; // 信息比特总数
+  size_t NUM_INFO_BITS     = 16*102*16*111; // 信息比特总数
   int    BITGEN_SEED       = 42;     // 随机种子
   size_t NUM_GUARD_SUBROWS = 2;      // 保护块子行数 G
 
@@ -31,10 +31,10 @@ struct Params {
 
   // ===== Chase-Pyndiah 控制参数 =====
   // 说明：这些字段被 chase256.cpp 使用，请保持字段名一致
-  int CHASE_L     = 5;   // 选取“最不可靠”位置个数（典型 5）
-  int CHASE_NTEST = 16;  // 生成的测试向量个数（<= 2^CHASE_L），典型 16
+  int CHASE_L     = 7;   // 选取“最不可靠”位置个数（典型 5）
+  int CHASE_NTEST = 64;  // 生成的测试向量个数（<= 2^CHASE_L），典型 16
   int CHASE_NCOMP = 16;  // 参与外信息计算的候选数（<= CHASE_NTEST）
-  int CHASE_SBR   = 1;   // 每个 tile 底部解码的子块行数（1 或 2）
+  int CHASE_SBR   = 2;   // 每个 tile 底部解码的子块行数（1 或 2）
   int CHASE_TP    = 1;   // 兼容老代码的占位（如未用可忽略）
 
   // Pyndiah 外信息系数（对应 a, b, c, d, e）

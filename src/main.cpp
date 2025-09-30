@@ -57,8 +57,8 @@ static void run_with_qfloat(const Matrix<float>& llr_mat_f,
     std::cout << "[INFO] rx_info_bits: " << rx_info_bits_pre.size()
               << " (flattened, warmup skipped)\n";
 
-    compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC");
-    compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC");
+    compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC",  p);
+    compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC", p);
 
     std::cout << "[DONE] Pipeline(qfloat<" << NBITS
               << ">) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> quant(qfloat) -> decode -> info extract & BER\n";
@@ -85,8 +85,8 @@ static void run_with_int8(const Matrix<float>& llr_mat_f,
     std::cout << "[INFO] rx_info_bits: " << rx_info_bits_pre.size()
               << " (flattened, warmup skipped)\n";
 
-    compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC");
-    compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC");
+    compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC",  p);
+    compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC", p);
 
     std::cout << "[DONE] Pipeline(int8) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> quant(int8) -> decode -> info extract & BER\n";
 }
@@ -114,7 +114,7 @@ int main()
     std::cout << "[INFO] Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
 
     // 5) AWGN（按 Eb/N0 设置噪声）
-    const float ebn0_dB = 3.88f;
+    const float ebn0_dB = 4.0f;
     const int   N        = static_cast<int>(p.NUM_SUBBLOCK_COLS * p.BITS_PER_SUBBLOCK_DIM); // 128
     const int   K        = 239;
     const int   TAKEBITS = K - N; // 111
