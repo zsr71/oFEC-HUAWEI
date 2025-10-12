@@ -87,32 +87,7 @@ static void run_with_qfloat(const Matrix<float>& llr_mat_f,
               << ">) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> quant(qfloat) -> decode -> info extract & BER\n";
 }
 
-// —— 用 int8_t（线性量化）跑完整解码 + BER（通用回退） —— //
-static void run_with_int8(const Matrix<float>& llr_mat_f,
-                          const Params& p,
-                          const std::vector<uint8_t>& info_bits)
-{
-    // 量化为 int8（使用 p.LLR_BITS 和 p.LLR_CLIP，Q = 2^(bits-1)-1）
-    auto q8_mat = quantize_llr_to_int8(llr_mat_f, p);
-    std::cout << "[INFO] Quantized int8: bits=" << p.LLR_BITS << " clip=" << p.LLR_CLIP << "\n";
 
-    // int8_t 版本解码
-    auto q8_dec = ofec_decode_llr(q8_mat, p);
-    // 转回 float 以复用 info_extract/BER
-    auto pre_f  = cast_qllr_to_float(q8_mat);
-    auto post_f = cast_qllr_to_float(q8_dec);
-
-    auto rx_info_bits_pre  = rx_info_from_bit_llr(pre_f,  p);
-    auto rx_info_bits_post = rx_info_from_bit_llr(post_f, p);
-
-    std::cout << "[INFO] rx_info_bits: " << rx_info_bits_pre.size()
-              << " (flattened, warmup skipped)\n";
-
-    compute_and_print_ber(info_bits, rx_info_bits_pre,  "Pre-FEC",  p);
-    compute_and_print_ber(info_bits, rx_info_bits_post, "Post-FEC", p);
-
-    std::cout << "[DONE] Pipeline(int8) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> quant(int8) -> decode -> info extract & BER\n";
-}
 
 int main()
 {
@@ -137,7 +112,7 @@ int main()
     std::cout << "[INFO] Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
 
     // 5) AWGN（按 Eb/N0 设置噪声）
-    const float ebn0_dB  =5.0f;
+    const float ebn0_dB  = 4.0f;
     const int   N        = static_cast<int>(p.NUM_SUBBLOCK_COLS * p.BITS_PER_SUBBLOCK_DIM); // 128
     const int   K        = 239;
     const int   TAKEBITS = K - N; // 111
@@ -177,7 +152,8 @@ int main()
     } else if (p.LLR_BITS == 4) {
         run_with_qfloat<4>(llr_mat, p, info_bits);
     } else {
-        run_with_int8(llr_mat, p, info_bits);
+        std::cerr << "[ERROR] Unsupported p.LLR_BITS = " << p.LLR_BITS << "\n";
+        return 1;
     }
 
     return 0;

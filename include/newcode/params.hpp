@@ -51,10 +51,10 @@ struct Params {
   int   CP_SCHED_LEN = 4;    // 有效的调度长度（<= 数组长度）
 
   // 这里给一套温和→强化的默认表（你可在运行时改）
-  std::array<float, 8> CP_A_SCHED { 0.40f, 0.55f, 0.65f, 0.70f, 0.70f, 0.70f, 0.70f, 0.70f };
-  std::array<float, 8> CP_B_SCHED { 0.90f, 1.10f, 1.20f, 1.30f, 1.30f, 1.30f, 1.30f, 1.30f };
+  std::array<float, 8> CP_A_SCHED { 0.30f, 0.55f, 0.65f, 0.70f, 0.70f, 0.70f, 0.70f, 0.70f };
+  std::array<float, 8> CP_B_SCHED { 0.30f, 1.10f, 1.20f, 1.30f, 1.30f, 1.30f, 1.30f, 1.30f };
   std::array<float, 8> CP_C_SCHED { 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f };
-  std::array<float, 8> CP_D_SCHED { 0.10f, 0.20f, 0.30f, 0.40f, 0.40f, 0.40f, 0.40f, 0.40f };
+  std::array<float, 8> CP_D_SCHED { 0.20f, 0.20f, 0.30f, 0.40f, 0.40f, 0.40f, 0.40f, 0.40f };
   std::array<int,   8> CP_E_SCHED {    0,     0,     0,     0,     0,     0,     0,     0 };
 
   // ===== 便捷派生（统一换算到“比特行 rows”）=====
