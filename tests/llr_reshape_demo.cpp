@@ -51,7 +51,7 @@ int main()
     const float ebn0_dB   = 8.0f;
     const float code_rate = 1.0f; // 如需考虑码率，改成实际 R
     const uint32_t awgn_seed = static_cast<uint32_t>(p.BITGEN_SEED + 100);
-    auto rx_syms = add_awgn(tx_syms, ebn0_dB, n_bps, code_rate, awgn_seed);
+    auto rx_syms = add_awgn(tx_syms, ebn0_dB, n_bps, awgn_seed);
 
     // 6) QAM 解调：输出比特 LLR（>0 表示更像 0）
     auto llr = qam_llr_from_ebn0(rx_syms, n_bps, ebn0_dB, code_rate);

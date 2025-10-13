@@ -28,9 +28,9 @@ int main()
     auto x = qam_modulate(bits, k);
 
     // 1) 可复现性：相同 seed → 相同噪声；不同 seed → 不同噪声
-    auto y1 = add_awgn(x, EbN0_dB, k, R, seed1);
-    auto y2 = add_awgn(x, EbN0_dB, k, R, seed1);
-    auto y3 = add_awgn(x, EbN0_dB, k, R, seed2);
+    auto y1 = add_awgn(x, EbN0_dB, k, seed1);
+    auto y2 = add_awgn(x, EbN0_dB, k, seed1);
+    auto y3 = add_awgn(x, EbN0_dB, k, seed2);
 
     assert(y1.size() == x.size() && y2.size() == x.size() && y3.size() == x.size());
     for (size_t i = 0; i < x.size(); ++i) {

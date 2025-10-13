@@ -1,12 +1,16 @@
+// path: newcode/qam_llr.cpp
 #include "newcode/qam_llr.hpp"
-#include "newcode/qam.hpp"   // 复用你的映射，保证一致性
-#include "newcode/awgn.hpp"  // 用 ebn0_to_sigma
+#include "newcode/qam.hpp"
+#include "newcode/awgn.hpp"
 #include <cmath>
+#include <limits>
 #include <stdexcept>
+#include <vector>
+#include <complex>
 
 namespace newcode {
 
-// 用现有 qam_modulate 构造与解调一致的星座查找表 S[j]
+// 与原来一致：用现有映射构造星座
 static std::vector<std::complex<float>>
 build_constellation(unsigned n_bps)
 {
@@ -18,27 +22,27 @@ build_constellation(unsigned n_bps)
     bits.reserve(M * n_bps);
     for (unsigned j = 0; j < M; ++j)
         for (unsigned b = 0; b < n_bps; ++b)
-            bits.push_back( (j >> b) & 1u ); // 与调制/解调的位序完全一致 (LSB=bit0)
+            bits.push_back( (j >> b) & 1u ); // LSB=bit0
 
-    // qam_modulate 会按顺序每 n_bps 个比特映射 1 个符号
-    auto S = qam_modulate(bits, n_bps);
-    return S; // size=M
+    return qam_modulate(bits, n_bps); // size=M
 }
 
+// ===== 精确（log-sum-exp）版 =====
 std::vector<float>
-qam_llr_maxlog(const std::vector<std::complex<float>>& y,
-               unsigned n_bps,
-               float sigma)
+qam_llr_logsumexp(const std::vector<std::complex<float>>& y,
+                  unsigned n_bps,
+                  float sigma)
 {
     if (y.empty()) return {};
     if (n_bps == 0 || (n_bps & 1u))
-        throw std::invalid_argument("qam_llr_maxlog: n_bps must be a positive even number.");
+        throw std::invalid_argument("qam_llr_logsumexp: n_bps must be a positive even number.");
     if (!(sigma > 0.f))
-        throw std::invalid_argument("qam_llr_maxlog: sigma must be > 0.");
+        throw std::invalid_argument("qam_llr_logsumexp: sigma must be > 0.");
 
-    const float inv_sigma2 = 1.f / (2.f * sigma * sigma);
+    const float inv_sigma2 = 1.f / (2.f * sigma * sigma); // 1/N0
     const unsigned M = 1u << n_bps;
 
+    // 线程本地缓存星座
     static thread_local unsigned cached_n_bps = 0;
     static thread_local std::vector<std::complex<float>> cached_S;
     if (cached_n_bps != n_bps || cached_S.size() != M) {
@@ -50,25 +54,41 @@ qam_llr_maxlog(const std::vector<std::complex<float>>& y,
     const size_t N_bits = y.size() * n_bps;
     std::vector<float> LLR(N_bits);
 
+    const float neg_inf = -std::numeric_limits<float>::infinity();
+
     for (size_t n = 0; n < N_bits; ++n)
     {
-        const unsigned b = (unsigned)(n % n_bps);     // 比特位置
-        const size_t   k = n / n_bps;                 // 符号索引
+        const unsigned b = static_cast<unsigned>(n % n_bps); // 比特位索引（符号内）
+        const size_t   k = n / n_bps;                        // 符号索引
         const auto     yk = y[k];
 
-        float L0 = -1e30f, L1 = -1e30f;               // -inf 的安全近似
-        for (unsigned j = 0; j < M; ++j)
-        {
-            const float d2 = std::norm(yk - S[j]);    // |y - s_j|^2
-            const float met = - d2 * inv_sigma2;      // -||y-s||^2 / (2σ^2)
-            if (((j >> b) & 1u) == 0u)  { if (met > L0) L0 = met; }
-            else                        { if (met > L1) L1 = met; }
+        // 第1遍：分别找 bit=0 / bit=1 的最大度量（避免溢出）
+        float m0 = neg_inf, m1 = neg_inf;
+        for (unsigned j = 0; j < M; ++j) {
+            const float d2  = std::norm(yk - S[j]);          // |y - s_j|^2
+            const float met = - d2 * inv_sigma2;             // -||y-s||^2 / N0
+            if (((j >> b) & 1u) == 0u) { if (met > m0) m0 = met; }
+            else                        { if (met > m1) m1 = met; }
         }
-        LLR[n] = L0 - L1; // >0 表示更偏向 bit=0
+
+        // 第2遍：做 log-sum-exp
+        double sum0 = 0.0, sum1 = 0.0; // 用 double 累加更稳
+        for (unsigned j = 0; j < M; ++j) {
+            const float d2  = std::norm(yk - S[j]);
+            const float met = - d2 * inv_sigma2;
+            if (((j >> b) & 1u) == 0u) sum0 += std::exp(static_cast<double>(met - m0));
+            else                        sum1 += std::exp(static_cast<double>(met - m1));
+        }
+
+        // LLR = logsumexp0 - logsumexp1
+        const double lse0 = static_cast<double>(m0) + std::log(sum0);
+        const double lse1 = static_cast<double>(m1) + std::log(sum1);
+        LLR[n] = static_cast<float>(lse0 - lse1); // >0 表示更偏向 bit=0
     }
     return LLR;
 }
 
+// 便捷入口：从 Eb/N0 计算 sigma，再走精确版
 std::vector<float>
 qam_llr_from_ebn0(const std::vector<std::complex<float>>& y,
                   unsigned n_bps,
@@ -76,7 +96,7 @@ qam_llr_from_ebn0(const std::vector<std::complex<float>>& y,
                   float code_rate)
 {
     const float sigma = ebn0_to_sigma(ebn0_dB, n_bps, code_rate);
-    return qam_llr_maxlog(y, n_bps, sigma);
+    return qam_llr_logsumexp(y, n_bps, sigma);
 }
 
 } // namespace newcode

@@ -27,7 +27,7 @@ struct Params {
   size_t WINDOW_ITERS    = 1;  // 每个 window 内重复迭代轮数（>=1）
 
   // ===== LLR 量化参数 =====
-  size_t LLR_BITS = 4;     // 4 或 5（也可取 3~10 用于 qfloat<N>）
+  size_t LLR_BITS = 16;     // 4 或 5（也可取 3~10 用于 qfloat<N>）
   float  LLR_CLIP = 8.0f;  // LLR 裁剪幅度（对应 qfloat<int>::DEFAULT_CLIP）
 
   // ===== Chase-Pyndiah 控制参数 =====

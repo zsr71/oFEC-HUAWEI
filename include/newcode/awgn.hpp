@@ -14,7 +14,6 @@ std::vector<std::complex<float>>
 add_awgn(const std::vector<std::complex<float>>& x,
          float ebn0_dB,
          unsigned bits_per_symbol,
-         float code_rate,
          uint32_t seed);
 
 } // namespace newcode
