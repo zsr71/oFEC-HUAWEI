@@ -214,16 +214,10 @@ void process_window(Matrix<LLR>& work_llr,
 
             Matrix<LLR> tile_out = process_tile<LLR>(tile_in, ch_tile, p_it, /*tile_top_row_global=*/tile_top_row);
 
-            const size_t chase_sbr = (p.CHASE_SBR > 0) ? static_cast<size_t>(p.CHASE_SBR) : 0u;
-            size_t rows_to_update = chase_sbr * Params::BITS_PER_SUBBLOCK_DIM;
-            rows_to_update = std::min(rows_to_update, tile_height_rows);
-
-            const size_t start_row = tile_height_rows - rows_to_update;
-            for (size_t r = start_row; r < tile_height_rows; ++r) {
-                for (size_t c = 0; c < work_llr.cols(); ++c) {
+            for (size_t r = 0; r < tile_height_rows; ++r)
+                for (size_t c = 0; c < work_llr.cols(); ++c){
                     work_llr[tile_top_row + r][c] = tile_out[r][c];
                 }
-            }
         }
     }
 }

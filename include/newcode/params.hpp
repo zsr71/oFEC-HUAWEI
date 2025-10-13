@@ -24,16 +24,16 @@ struct Params {
   size_t TILE_OVERLAP_BR = 2;  // 相邻 tile 在 sub-block-row 维度上的重叠
   size_t TILE_HEIGHT_BR  = 22; // 单个 tile 的高度（sub-block-row）
   size_t WINDOW_POP_PUSH = 2;  // window 每次滑动的 sub-block-row 数（pop/push）
-  size_t WINDOW_ITERS    = 1;  // 每个 window 内重复迭代轮数（>=1）
+  size_t WINDOW_ITERS    = 4;  // 每个 window 内重复迭代轮数（>=1）
 
   // ===== LLR 量化参数 =====
   size_t LLR_BITS = 16;     // 4 或 5（也可取 3~10 用于 qfloat<N>）
   float  LLR_CLIP = 8.0f;  // LLR 裁剪幅度（对应 qfloat<int>::DEFAULT_CLIP）
 
   // ===== Chase-Pyndiah 控制参数 =====
-  int CHASE_L     = 4;    // 选取“最不可靠”位置个数
-  int CHASE_NTEST = 16;   // 生成的测试向量个数（<= 2^CHASE_L）
-  int CHASE_NCOMP = 16;   // 参与外信息计算的候选数（<= CHASE_NTEST）
+  int CHASE_L     = 8;    // 选取“最不可靠”位置个数
+  int CHASE_NTEST = 256;   // 生成的测试向量个数（<= 2^CHASE_L）
+  int CHASE_NCOMP = 256;   // 参与外信息计算的候选数（<= CHASE_NTEST）
   int CHASE_SBR   = 2;    // 每个 tile 底部解码的子块行数（1 或 2）
   int CHASE_TP    = 1;    // 兼容老代码的占位（如未用可忽略）
 
