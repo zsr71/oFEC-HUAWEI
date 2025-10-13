@@ -191,11 +191,6 @@ void process_window(Matrix<LLR>& work_llr,
                     size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN)
 {
     assert(p.valid());
-
-    for (size_t it = 0; it < p.WINDOW_ITERS; ++it) {
-        Params p_it = p;
-        p_it.CP_ITER = static_cast<int>(it); // 迭代号传给 Chase
-
         for (size_t t = 0; t < TILES_PER_WIN; ++t) {
             const size_t tile_bottom_row = win_end - t * tile_stride_rows;
             const size_t tile_top_row    = tile_bottom_row - tile_height_rows + 1;
@@ -212,14 +207,13 @@ void process_window(Matrix<LLR>& work_llr,
                     ch_tile [r][c] = channel_llr[tile_top_row + r][c];
                 }
 
-            Matrix<LLR> tile_out = process_tile<LLR>(tile_in, ch_tile, p_it, /*tile_top_row_global=*/tile_top_row);
+            Matrix<LLR> tile_out = process_tile<LLR>(tile_in, ch_tile, p, /*tile_top_row_global=*/tile_top_row);
 
             for (size_t r = 0; r < tile_height_rows; ++r)
                 for (size_t c = 0; c < work_llr.cols(); ++c){
                     work_llr[tile_top_row + r][c] = tile_out[r][c];
                 }
         }
-    }
 }
 
 // ===================== 顶层解码 =====================

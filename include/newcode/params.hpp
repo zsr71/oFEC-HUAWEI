@@ -24,7 +24,6 @@ struct Params {
   size_t TILE_OVERLAP_BR = 2;  // 相邻 tile 在 sub-block-row 维度上的重叠
   size_t TILE_HEIGHT_BR  = 22; // 单个 tile 的高度（sub-block-row）
   size_t WINDOW_POP_PUSH = 2;  // window 每次滑动的 sub-block-row 数（pop/push）
-  size_t WINDOW_ITERS    = 4;  // 每个 window 内重复迭代轮数（>=1）
 
   // ===== LLR 量化参数 =====
   size_t LLR_BITS = 16;     // 4 或 5（也可取 3~10 用于 qfloat<N>）
@@ -83,7 +82,6 @@ struct Params {
     return (TILES_PER_WIN >= 1) &&
            (TILE_OVERLAP_BR >= 1) &&
            (TILE_OVERLAP_BR < TILE_HEIGHT_BR) &&
-           (WINDOW_ITERS >= 1) &&
            (CHASE_L >= 1) &&
            (CHASE_NTEST >= 1) &&
            (CHASE_NCOMP >= 1) &&
