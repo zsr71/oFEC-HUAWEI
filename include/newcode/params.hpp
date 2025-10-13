@@ -36,8 +36,8 @@ struct Params {
   int CHASE_TP    = 1;    // 兼容老代码的占位（如未用可忽略）
 
   // —— 固定系数（当不启用调度时使用）——
-  float CP_A = 0.3f;
-  float CP_B = 0.3f;
+  float CP_A = 0.35f;
+  float CP_B = 0.35f;
   float CP_C = 0.0f;
   float CP_D = 0.2f;
   int   CP_E = 0; // 0 表示使用 CHASE_L

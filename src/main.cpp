@@ -113,7 +113,7 @@ int main()
     std::cout << "[INFO] Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
 
     // 5) AWGN（按 Eb/N0 设置噪声）
-    const float ebn0_dB  = 3.8f;
+    const float ebn0_dB  = 3.0f;
     const int   N        = static_cast<int>(p.NUM_SUBBLOCK_COLS * p.BITS_PER_SUBBLOCK_DIM); // 128
     const int   K        = 239;
     const int   TAKEBITS = K - N; // 111
