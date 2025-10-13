@@ -28,6 +28,7 @@ add_library(newcode_core STATIC
   src/ber.cpp
   src/llr_to_bit.cpp
   src/llr_qpack.cpp
+  src/llr_known_prefix.cpp
   src/chase256.cpp         # ★ 必须加入：提供 chase_decode_256<T>() 的定义与显式实例化
   # 如果你把 qfloat 做成 .cpp（非 header-only），也需要在这里加：
   # src/qfloat.cpp
