@@ -1,6 +1,5 @@
 #pragma once
 #include <cstddef>
-#include <array>
 
 namespace newcode {
 
@@ -37,24 +36,11 @@ struct Params {
   int CHASE_TP    = 1;    // 兼容老代码的占位（如未用可忽略）
 
   // —— 固定系数（当不启用调度时使用）——
-  float CP_A = 0.7f;
-  float CP_B = 1.3f;
+  float CP_A = 0.3f;
+  float CP_B = 0.3f;
   float CP_C = 0.0f;
-  float CP_D = 0.4f;
+  float CP_D = 0.2f;
   int   CP_E = 0; // 0 表示使用 CHASE_L
-
-  // ===== 迭代日程（可选）=====
-  // 在 process_window() 中把 CP_ITER 设为当前迭代号，然后 chase256.cpp 会按下列表选 a~e。
-  bool  CP_USE_SCHED = true; // 开启/关闭迭代日程
-  int   CP_ITER      = 0;    // 由解码流程写入当前迭代号（0-based）
-  int   CP_SCHED_LEN = 4;    // 有效的调度长度（<= 数组长度）
-
-  // 这里给一套温和→强化的默认表（你可在运行时改）
-  std::array<float, 8> CP_A_SCHED { 0.30f, 0.55f, 0.65f, 0.70f, 0.70f, 0.70f, 0.70f, 0.70f };
-  std::array<float, 8> CP_B_SCHED { 0.30f, 1.10f, 1.20f, 1.30f, 1.30f, 1.30f, 1.30f, 1.30f };
-  std::array<float, 8> CP_C_SCHED { 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f };
-  std::array<float, 8> CP_D_SCHED { 0.20f, 0.20f, 0.30f, 0.40f, 0.40f, 0.40f, 0.40f, 0.40f };
-  std::array<int,   8> CP_E_SCHED {    0,     0,     0,     0,     0,     0,     0,     0 };
 
   // ===== 便捷派生（统一换算到“比特行 rows”）=====
   constexpr size_t tile_height_rows() const {

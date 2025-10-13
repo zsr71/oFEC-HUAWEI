@@ -4,7 +4,7 @@
 // - 分层翻转模式（接近 AFF3CT）
 // - 预计算 |Lch| 做 metric
 // - 写回时对整型 LLR 饱和
-// - 迭代日程 (A,B,C,D,E)
+// - 固定 Chase-Pyndiah 系数 (A,B,C,D,E)
 // - ★ 新增三参 API：chase_decode_256(Lin, Lch, Y2, p)
 //   * metric/LRP 用 Lch（纯通道）
 //   * 减项用 -A*Lin（本轮先验 = Lch + B*E_other + C）
@@ -53,33 +53,25 @@ inline LLR llr_from_float(float x)
 template<typename LLR, typename std::enable_if<!std::is_arithmetic<LLR>::value, int>::type = 0>
 inline LLR llr_from_float(float x) { return LLR::from_float(x); }
 
-// ---- 选取（A,B,C,D,E）系数（支持迭代日程）----
+// ---- 选取（A,B,C,D,E）系数 ----
 static inline void pick_cp(const Params& p, float& A, float& B, float& C, float& D, int& E)
 {
-    if (p.CP_USE_SCHED && p.CP_SCHED_LEN > 0)
-    {
-        const int it = std::min(std::max(0, p.CP_ITER), p.CP_SCHED_LEN - 1);
-        A = p.CP_A_SCHED[it];
-        B = p.CP_B_SCHED[it];
-        C = p.CP_C_SCHED[it];
-        D = p.CP_D_SCHED[it];
-        E = p.CP_E_SCHED[it];
-    }
-    else
-    {
-        A = p.CP_A;  B = p.CP_B;  C = p.CP_C;  D = p.CP_D;  E = p.CP_E;
-    }
+    A = p.CP_A;
+    B = p.CP_B;
+    C = p.CP_C;
+    D = p.CP_D;
+    E = p.CP_E;
 }
 
 // ---- LRP：在 0..254 里选 L 个最小 |Lch| ----
 template<typename LLR>
-static void find_least_reliable(const LLR* Lch256, int L,
+static void find_least_reliable(const LLR* LLR_list, int L,
                                 std::vector<int>& pos, std::vector<float>& absval)
 {
     struct Node { float a; int i; };
     std::vector<Node> v; v.reserve(BCH_N_CORE);
     for (int i = 0; i < BCH_N_CORE; ++i)
-        v.push_back({ std::fabs(llr_to_float(Lch256[i])), i });
+        v.push_back({ std::fabs(llr_to_float(LLR_list[i])), i });
 
     const int take = std::min(L, (int)v.size());
     if (take < (int)v.size())
@@ -158,7 +150,7 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
     uint8_t hard_ch[BCH_N_TOTAL];
     std::vector<float> absLc(BCH_N_TOTAL);
     for (int i = 0; i < BCH_N_TOTAL; ++i) {
-        const float lc = llr_to_float(Lch256[i]);
+        const float lc = llr_to_float(Lin256[i]);
         hard_ch[i] = (lc >= 0.f) ? 0u : 1u;
         absLc[i]   = std::fabs(lc);
     }
@@ -166,7 +158,7 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
     // LRP（基于 |Lch|）
     std::vector<int>   lrp_pos;  lrp_pos.reserve(L);
     std::vector<float> lrp_abs;  lrp_abs.reserve(L);
-    find_least_reliable(Lch256, L, lrp_pos, lrp_abs);
+    find_least_reliable(Lin256, L, lrp_pos, lrp_abs);
     const int L_eff = (int)lrp_pos.size();
 
     // 测试模式
@@ -174,7 +166,7 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
     gen_test_patterns(L_eff, NTEST, patt);
 
     // 生成候选 + metric
-    std::vector<uint8_t> DW_all(NTEST * BCH_N_TOTAL, 0);
+    std::vector<std::vector<uint8_t>> DW_all(NTEST, std::vector<uint8_t>(BCH_N_TOTAL, 0));
     struct Comp { float metric; int idx; };
     std::vector<Comp> comps; comps.reserve(NTEST);
 
@@ -190,11 +182,11 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
         bool ok = bch_255_239_decode_hiho_cw_255(hcand_256.data(), out255.data());
         if (!ok) continue;
 
-        uint8_t* DW = &DW_all[c * BCH_N_TOTAL];
-        std::copy(out255.begin(), out255.end(), DW);
-        DW[PAR_IDX] = parity256_from255(DW);
+        auto& DW = DW_all[c];
+        std::copy(out255.begin(), out255.end(), DW.begin());
+        DW[PAR_IDX] = parity256_from255(DW.data());
 
-        float m = chase_metric_core(hard_ch, DW, absLc.data());
+        float m = chase_metric_core(hard_ch, DW.data(), absLc.data());
         comps.push_back({m, c});
     }
 
@@ -213,7 +205,7 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
     std::sort(comps.begin(), comps.end(),
               [](const Comp& a, const Comp& b){ return a.metric < b.metric; });
     const int NG = std::min((int)comps.size(), NCOMP);
-    const uint8_t* DW0 = &DW_all[ comps[0].idx * BCH_N_TOTAL ];
+    const auto& DW0 = DW_all[ comps[0].idx ];
     const float    M0  = comps[0].metric;
 
     std::vector<float> comp_delta(NG, 0.f);
@@ -229,7 +221,7 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
         const uint8_t db = DW0[i];
         int j = 1;
         for (; j < NG; ++j) {
-            const uint8_t* DWj = &DW_all[ comps[j].idx * BCH_N_TOTAL ];
+            const auto& DWj = DW_all[ comps[j].idx ];
             if (DWj[i] != db) break;
         }
         float reliability = 0.f;
