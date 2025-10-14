@@ -26,7 +26,7 @@ BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
     const std::size_t win_bits  = saturating_mul(win_rows, row_bits, L);
 
     // 去掉首尾各一个 window 覆盖的比特
-    const std::size_t skip_prefix = std::min(L, win_bits);
+    const std::size_t skip_prefix = std::min(L, 2*win_bits);
     const std::size_t skip_suffix = std::min(L - skip_prefix, win_bits);
 
     const std::size_t start = skip_prefix;

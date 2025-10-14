@@ -207,7 +207,20 @@ void process_window(Matrix<LLR>& work_llr,
                     ch_tile [r][c] = channel_llr[tile_top_row + r][c];
                 }
 
-            Matrix<LLR> tile_out = process_tile<LLR>(tile_in, ch_tile, p, /*tile_top_row_global=*/tile_top_row);
+            Params tile_params = p;
+            const auto pick_float = [](const std::vector<float>& tbl, size_t idx, float fallback) {
+                return (idx < tbl.size()) ? tbl[idx] : fallback;
+            };
+            const auto pick_int = [](const std::vector<int>& tbl, size_t idx, int fallback) {
+                return (idx < tbl.size()) ? tbl[idx] : fallback;
+            };
+            tile_params.CP_A = pick_float(p.CP_A_LIST, t, p.CP_A);
+            tile_params.CP_B = pick_float(p.CP_B_LIST, t, p.CP_B);
+            tile_params.CP_C = pick_float(p.CP_C_LIST, t, p.CP_C);
+            tile_params.CP_D = pick_float(p.CP_D_LIST, t, p.CP_D);
+            tile_params.CP_E = pick_int  (p.CP_E_LIST, t, p.CP_E);
+
+            Matrix<LLR> tile_out = process_tile<LLR>(tile_in, ch_tile, tile_params, /*tile_top_row_global=*/tile_top_row);
 
             for (size_t r = 0; r < tile_height_rows; ++r)
                 for (size_t c = 0; c < work_llr.cols(); ++c){

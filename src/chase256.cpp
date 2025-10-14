@@ -215,6 +215,7 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
     float beta = 0.f;
     for (int i = 0; i < e_cap; ++i) beta += lrp_abs[i];
     beta -= C * M0;
+    beta = std::max(0.f, beta - C * M0);
 
     for (int i = 0; i < BCH_N_CORE; ++i)
     {
