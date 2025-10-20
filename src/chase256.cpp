@@ -1,15 +1,4 @@
 // chase256.cpp
-// ------------------------------------------------------------
-// - nth_element 边界修复
-// - 分层翻转模式（接近 AFF3CT）
-// - 预计算 |Lch| 做 metric
-// - 写回时对整型 LLR 饱和
-// - 固定 Chase-Pyndiah 系数 (A,B,C,D,E)
-// - ★ 新增三参 API：chase_decode_256(Lin, Lch, Y2, p)
-//   * metric/LRP 用 Lch（纯通道）
-//   * 减项用 -A*Lin（本轮先验 = Lch + B*E_other + C）
-//   * metric 仅累计 0..254，overall 位(255)的外信息恒设为 0
-// ------------------------------------------------------------
 
 #include "newcode/chase256.hpp"
 #include "newcode/bch_255_239.hpp"
@@ -124,7 +113,7 @@ inline uint8_t parity256_from255(const uint8_t* cw255) {
 static inline float chase_metric_core(const uint8_t* hard_ch_256, const uint8_t* DW_256, const float* absLc)
 {
     float m = 0.f;
-    for (int i = 0; i < BCH_N_CORE; ++i)
+    for (int i = 0; i < BCH_N_TOTAL; ++i)
         if ((hard_ch_256[i] ^ DW_256[i]) & 1u) m += absLc[i];
     return m;
 }
@@ -155,7 +144,6 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
         absLc[i]   = std::fabs(lc);
     }
 
-    // LRP（基于 |Lch|）
     std::vector<int>   lrp_pos;  lrp_pos.reserve(L);
     std::vector<float> lrp_abs;  lrp_abs.reserve(L);
     find_least_reliable(Lin256, L, lrp_pos, lrp_abs);
@@ -192,10 +180,10 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
 
     if (comps.empty()) {
         // 回退：用 D*|Lch| 的符号外信息，再减 A*Lin；overall 外信息设 0
-        for (int i = 0; i < BCH_N_CORE; ++i) {
+        for (int i = 0; i < BCH_N_TOTAL; ++i) {
             float rel = D * absLc[i];
             if (hard_ch[i]) rel = -rel;
-            const float apr = llr_to_float(Lin256[i]) - llr_to_float(Lch256[i]); // 只取先验部分
+            const float apr = llr_to_float(Lin256[i]);  // 只取先验部分
             const float y2  = rel - A * apr;            Y2_256[i] = llr_from_float<LLR>(y2);
         }
         Y2_256[PAR_IDX] = llr_from_float<LLR>(0.0f);
@@ -215,9 +203,7 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
     float beta = 0.f;
     for (int i = 0; i < e_cap; ++i) beta += lrp_abs[i];
     beta -= C * M0;
-    beta = std::max(0.f, beta - C * M0);
-
-    for (int i = 0; i < BCH_N_CORE; ++i)
+    for (int i = 0; i < BCH_N_TOTAL; ++i)
     {
         const uint8_t db = DW0[i];
         int j = 1;
@@ -234,11 +220,10 @@ void chase_decode_256(const LLR* Lin256,   // 本轮先验 = Lch + B*E_other (+C
         }
         if (db) reliability = -reliability;
 
-        const float apr = llr_to_float(Lin256[i]) - llr_to_float(Lch256[i]);
+        const float apr = llr_to_float(Lin256[i]);
         const float y2  = reliability - A * apr;
         Y2_256[i] = llr_from_float<LLR>(y2);
     }
-    Y2_256[PAR_IDX] = llr_from_float<LLR>(0.0f);
 }
 
 // ======================== 兼容旧接口（2参） ========================

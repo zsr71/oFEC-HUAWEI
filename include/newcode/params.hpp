@@ -15,7 +15,7 @@ struct Params {
   static constexpr size_t BCH_K = 239; // 信息长 (Chien/Berlekamp 实现对应)
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     = 8*102*16*111; // 信息比特总数
+  size_t NUM_INFO_BITS     = 16*102*16*111; // 信息比特总数
   int    BITGEN_SEED       = 42;           // 随机种子
   size_t NUM_GUARD_SUBROWS = 2;            // 保护块子行数 G
 
@@ -44,9 +44,9 @@ struct Params {
   int   CP_E = 0; // 0 表示使用 CHASE_L
 
   // —— 可按 tile 覆盖的系数表（索引 0..TILES_PER_WIN-1）——
-  std::vector<float> CP_A_LIST = {0.30f, 0.33f, 0.35f, 0.37f, 0.40f};  // 抑制自信息，越靠上越放宽
+  std::vector<float> CP_A_LIST = {0.33f, 0.35f, 0.37f, 0.39f, 0.42f};  // 抑制自信息，越靠上越放宽
 
-  std::vector<float> CP_B_LIST = {0.30f, 0.33f, 0.35f, 0.38f, 0.42f};  // 竞争码字Δ的权重，逐步增强
+  std::vector<float> CP_B_LIST = {0.28f, 0.28f, 0.30f, 0.32f, 0.35f};  // 竞争码字Δ的权重，逐步增强
 
   std::vector<float> CP_C_LIST = {0.00f, 0.00f, 0.00f, 0.00f, 0.00f};  // 保持关闭
 
