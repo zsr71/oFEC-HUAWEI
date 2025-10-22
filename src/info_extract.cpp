@@ -36,7 +36,7 @@ std::vector<uint8_t> rx_info_from_bit_llr(const Matrix<float>& bit_llr_mat, cons
     // 跳过前置初始化行（不是“真实信息行”）
     size_t warmup_rows = 0;
     {
-        const long tmp = static_cast<long>((2 * G + static_cast<int>(p.INFO_SUBROWS_PER_CODE)) * B);
+        const long tmp = static_cast<long>(p.win_height_rows());
         if (tmp > 0) warmup_rows = static_cast<size_t>(tmp);
         warmup_rows = std::min(warmup_rows, RROWS); // 防溢出
     }

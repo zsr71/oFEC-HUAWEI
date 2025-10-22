@@ -1,5 +1,6 @@
 #include "newcode/ofec_decoder.hpp"
 #include "newcode/chase256.hpp" // 仍保留头；本文件内有三参前向声明
+#include "newcode/bch_255_239.hpp"
 #include <stdexcept>
 #include <cassert>
 #include <algorithm>
@@ -45,7 +46,8 @@ template <typename LLR>
 Matrix<LLR> process_tile(const Matrix<LLR>& tile_in,
                          const Matrix<LLR>& ch_tile,
                          const Params& p,
-                         size_t tile_top_row_global)
+                         size_t tile_top_row_global,
+                         bool use_hard_decode)
 {
     const int B         = static_cast<int>(Params::BITS_PER_SUBBLOCK_DIM);            // 16
     const int N         = static_cast<int>(Params::NUM_SUBBLOCK_COLS * B);            // 128
@@ -142,9 +144,46 @@ Matrix<LLR> process_tile(const Matrix<LLR>& tile_in,
                 Lch256[static_cast<size_t>(OVR_IDX)] = llr_from_float<LLR>(Lch);
             }
 
-            // ====== 三参 Chase：输出纯外信息 Y2 ======
             std::array<LLR, 256> Y2{}; // 零初始化
-            chase_decode_256<LLR>(Lin256.data(), Lch256.data(), Y2.data(), p);
+            bool produced_llr = false;
+
+            if (use_hard_decode)
+            {
+                std::array<uint8_t, Params::BCH_N - 1> hard_in{};
+                for (int i = 0; i < static_cast<int>(Params::BCH_N) - 1; ++i)
+                    hard_in[static_cast<size_t>(i)] = (llr_to_float(Lin256[static_cast<size_t>(i)]) < 0.f) ? 1u : 0u;
+
+                std::array<uint8_t, Params::BCH_N - 1> decoded{};
+                if (bch_255_239_decode_hiho_cw_255(hard_in.data(), decoded.data()))
+                {
+                    std::array<uint8_t, Params::BCH_N> cw{};
+                    for (int i = 0; i < static_cast<int>(Params::BCH_N) - 1; ++i)
+                        cw[static_cast<size_t>(i)] = decoded[static_cast<size_t>(i)];
+                    uint8_t parity = 0;
+                    for (int i = 0; i < static_cast<int>(Params::BCH_N) - 1; ++i)
+                        parity ^= cw[static_cast<size_t>(i)];
+                    cw[static_cast<size_t>(OVR_IDX)] = parity;
+
+                    const float hard_mag = std::fabs(p.HARD_LLR_MAG);
+                    for (int i = 0; i < static_cast<int>(Params::BCH_N); ++i)
+                    {
+                        const float sign = cw[static_cast<size_t>(i)] ? -1.f : 1.f;
+                        const float Lpost = sign * hard_mag;
+                        const float Lch = llr_to_float(Lch256[static_cast<size_t>(i)]);
+                        Y2[static_cast<size_t>(i)] = llr_from_float<LLR>(Lpost - Lch);
+                    }
+                    produced_llr = true;
+                }
+            }
+
+            if (!use_hard_decode)
+            {
+                chase_decode_256<LLR>(Lin256.data(), Lch256.data(), Y2.data(), p);
+                produced_llr = true;
+            }
+
+            if (!produced_llr)
+                continue; // 仅选择硬判时且失败，保留原外信息
 
             // ====== 写回外信息到 tile_out（作为下一轮/下一组件先验） ======
             // 当前行：111 新信息 + 16 BCH + 1 overall
@@ -170,12 +209,16 @@ Matrix<LLR> process_tile(const Matrix<LLR>& tile_in,
                 const long rr_local2 = rr_global - static_cast<long>(tile_top_row_global);
                 const long cc_local2 = cc_global;
 
-                if (rr_local2 >= 0 && rr_local2 < static_cast<long>(H) &&
-                    cc_local2 >= 0 && cc_local2 < static_cast<long>(W))
-                {
-                    tile_out[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)] =
+                const bool in_range =
+                    (rr_local2 >= 0 && rr_local2 < static_cast<long>(H) &&
+                    cc_local2 >= 0 && cc_local2 < static_cast<long>(W));
+
+                // —— Debug：严格要求必须命中；Release：可选择抛异常或计数 —— //
+                assert(in_range && "process_tile: write-back out of tile range");
+
+                tile_out[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)] =
                         Y2[static_cast<size_t>(k)];
-                }
+                
             }
         } // r_off
     } // s
@@ -214,13 +257,14 @@ void process_window(Matrix<LLR>& work_llr,
             const auto pick_int = [](const std::vector<int>& tbl, size_t idx, int fallback) {
                 return (idx < tbl.size()) ? tbl[idx] : fallback;
             };
-            tile_params.CP_A = pick_float(p.CP_A_LIST, t, p.CP_A);
             tile_params.CP_B = pick_float(p.CP_B_LIST, t, p.CP_B);
-            tile_params.CP_C = pick_float(p.CP_C_LIST, t, p.CP_C);
-            tile_params.CP_D = pick_float(p.CP_D_LIST, t, p.CP_D);
-            tile_params.CP_E = pick_int  (p.CP_E_LIST, t, p.CP_E);
+            tile_params.ALPHA = pick_float(p.ALPHA_LIST, t, p.ALPHA);
 
-            Matrix<LLR> tile_out = process_tile<LLR>(tile_in, ch_tile, tile_params, /*tile_top_row_global=*/tile_top_row);
+            const bool use_hard = pick_int(p.HARD_TILE_LIST, t, p.HARD_DECODE_DEFAULT ? 1 : 0) != 0;
+
+            Matrix<LLR> tile_out = process_tile<LLR>(tile_in, ch_tile, tile_params,
+                                                     /*tile_top_row_global=*/tile_top_row,
+                                                     /*use_hard_decode=*/use_hard);
 
             for (size_t r = 0; r < tile_height_rows; ++r)
                 for (size_t c = 0; c < work_llr.cols(); ++c){
@@ -283,8 +327,8 @@ Matrix<LLR> ofec_decode_llr(const Matrix<LLR>& llr_mat, const Params& p)
 }
 
 // ===== 显式实例化 =====
-template Matrix<float>  process_tile<float >(const Matrix<float>&,  const Matrix<float>&,  const Params&, size_t);
-template Matrix<int8_t> process_tile<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&, const Params&, size_t);
+template Matrix<float>  process_tile<float >(const Matrix<float>&,  const Matrix<float>&,  const Params&, size_t, bool);
+template Matrix<int8_t> process_tile<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&, const Params&, size_t, bool);
 
 template void process_window<float >(Matrix<float>&,  const Matrix<float>&,  size_t, size_t, const Params&,
                                      size_t, size_t, size_t);
@@ -297,10 +341,10 @@ template Matrix<int8_t> ofec_decode_llr<int8_t>(const Matrix<int8_t>&, const Par
 // qfloat 量化类型
 template Matrix<newcode::qfloat<4>> process_tile<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
                                                                      const Matrix<newcode::qfloat<4>>&,
-                                                                     const Params&, size_t);
+                                                                     const Params&, size_t, bool);
 template Matrix<newcode::qfloat<5>> process_tile<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
                                                                      const Matrix<newcode::qfloat<5>>&,
-                                                                     const Params&, size_t);
+                                                                     const Params&, size_t, bool);
 
 template void process_window<newcode::qfloat<4>>(Matrix<newcode::qfloat<4>>&, const Matrix<newcode::qfloat<4>>&, size_t, size_t, const Params&,
                                                  size_t, size_t, size_t);

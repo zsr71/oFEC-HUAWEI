@@ -3,7 +3,6 @@
 #include <complex>
 #include <algorithm>
 #include <cstdint>
-
 #include "newcode/params.hpp"
 #include "newcode/bitgen.hpp"
 #include "newcode/ofec_encoder.hpp"
@@ -113,7 +112,7 @@ int main()
     std::cout << "[INFO] Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
 
     // 5) AWGN（按 Eb/N0 设置噪声）
-    const float ebn0_dB  = 3.0f;
+    const float ebn0_dB  = 3.07f;
     const int   N        = static_cast<int>(p.NUM_SUBBLOCK_COLS * p.BITS_PER_SUBBLOCK_DIM); // 128
     const int   K        = 239;
     const int   TAKEBITS = K - N; // 111
@@ -142,16 +141,8 @@ int main()
     // 已知前缀（保护 + 信息子行）的比特固定为 0，可直接赋予“绝对确信” LLR
     apply_known_zero_prefix(llr_mat, p);
 
-
     // 8) 分发：当 p.LLR_BITS == 16 时，走 float；否则走 qfloat/int8 路径
     if (p.LLR_BITS == 16) {
-        // auto llr_mat_clipped = llr_mat;           // 拷贝一份
-        // for (size_t r = 0; r < llr_mat_clipped.rows(); ++r)
-        // for (size_t c = 0; c < llr_mat_clipped.cols(); ++c) {
-        //     float v = llr_mat_clipped[r][c];
-        //     llr_mat_clipped[r][c] = 2 * v;
-        // }
-
         run_with_float(llr_mat, p, info_bits);
     } else if (p.LLR_BITS == 5) {
         run_with_qfloat<5>(llr_mat, p, info_bits);
@@ -161,6 +152,5 @@ int main()
         std::cerr << "[ERROR] Unsupported p.LLR_BITS = " << p.LLR_BITS << "\n";
         return 1;
     }
-
     return 0;
 }

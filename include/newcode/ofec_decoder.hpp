@@ -26,7 +26,8 @@ template <typename LLR>
 Matrix<LLR> process_tile(const Matrix<LLR>& tile_in,
                          const Matrix<LLR>& ch_tile,
                          const Params& p,
-                         std::size_t tile_top_row_global);
+                         std::size_t tile_top_row_global,
+                         bool use_hard_decode);
 
 // ===== extern template（减少重复实例化）=====
 // 基础类型
@@ -41,9 +42,9 @@ extern template void process_window<int8_t>(Matrix<int8_t>&, const Matrix<int8_t
                                             std::size_t, std::size_t, std::size_t);
 
 extern template Matrix<float>  process_tile<float >(const Matrix<float>&,  const Matrix<float>&,
-                                                    const Params&, std::size_t);
+                                                    const Params&, std::size_t, bool);
 extern template Matrix<int8_t> process_tile<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&,
-                                                    const Params&, std::size_t);
+                                                    const Params&, std::size_t, bool);
 
 // qfloat 量化类型（按需开启）
 extern template Matrix<newcode::qfloat<4>> ofec_decode_llr<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&, const Params&);
@@ -60,9 +61,9 @@ extern template void process_window<newcode::qfloat<5>>(Matrix<newcode::qfloat<5
 
 extern template Matrix<newcode::qfloat<4>> process_tile<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
                                                                             const Matrix<newcode::qfloat<4>>&,
-                                                                            const Params&, std::size_t);
+                                                                            const Params&, std::size_t, bool);
 extern template Matrix<newcode::qfloat<5>> process_tile<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
                                                                             const Matrix<newcode::qfloat<5>>&,
-                                                                            const Params&, std::size_t);
+                                                                            const Params&, std::size_t, bool);
 
 } // namespace newcode

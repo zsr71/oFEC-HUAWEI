@@ -19,10 +19,10 @@ Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const Params& p)
     const int TAKE_BITS  = K - N;   // 每行从 bits 取的新信息比特数（典型 239-128=111）
 
     // 预放入“启动”所需的行：(2G + INFO_SUBROWS_PER_CODE) 个子块行 × 每子块 B 行
-    Matrix<uint8_t> mat = Matrix<uint8_t>::zero((2 * G + p.INFO_SUBROWS_PER_CODE) * B, N);
+    Matrix<uint8_t> mat = Matrix<uint8_t>::zero(p.win_height_rows(), N);
 
     size_t bit_pos    = 0;                                               // bits 游标
-    size_t global_row = static_cast<size_t>((2 * G + p.INFO_SUBROWS_PER_CODE) * B); // 追加行起始
+    size_t global_row = static_cast<size_t>(p.win_height_rows()); // 追加行起始
 
     while (bit_pos < bits.size())
     {
@@ -48,7 +48,7 @@ Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const Params& p)
 
             const size_t rr = static_cast<size_t>(br * B + bit_row_in_block); // 全局行
             const size_t cc = static_cast<size_t>(bc * B + bit_col_in_block); // 全局列
-
+ 
             // 不做边界保护，直接访问（按你的要求）
             info239.push_back(mat[rr][cc]);
         }
