@@ -53,7 +53,8 @@ std::vector<uint8_t> flatten_row_major(const Matrix<uint8_t>& matrix)
 PipelineResult run_with_float(const Matrix<float>& llr_mat,
                               const Params& params,
                               const std::vector<uint8_t>& info_bits,
-                              const std::string& label)
+                              const std::string& label,
+                              float ebn0_dB)
 {
   std::cout << "[INFO] (" << label << ") Running decoder in FLOAT (no quantization, no clipping)\n";
 
@@ -70,6 +71,7 @@ PipelineResult run_with_float(const Matrix<float>& llr_mat,
   const std::string post_label = label + " Post-FEC";
 
   PipelineResult result;
+  result.ebn0_db = ebn0_dB;
   result.pre_fec  = compute_and_print_ber(info_bits, rx_info_bits_pre,  pre_label.c_str(),  params);
   result.post_fec = compute_and_print_ber(info_bits, rx_info_bits_post, post_label.c_str(), params);
   result.tile_early_stop_pct = compute_early_stop_percentages(tile_stats);
@@ -83,7 +85,8 @@ template<int NBITS>
 PipelineResult run_with_qfloat(const Matrix<float>& llr_mat,
                                const Params& params,
                                const std::vector<uint8_t>& info_bits,
-                               const std::string& label)
+                               const std::string& label,
+                               float ebn0_dB)
 {
   auto q_mat = quantize_matrix_to_qfloat<NBITS>(llr_mat, qfloat<NBITS>::DEFAULT_CLIP);
   std::cout << "[INFO] (" << label << ") Quantized qfloat<" << NBITS << ">: clip="
@@ -106,6 +109,7 @@ PipelineResult run_with_qfloat(const Matrix<float>& llr_mat,
   const std::string post_label = label + " Post-FEC";
 
   PipelineResult result;
+  result.ebn0_db = ebn0_dB;
   result.pre_fec  = compute_and_print_ber(info_bits, rx_info_bits_pre,  pre_label.c_str(),  params);
   result.post_fec = compute_and_print_ber(info_bits, rx_info_bits_post, post_label.c_str(), params);
   result.tile_early_stop_pct = compute_early_stop_percentages(tile_stats);
@@ -117,7 +121,7 @@ PipelineResult run_with_qfloat(const Matrix<float>& llr_mat,
 
 } // namespace
 
-PipelineResult run_pipeline(const Params& params, const std::string& label)
+PipelineResult run_pipeline(const Params& params, const std::string& label, float ebn0_dB)
 {
   std::cout << "\n[RUN] Scenario: " << label << "\n";
 
@@ -135,13 +139,14 @@ PipelineResult run_pipeline(const Params& params, const std::string& label)
   auto tx_syms = qam_modulate(coded_bits, n_bps);
   std::cout << "[INFO] (" << label << ") Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
 
-  const float ebn0_dB  = 3.24f;
   const int   N        = static_cast<int>(params.NUM_SUBBLOCK_COLS * params.BITS_PER_SUBBLOCK_DIM);
   const int   K        = 239;
   const int   TAKEBITS = K - N;
   const float code_rate = static_cast<float>(TAKEBITS) / static_cast<float>(N);
   const uint32_t awgn_seed = static_cast<uint32_t>(params.BITGEN_SEED + 100);
   auto rx_syms = add_awgn(tx_syms, ebn0_dB, n_bps, awgn_seed);
+
+  std::cout << "[INFO] (" << label << ") Eb/N0 set to " << ebn0_dB << " dB\n";
 
   std::cout << "[INFO] (" << label << ") Example symbols (TX -> RX):\n";
   for (size_t i = 0; i < std::min<size_t>(3, tx_syms.size()); ++i) {
@@ -162,11 +167,11 @@ PipelineResult run_pipeline(const Params& params, const std::string& label)
   apply_known_zero_prefix(llr_mat, params);
 
   if (params.LLR_BITS == 16) {
-    return run_with_float(llr_mat, params, info_bits, label);
+    return run_with_float(llr_mat, params, info_bits, label, ebn0_dB);
   } else if (params.LLR_BITS == 5) {
-    return run_with_qfloat<5>(llr_mat, params, info_bits, label);
+    return run_with_qfloat<5>(llr_mat, params, info_bits, label, ebn0_dB);
   } else if (params.LLR_BITS == 4) {
-    return run_with_qfloat<4>(llr_mat, params, info_bits, label);
+    return run_with_qfloat<4>(llr_mat, params, info_bits, label, ebn0_dB);
   }
 
   throw std::runtime_error("[ERROR] Unsupported p.LLR_BITS value");

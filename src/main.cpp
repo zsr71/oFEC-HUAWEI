@@ -105,6 +105,16 @@ static void ensure_csv_header(const std::string& csv_path)
           "early_stop_mean_pct,early_stop_list\n";
 }
 
+static void ensure_ebn0_csv_header(const std::string& csv_path)
+{
+  std::ifstream fin(csv_path);
+  if (fin.good() && fin.peek() != std::ifstream::traits_type::eof()) return;
+
+  std::ofstream fout(csv_path, std::ios::out | std::ios::app);
+  fout << "timestamp,run_id,scenario,ebn0_db,pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
+          "early_stop_mean_pct,early_stop_list\n";
+}
+
 static double mean(const std::vector<double>& v)
 {
   if (v.empty()) return std::numeric_limits<double>::quiet_NaN();
@@ -205,6 +215,11 @@ struct ScenarioOutput {
   PipelineResult result;
 };
 
+struct EbN0Output {
+  float ebn0_db = std::numeric_limits<float>::quiet_NaN();
+  PipelineResult result;
+};
+
 int main()
 {
   // ========== 1) IO 准备 ==========
@@ -220,11 +235,18 @@ int main()
   // ========== 2) 生成 scenario ==========
   Params base_params;
 
+  const float sweep_ebn0_db = DEFAULT_EBN0_DB;
+
   // 示例候选集（起点与步进，可按需调整）
   const std::vector<float> alpha_start_candidates = {0.3f};
-  const std::vector<float> alpha_step_candidates  = {0.0f,0.01f,0.1f};
+  const std::vector<float> alpha_step_candidates  = {0.0f};
   const std::vector<float> beta_start_candidates  = {0.9f};
-  const std::vector<float> beta_step_candidates   = {0.0f,0.01f,0.1f};
+  const std::vector<float> beta_step_candidates   = {0.0f};
+
+  // EbN0 扫描范围配置：起点、终点以及取样点数（均匀分布）
+  const float ebn0_start = 3.0f;
+  const float ebn0_end   = 3.5f;
+  const int   ebn0_points = 5;
 
   auto scenarios = build_scenarios(base_params,
                                    alpha_start_candidates, alpha_step_candidates,
@@ -261,7 +283,7 @@ int main()
 
     sem.acquire();
     futures.emplace_back(std::async(std::launch::async,
-                                    [idx, scenario, params, &sem]() -> ScenarioOutput {
+                                    [idx, scenario, params, sweep_ebn0_db, &sem]() -> ScenarioOutput {
                                       struct Releaser {
                                         Semaphore& s;
                                         ~Releaser() { s.release(); }
@@ -275,7 +297,7 @@ int main()
                                       out.alpha_step  = scenario.alpha_step;
                                       out.beta_start  = scenario.beta_start;
                                       out.beta_step   = scenario.beta_step;
-                                      out.result = run_pipeline(params, scenario.name);
+                                      out.result = run_pipeline(params, scenario.name, sweep_ebn0_db);
                                       return out;
                                     }));
   }
@@ -415,6 +437,108 @@ int main()
           << (i + 1 < best_tile_early_stop_pct.size() ? ", " : "\n");
     }
     out << std::defaultfloat;
+  }
+
+  // ========== 5) 使用最佳参数进行 EbN0 扫描 ==========
+  std::vector<float> ebn0_values;
+  if (ebn0_points <= 0) {
+    // no EbN0 sweep requested
+  } else if (ebn0_points == 1) {
+    ebn0_values.push_back(ebn0_start);
+  } else {
+    const float step = (ebn0_end - ebn0_start) / static_cast<float>(ebn0_points - 1);
+    for (int i = 0; i < ebn0_points; ++i) {
+      ebn0_values.push_back(ebn0_start + step * static_cast<float>(i));
+    }
+  }
+
+  if (!ebn0_values.empty()) {
+    const std::string ebn0_log_path = (data_dir / ("run_" + run_id + "_ebn0.log")).string();
+    DualOut ebn0_out(std::cout, ebn0_log_path);
+
+    const std::string ebn0_csv_path = (data_dir / "ofec_ebn0_results.csv").string();
+    ensure_ebn0_csv_header(ebn0_csv_path);
+    std::ofstream ebn0_csv(ebn0_csv_path, std::ios::out | std::ios::app);
+    ebn0_csv.setf(std::ios::fixed);
+    ebn0_csv << std::setprecision(8);
+
+    Params best_params = base_params;
+    best_params.ALPHA_LIST = best_scenario.alpha_list;
+    best_params.beta_list  = best_scenario.beta_list;
+    if (!best_params.ALPHA_LIST.empty()) best_params.ALPHA = best_params.ALPHA_LIST.front();
+    if (!best_params.beta_list.empty())  best_params.beta  = best_params.beta_list.front();
+
+    Semaphore ebn0_sem(max_workers);
+    std::vector<std::future<EbN0Output>> ebn0_futures;
+    ebn0_futures.reserve(ebn0_values.size());
+
+    for (float ebn0_db : ebn0_values) {
+      ebn0_sem.acquire();
+      ebn0_futures.emplace_back(std::async(std::launch::async,
+                                           [best_params, ebn0_db, base_label = best_scenario.name, &ebn0_sem]() mutable -> EbN0Output {
+                                             struct Releaser {
+                                               Semaphore& s;
+                                               ~Releaser() { s.release(); }
+                                             } _r{ebn0_sem};
+                                             Params params = best_params;
+                                             std::ostringstream oss;
+                                             oss << base_label << "_EbN0_" << std::fixed << std::setprecision(2) << ebn0_db;
+                                             std::string label = oss.str();
+                                             PipelineResult result = run_pipeline(params, label, ebn0_db);
+                                             return EbN0Output{ebn0_db, std::move(result)};
+                                           }));
+    }
+
+    std::vector<EbN0Output> ebn0_results;
+    ebn0_results.reserve(ebn0_futures.size());
+    for (auto& fut : ebn0_futures) {
+      try {
+        ebn0_results.emplace_back(fut.get());
+      } catch (const std::exception& ex) {
+        ebn0_out << "[EbN0][ERROR] worker threw: " << ex.what() << "\n";
+      } catch (...) {
+        ebn0_out << "[EbN0][ERROR] worker threw unknown exception\n";
+      }
+    }
+
+    std::sort(ebn0_results.begin(), ebn0_results.end(),
+              [](const EbN0Output& a, const EbN0Output& b) { return a.ebn0_db < b.ebn0_db; });
+
+    if (!ebn0_results.empty()) {
+      ebn0_out << "\n[EbN0] Sweep results for best scenario (" << best_scenario.name << ")\n";
+    }
+
+    for (const auto& entry : ebn0_results) {
+      const auto& res = entry.result;
+      std::vector<double> es_vals(res.tile_early_stop_pct.begin(), res.tile_early_stop_pct.end());
+      const double es_mean = mean(es_vals);
+
+      ebn0_out << std::fixed << std::setprecision(2)
+               << "[EbN0] " << entry.ebn0_db << " dB | Pre-BER="
+               << std::setprecision(8) << res.pre_fec.ber
+               << " | Post-BER=" << res.post_fec.ber << "\n";
+      if (!es_vals.empty()) {
+        ebn0_out << "        EarlyStop%: "
+                 << std::fixed << std::setprecision(1) << join_vec(es_vals, ',', 1) << "\n";
+      }
+      ebn0_out << std::defaultfloat;
+
+      ebn0_csv << now_stamp() << ","
+               << run_id << ","
+               << best_scenario.name << ","
+               << entry.ebn0_db << ","
+               << res.pre_fec.ber    << ","
+               << res.pre_fec.errors << ","
+               << res.pre_fec.total  << ","
+               << res.post_fec.ber   << ","
+               << res.post_fec.errors<< ","
+               << res.post_fec.total << ","
+               << std::setprecision(3) << es_mean << ","
+               << "\"" << join_vec(es_vals, '|', 1) << "\"\n";
+      ebn0_csv << std::setprecision(8);
+    }
+
+    ebn0_csv.close();
   }
 
   out << "[RESULT] Best ALPHA_LIST: ";
