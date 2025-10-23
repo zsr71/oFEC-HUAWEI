@@ -100,7 +100,7 @@ static void ensure_csv_header(const std::string& csv_path)
   if (fin.good() && fin.peek() != std::ifstream::traits_type::eof()) return;
 
   std::ofstream fout(csv_path, std::ios::out | std::ios::app);
-  fout << "timestamp,run_id,scenario,alpha,beta,ALPHA_LIST,beta_list,"
+  fout << "timestamp,run_id,scenario,alpha_start,alpha_step,beta_start,beta_step,ALPHA_LIST,beta_list,"
           "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
           "early_stop_mean_pct,early_stop_list\n";
 }
@@ -118,24 +118,75 @@ struct SweepScenario {
   std::string name;
   std::vector<float> alpha_list;
   std::vector<float> beta_list;
+  float alpha_start = 0.0f;
+  float alpha_step  = 0.0f;
+  float beta_start  = 0.0f;
+  float beta_step   = 0.0f;
 };
 
+static std::vector<float> generate_sequence(float start, float step, std::size_t length)
+{
+  std::vector<float> seq(length, start);
+  for (std::size_t i = 0; i < length; ++i) {
+    seq[i] = start + step * static_cast<float>(i);
+  }
+  return seq;
+}
+
+static float infer_step(const std::vector<float>& values)
+{
+  return values.size() >= 2 ? values[1] - values[0] : 0.0f;
+}
+
 static std::vector<SweepScenario> build_scenarios(const Params& base_params,
-                                                  const std::vector<float>& alpha_candidates,
-                                                  const std::vector<float>& beta_candidates)
+                                                  const std::vector<float>& alpha_starts,
+                                                  const std::vector<float>& alpha_steps,
+                                                  const std::vector<float>& beta_starts,
+                                                  const std::vector<float>& beta_steps)
 {
   std::vector<SweepScenario> scenarios;
-  scenarios.push_back({"baseline", base_params.ALPHA_LIST, base_params.beta_list});
 
-  for (float alpha_val : alpha_candidates) {
-    for (float beta_val : beta_candidates) {
-      SweepScenario sc;
-      std::ostringstream oss;
-      oss << "alpha" << alpha_val << "_beta" << beta_val;
-      sc.name = oss.str();
-      sc.alpha_list.assign(base_params.TILES_PER_WIN, alpha_val);
-      sc.beta_list.assign(base_params.TILES_PER_WIN, beta_val);
-      scenarios.push_back(std::move(sc));
+  SweepScenario baseline;
+  baseline.name = "baseline";
+  baseline.alpha_list = base_params.ALPHA_LIST;
+  baseline.beta_list  = base_params.beta_list;
+  if (!baseline.alpha_list.empty()) {
+    baseline.alpha_start = baseline.alpha_list.front();
+    baseline.alpha_step  = infer_step(baseline.alpha_list);
+  }
+  if (!baseline.beta_list.empty()) {
+    baseline.beta_start = baseline.beta_list.front();
+    baseline.beta_step  = infer_step(baseline.beta_list);
+  }
+  scenarios.push_back(std::move(baseline));
+
+  const std::size_t len = base_params.TILES_PER_WIN;
+  for (float a_start : alpha_starts) {
+    for (float a_step : alpha_steps) {
+      for (float b_start : beta_starts) {
+        for (float b_step : beta_steps) {
+          SweepScenario sc;
+          sc.alpha_start = a_start;
+          sc.alpha_step  = a_step;
+          sc.beta_start  = b_start;
+          sc.beta_step   = b_step;
+          sc.alpha_list  = generate_sequence(a_start, a_step, len);
+          sc.beta_list   = generate_sequence(b_start, b_step, len);
+
+          if (sc.alpha_list == base_params.ALPHA_LIST &&
+              sc.beta_list == base_params.beta_list) {
+            continue; // 与基线重复，跳过
+          }
+
+          std::ostringstream oss;
+          oss << std::fixed << std::setprecision(3)
+              << "alphaS" << a_start << "_d" << a_step
+              << "_betaS" << b_start << "_d" << b_step;
+          sc.name = oss.str();
+
+          scenarios.push_back(std::move(sc));
+        }
+      }
     }
   }
   return scenarios;
@@ -147,6 +198,10 @@ struct ScenarioOutput {
   std::string name;
   std::vector<float> alpha_list;
   std::vector<float> beta_list;
+  float alpha_start = 0.0f;
+  float alpha_step  = 0.0f;
+  float beta_start  = 0.0f;
+  float beta_step   = 0.0f;
   PipelineResult result;
 };
 
@@ -165,11 +220,15 @@ int main()
   // ========== 2) 生成 scenario ==========
   Params base_params;
 
-  // 示例候选集，可按需调整
-  const std::vector<float> alpha_candidates = {0.3f,0.4f,0.5f};
-  const std::vector<float> beta_candidates  = {0.9f,0.8f,0.7f};
+  // 示例候选集（起点与步进，可按需调整）
+  const std::vector<float> alpha_start_candidates = {0.3f};
+  const std::vector<float> alpha_step_candidates  = {0.0f,0.01f,0.1f};
+  const std::vector<float> beta_start_candidates  = {0.9f};
+  const std::vector<float> beta_step_candidates   = {0.0f,0.01f,0.1f};
 
-  auto scenarios = build_scenarios(base_params, alpha_candidates, beta_candidates);
+  auto scenarios = build_scenarios(base_params,
+                                   alpha_start_candidates, alpha_step_candidates,
+                                   beta_start_candidates, beta_step_candidates);
   const std::size_t NS = scenarios.size();
 
   out << "[INFO] total scenarios = " << NS << "\n";
@@ -212,6 +271,10 @@ int main()
                                       out.name = scenario.name;
                                       out.alpha_list = scenario.alpha_list;
                                       out.beta_list  = scenario.beta_list;
+                                      out.alpha_start = scenario.alpha_start;
+                                      out.alpha_step  = scenario.alpha_step;
+                                      out.beta_start  = scenario.beta_start;
+                                      out.beta_step   = scenario.beta_step;
                                       out.result = run_pipeline(params, scenario.name);
                                       return out;
                                     }));
@@ -225,6 +288,10 @@ int main()
   std::size_t best_index = static_cast<std::size_t>(-1);
   PipelineResult best_result{};
   std::vector<double> best_tile_early_stop_pct;
+  float best_alpha_start = 0.0f;
+  float best_alpha_step  = 0.0f;
+  float best_beta_start  = 0.0f;
+  float best_beta_step   = 0.0f;
 
   std::vector<ScenarioOutput> results;
   results.reserve(futures.size());
@@ -276,24 +343,26 @@ int main()
             << " Pre-FEC BER=" << result.pre_fec.ber
             << " (errs=" << result.pre_fec.errors << "/" << result.pre_fec.total << ")"
             << " | Post-FEC BER=" << result.post_fec.ber
-            << " (errs=" << result.post_fec.errors << "/" << result.post_fec.total << ")"
+            << " (errs=" << result.post_fec.errors << "/" << result.post_fec.total << ")";
+    summary << std::fixed << std::setprecision(3)
+            << " | alpha_start=" << pack.alpha_start
+            << " alpha_step=" << pack.alpha_step
+            << " | beta_start=" << pack.beta_start
+            << " beta_step=" << pack.beta_step
+            << std::defaultfloat
             << early_stop_summary;
     scenario_summaries.push_back(summary.str());
     out << summary.str() << "\n";
 
-    const double alpha_first = pack.alpha_list.empty()
-                                   ? std::numeric_limits<double>::quiet_NaN()
-                                   : pack.alpha_list.front();
-    const double beta_first  = pack.beta_list.empty()
-                                   ? std::numeric_limits<double>::quiet_NaN()
-                                   : pack.beta_list.front();
     const double es_mean = mean(result.tile_early_stop_pct);
 
     csv << now_stamp() << ","
         << run_id << ","
         << pack.name << ","
-        << alpha_first << ","
-        << beta_first  << ","
+        << pack.alpha_start << ","
+        << pack.alpha_step  << ","
+        << pack.beta_start  << ","
+        << pack.beta_step   << ","
         << '"' << join_vec(pack.alpha_list, '|', 6) << "\","
         << '"' << join_vec(pack.beta_list , '|', 6) << "\","
         << result.pre_fec.ber    << ","
@@ -312,6 +381,10 @@ int main()
       best_index = pack.idx;
       best_result = result;
       best_tile_early_stop_pct = result.tile_early_stop_pct;
+      best_alpha_start = pack.alpha_start;
+      best_alpha_step  = pack.alpha_step;
+      best_beta_start  = pack.beta_start;
+      best_beta_step   = pack.beta_step;
     }
   }
 
@@ -327,6 +400,12 @@ int main()
   out << "\n[RESULT] Best scenario: " << best_scenario.name
       << " with Post-FEC BER=" << best_result.post_fec.ber
       << " (errs=" << best_result.post_fec.errors << "/" << best_result.post_fec.total << ")\n";
+  out << std::fixed << std::setprecision(3);
+  out << "[RESULT] Best alpha start/step: start=" << best_alpha_start
+      << " step=" << best_alpha_step << "\n";
+  out << "[RESULT] Best beta start/step: start=" << best_beta_start
+      << " step=" << best_beta_step << "\n";
+  out << std::defaultfloat;
 
   if (!best_tile_early_stop_pct.empty()) {
     out << "[RESULT] Best tile early-stop hit rates (%): ";
@@ -352,4 +431,3 @@ int main()
 
   return 0;
 }
-

@@ -44,8 +44,8 @@ struct Params {
   float ALPHA = 1.0f;
 
   // —— 可按 tile 覆盖的系数表（索引 0..TILES_PER_WIN-1）——
-  std::vector<float> ALPHA_LIST = {0.3f, 0.3f, 0.3f, 0.3f};    // 默认保持 1.0
-  std::vector<float> beta_list  = {1.0f, 1.0f, 1.0f, 1.0f}; // tile 越靠上越放宽
+  std::vector<float> ALPHA_LIST = {0.3f, 0.4f, 0.5f, 0.6f};    // 由起点+步进生成的默认列表
+  std::vector<float> beta_list  = {0.9f, 1.0f, 1.1f, 1.2f};    // 由起点+步进生成的默认列表
 
   // —— 每个 tile 是否切换到硬判决译码 —— //
   bool HARD_DECODE_DEFAULT = false;                               // 默认仍使用软判决
