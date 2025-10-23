@@ -13,6 +13,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <cmath>
 
 #include "newcode/params.hpp"
 #include "newcode/pipeline_runner.hpp"
@@ -100,7 +101,7 @@ static void ensure_csv_header(const std::string& csv_path)
   if (fin.good() && fin.peek() != std::ifstream::traits_type::eof()) return;
 
   std::ofstream fout(csv_path, std::ios::out | std::ios::app);
-  fout << "timestamp,run_id,scenario,alpha_start,alpha_step,beta_start,beta_step,ALPHA_LIST,beta_list,"
+  fout << "timestamp,run_id,scenario,alpha_start,alpha_step,beta_start,beta_step,chase_L,chase_n_test,ebn0_db,ALPHA_LIST,beta_list,"
           "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
           "early_stop_mean_pct,early_stop_list\n";
 }
@@ -132,6 +133,9 @@ struct SweepScenario {
   float alpha_step  = 0.0f;
   float beta_start  = 0.0f;
   float beta_step   = 0.0f;
+  int   chase_L     = 0;
+  int   chase_n_test = 0;
+  float ebn0_db     = DEFAULT_EBN0_DB;
 };
 
 static std::vector<float> generate_sequence(float start, float step, std::size_t length)
@@ -152,7 +156,9 @@ static std::vector<SweepScenario> build_scenarios(const Params& base_params,
                                                   const std::vector<float>& alpha_starts,
                                                   const std::vector<float>& alpha_steps,
                                                   const std::vector<float>& beta_starts,
-                                                  const std::vector<float>& beta_steps)
+                                                  const std::vector<float>& beta_steps,
+                                                  const std::vector<int>& chase_l_candidates,
+                                                  const std::vector<float>& ebn0_candidates)
 {
   std::vector<SweepScenario> scenarios;
 
@@ -168,6 +174,9 @@ static std::vector<SweepScenario> build_scenarios(const Params& base_params,
     baseline.beta_start = baseline.beta_list.front();
     baseline.beta_step  = infer_step(baseline.beta_list);
   }
+  baseline.chase_L = base_params.CHASE_L;
+  baseline.chase_n_test = 1 << base_params.CHASE_L;
+  baseline.ebn0_db = !ebn0_candidates.empty() ? ebn0_candidates.front() : DEFAULT_EBN0_DB;
   scenarios.push_back(std::move(baseline));
 
   const std::size_t len = base_params.TILES_PER_WIN;
@@ -175,26 +184,38 @@ static std::vector<SweepScenario> build_scenarios(const Params& base_params,
     for (float a_step : alpha_steps) {
       for (float b_start : beta_starts) {
         for (float b_step : beta_steps) {
-          SweepScenario sc;
-          sc.alpha_start = a_start;
-          sc.alpha_step  = a_step;
-          sc.beta_start  = b_start;
-          sc.beta_step   = b_step;
-          sc.alpha_list  = generate_sequence(a_start, a_step, len);
-          sc.beta_list   = generate_sequence(b_start, b_step, len);
+          for (int chase_L : chase_l_candidates) {
+            for (float ebn0_db : ebn0_candidates) {
+              SweepScenario sc;
+              sc.alpha_start = a_start;
+              sc.alpha_step  = a_step;
+              sc.beta_start  = b_start;
+              sc.beta_step   = b_step;
+              sc.chase_L     = chase_L;
+              sc.chase_n_test = 1 << chase_L;
+              sc.ebn0_db     = ebn0_db;
+              sc.alpha_list  = generate_sequence(a_start, a_step, len);
+              sc.beta_list   = generate_sequence(b_start, b_step, len);
 
-          if (sc.alpha_list == base_params.ALPHA_LIST &&
-              sc.beta_list == base_params.beta_list) {
-            continue; // 与基线重复，跳过
+              const SweepScenario& base = scenarios.front();
+              if (sc.alpha_list == base.alpha_list &&
+                  sc.beta_list  == base.beta_list &&
+                  sc.chase_L    == base.chase_L &&
+                  std::fabs(sc.ebn0_db - base.ebn0_db) < 1e-6f) {
+                continue; // 与基线重复，跳过
+              }
+
+              std::ostringstream oss;
+              oss << std::fixed << std::setprecision(3)
+                  << "alphaS" << a_start << "_d" << a_step
+                  << "_betaS" << b_start << "_d" << b_step
+                  << "_chL" << chase_L
+                  << "_EbN0_" << ebn0_db;
+              sc.name = oss.str();
+
+              scenarios.push_back(std::move(sc));
+            }
           }
-
-          std::ostringstream oss;
-          oss << std::fixed << std::setprecision(3)
-              << "alphaS" << a_start << "_d" << a_step
-              << "_betaS" << b_start << "_d" << b_step;
-          sc.name = oss.str();
-
-          scenarios.push_back(std::move(sc));
         }
       }
     }
@@ -212,6 +233,9 @@ struct ScenarioOutput {
   float alpha_step  = 0.0f;
   float beta_start  = 0.0f;
   float beta_step   = 0.0f;
+  int   chase_L     = 0;
+  int   chase_n_test = 0;
+  float ebn0_db     = DEFAULT_EBN0_DB;
   PipelineResult result;
 };
 
@@ -229,28 +253,40 @@ int main()
   const std::string log_path = (data_dir / ("run_" + run_id + ".log")).string();
   DualOut out(std::cout, log_path);
 
-  const std::string csv_path = (data_dir / "ofec_sweep_results.csv").string();
+  const std::string csv_path = (data_dir / ("ofec_sweep_results_" + run_id + ".csv")).string();
   ensure_csv_header(csv_path);
 
   // ========== 2) 生成 scenario ==========
   Params base_params;
 
-  const float sweep_ebn0_db = DEFAULT_EBN0_DB;
-
   // 示例候选集（起点与步进，可按需调整）
   const std::vector<float> alpha_start_candidates = {0.3f};
-  const std::vector<float> alpha_step_candidates  = {0.0f};
+  const std::vector<float> alpha_step_candidates  = {0.0f,0.1f};
   const std::vector<float> beta_start_candidates  = {0.9f};
-  const std::vector<float> beta_step_candidates   = {0.0f};
+  const std::vector<float> beta_step_candidates   = {0.0f,0.1f};
+  const std::vector<int>   chase_l_candidates     = {4, 6};
 
   // EbN0 扫描范围配置：起点、终点以及取样点数（均匀分布）
-  const float ebn0_start = 3.0f;
+  const float ebn0_start = 3.4f;
   const float ebn0_end   = 3.5f;
-  const int   ebn0_points = 5;
+  const int   ebn0_points = 2;
+
+  std::vector<float> sweep_ebn0_values;
+  if (ebn0_points <= 0) {
+    sweep_ebn0_values.push_back(DEFAULT_EBN0_DB);
+  } else if (ebn0_points == 1) {
+    sweep_ebn0_values.push_back(ebn0_start);
+  } else {
+    const float eb_step = (ebn0_end - ebn0_start) / static_cast<float>(ebn0_points - 1);
+    for (int i = 0; i < ebn0_points; ++i) {
+      sweep_ebn0_values.push_back(ebn0_start + eb_step * static_cast<float>(i));
+    }
+  }
 
   auto scenarios = build_scenarios(base_params,
                                    alpha_start_candidates, alpha_step_candidates,
-                                   beta_start_candidates, beta_step_candidates);
+                                   beta_start_candidates, beta_step_candidates,
+                                   chase_l_candidates, sweep_ebn0_values);
   const std::size_t NS = scenarios.size();
 
   out << "[INFO] total scenarios = " << NS << "\n";
@@ -280,10 +316,12 @@ int main()
     params.beta_list  = scenario.beta_list;
     if (!params.ALPHA_LIST.empty()) params.ALPHA = params.ALPHA_LIST.front();
     if (!params.beta_list.empty())  params.beta  = params.beta_list.front();
+    params.CHASE_L     = scenario.chase_L;
+    params.CHASE_NTEST = scenario.chase_n_test;
 
     sem.acquire();
     futures.emplace_back(std::async(std::launch::async,
-                                    [idx, scenario, params, sweep_ebn0_db, &sem]() -> ScenarioOutput {
+                                    [idx, scenario, params, &sem]() -> ScenarioOutput {
                                       struct Releaser {
                                         Semaphore& s;
                                         ~Releaser() { s.release(); }
@@ -297,7 +335,13 @@ int main()
                                       out.alpha_step  = scenario.alpha_step;
                                       out.beta_start  = scenario.beta_start;
                                       out.beta_step   = scenario.beta_step;
-                                      out.result = run_pipeline(params, scenario.name, sweep_ebn0_db);
+                                      out.chase_L     = scenario.chase_L;
+                                      out.chase_n_test = scenario.chase_n_test;
+                                      out.ebn0_db     = scenario.ebn0_db;
+
+                                      Params local_params = params;
+                                      out.result = run_pipeline(local_params, scenario.name, scenario.ebn0_db);
+                                      out.ebn0_db = out.result.ebn0_db;
                                       return out;
                                     }));
   }
@@ -314,6 +358,9 @@ int main()
   float best_alpha_step  = 0.0f;
   float best_beta_start  = 0.0f;
   float best_beta_step   = 0.0f;
+  int   best_chase_L     = base_params.CHASE_L;
+  int   best_chase_n_test = 1 << base_params.CHASE_L;
+  float best_ebn0_db      = !sweep_ebn0_values.empty() ? sweep_ebn0_values.front() : DEFAULT_EBN0_DB;
 
   std::vector<ScenarioOutput> results;
   results.reserve(futures.size());
@@ -371,7 +418,10 @@ int main()
             << " alpha_step=" << pack.alpha_step
             << " | beta_start=" << pack.beta_start
             << " beta_step=" << pack.beta_step
+            << " | Eb/N0=" << pack.ebn0_db
             << std::defaultfloat
+            << " | CHASE_L=" << pack.chase_L
+            << " CHASE_NTEST=" << pack.chase_n_test
             << early_stop_summary;
     scenario_summaries.push_back(summary.str());
     out << summary.str() << "\n";
@@ -385,6 +435,9 @@ int main()
         << pack.alpha_step  << ","
         << pack.beta_start  << ","
         << pack.beta_step   << ","
+        << pack.chase_L     << ","
+        << pack.chase_n_test<< ","
+        << pack.ebn0_db     << ","
         << '"' << join_vec(pack.alpha_list, '|', 6) << "\","
         << '"' << join_vec(pack.beta_list , '|', 6) << "\","
         << result.pre_fec.ber    << ","
@@ -407,6 +460,9 @@ int main()
       best_alpha_step  = pack.alpha_step;
       best_beta_start  = pack.beta_start;
       best_beta_step   = pack.beta_step;
+      best_chase_L     = pack.chase_L;
+      best_chase_n_test = pack.chase_n_test;
+      best_ebn0_db      = pack.ebn0_db;
     }
   }
 
@@ -427,7 +483,10 @@ int main()
       << " step=" << best_alpha_step << "\n";
   out << "[RESULT] Best beta start/step: start=" << best_beta_start
       << " step=" << best_beta_step << "\n";
+  out << "[RESULT] Best sweep Eb/N0: " << best_ebn0_db << " dB\n";
   out << std::defaultfloat;
+  out << "[RESULT] Best CHASE_L/CHASE_NTEST: " << best_chase_L
+      << " / " << best_chase_n_test << "\n";
 
   if (!best_tile_early_stop_pct.empty()) {
     out << "[RESULT] Best tile early-stop hit rates (%): ";
@@ -440,23 +499,16 @@ int main()
   }
 
   // ========== 5) 使用最佳参数进行 EbN0 扫描 ==========
-  std::vector<float> ebn0_values;
-  if (ebn0_points <= 0) {
-    // no EbN0 sweep requested
-  } else if (ebn0_points == 1) {
-    ebn0_values.push_back(ebn0_start);
-  } else {
-    const float step = (ebn0_end - ebn0_start) / static_cast<float>(ebn0_points - 1);
-    for (int i = 0; i < ebn0_points; ++i) {
-      ebn0_values.push_back(ebn0_start + step * static_cast<float>(i));
-    }
+  std::vector<float> ebn0_values = sweep_ebn0_values;
+  if (ebn0_values.empty()) {
+    ebn0_values.push_back(best_ebn0_db);
   }
 
   if (!ebn0_values.empty()) {
     const std::string ebn0_log_path = (data_dir / ("run_" + run_id + "_ebn0.log")).string();
     DualOut ebn0_out(std::cout, ebn0_log_path);
 
-    const std::string ebn0_csv_path = (data_dir / "ofec_ebn0_results.csv").string();
+    const std::string ebn0_csv_path = (data_dir / ("ofec_ebn0_results_" + run_id + ".csv")).string();
     ensure_ebn0_csv_header(ebn0_csv_path);
     std::ofstream ebn0_csv(ebn0_csv_path, std::ios::out | std::ios::app);
     ebn0_csv.setf(std::ios::fixed);
@@ -467,6 +519,8 @@ int main()
     best_params.beta_list  = best_scenario.beta_list;
     if (!best_params.ALPHA_LIST.empty()) best_params.ALPHA = best_params.ALPHA_LIST.front();
     if (!best_params.beta_list.empty())  best_params.beta  = best_params.beta_list.front();
+    best_params.CHASE_L     = best_chase_L;
+    best_params.CHASE_NTEST = best_chase_n_test;
 
     Semaphore ebn0_sem(max_workers);
     std::vector<std::future<EbN0Output>> ebn0_futures;

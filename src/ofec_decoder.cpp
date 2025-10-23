@@ -24,10 +24,40 @@ void chase_decode_256(const LLR* Lin256, const LLR* Lch256, LLR* Y2_256, const P
 template <typename LLR>
 static bool tile_should_early_stop(const Matrix<LLR>& lin_matrix)
 {
-  (void)lin_matrix;
-  // TODO: implement real early-stop heuristic
-  return false;
+  // 预期列数为 256 = 128(旧) + 111(新) + 16(BCH校验) + 1(整体奇偶)
+  const size_t rows = lin_matrix.rows();
+  const size_t cols = lin_matrix.cols();
+  if (cols < 256) return false; // 保守：尺寸异常则不早停
+
+  std::array<uint8_t, 255> hard255;
+  std::array<uint8_t, 255> decoded255;
+
+  for (size_t r = 0; r < rows; ++r)
+  {
+    // 1) LLR -> 硬判到 {0,1}，其中 1 表示比特“1”
+    for (int j = 0; j < 255; ++j) {
+      const float v = llr_to_float(lin_matrix[r][static_cast<size_t>(j)]);
+      hard255[static_cast<size_t>(j)] = (v < 0.0f) ? 1u : 0u;
+    }
+
+    // 2) 判定是否为合法 BCH(255,239) 码字
+    if (!bch_255_239_decode_hiho_cw_255(hard255.data(), decoded255.data()))
+      return false; // 该行无法成功译码，不能早停
+
+    // 3) 扩展整体偶校验（第 256 位在索引 255）
+    uint8_t parity255 = 0u;
+    for (int j = 0; j < 255; ++j) parity255 ^= (hard255[static_cast<size_t>(j)] & 1u);
+    const uint8_t overall = (llr_to_float(lin_matrix[r][255]) < 0.0f) ? 1u : 0u;
+
+    // 扩展码要求 255 位与整体位异或为 0（偶校验通过）
+    if ((parity255 ^ overall) != 0u)
+      return false; // 整体校验失败，不能早停
+  }
+
+  // 所有行均满足：BCH 综合全零且整体偶校验通过 => 触发早停
+  return true;
 }
+
 
 template <typename LLR>
 TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
@@ -212,10 +242,10 @@ void process_window(Matrix<LLR>& work_llr,
 
   for (size_t t = 0; t < TILES_PER_WIN; ++t)
   {
-        const size_t tile_top_row = win_start + t * tile_stride_rows;
-        const size_t tile_bottom_row = tile_top_row + tile_height_rows - 1;
+        // 让 t=0 对应窗口最底部的 tile
+        const size_t tile_bottom_row = win_end  - t * tile_height_rows;
+        const size_t tile_top_row    = tile_bottom_row + 1 - tile_height_rows;
 
-        if (tile_bottom_row > win_end) break; // 越界：退出
 
         const size_t tile_height_rows = tile_bottom_row - tile_top_row + 1;
         Matrix<LLR> tile_in(tile_height_rows, N);
