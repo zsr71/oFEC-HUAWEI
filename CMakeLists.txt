@@ -13,11 +13,12 @@ else()
 endif()
 
 # ------------------------------------------------------------------------------
-# 核心库：收纳所有通用实现源码，供主程序/测试复用
+# 核心库：收纳所有通用实现源码，供主程�?测试复用
 # ------------------------------------------------------------------------------
 add_library(newcode_core STATIC
   src/bitgen.cpp
-  src/ofec_encoder.cpp     # ofec_encoder.cpp 中的 OVERALLLEN 未使用，仅是告警，源码里可 [[maybe_unused]] 或删除
+  # NOTE: OVERALLLEN is currently unused in ofec_encoder.cpp; mark [[maybe_unused]] if intentional.
+  src/ofec_encoder.cpp
   src/bch_255_239.cpp
   src/qam.cpp
   src/awgn.cpp
@@ -29,17 +30,15 @@ add_library(newcode_core STATIC
   src/llr_to_bit.cpp
   src/llr_qpack.cpp
   src/llr_known_prefix.cpp
-  src/chase256.cpp         # ★ 必须加入：提供 chase_decode_256<T>() 的定义与显式实例化
-  # 如果你把 qfloat 做成 .cpp（非 header-only），也需要在这里加：
-  # src/qfloat.cpp
+  src/chase256.cpp         # �?必须加入：提�?chase_decode_256<T>() 的定义与显式实例�?  # 如果你把 qfloat 做成 .cpp（非 header-only），也需要在这里加：
+    src/pipeline_runner.cpp
 )
 target_include_directories(newcode_core PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 # ------------------------------------------------------------------------------
-# 主程序
-# ------------------------------------------------------------------------------
+# 主程�?# ------------------------------------------------------------------------------
 add_executable(newcode_app
   src/main.cpp
 )

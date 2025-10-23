@@ -11,16 +11,11 @@ std::vector<uint8_t> rx_info_from_bit_llr(const Matrix<float>& bit_llr_mat, cons
     // 基本参数
     const int B = static_cast<int>(p.BITS_PER_SUBBLOCK_DIM);
     const int N = static_cast<int>(p.NUM_SUBBLOCK_COLS * p.BITS_PER_SUBBLOCK_DIM); // 典型 128
-    const int G          = static_cast<int>(p.NUM_GUARD_SUBROWS);
     const int K          = 239;   // BCH 信息位
-    const int PAR_LEN    = 16;    // BCH 校验位
-    const int OVERALLLEN = 1;     // overall parity
+
     const int TAKE_BITS  = K - N; // 每行新信息位列数（典型 111）
 
-    // 一致性检查（与编码/解码布局一致）
-    if (2 * N != (K + PAR_LEN + OVERALLLEN)) {
-        throw std::invalid_argument("rx_info_from_bit_llr: layout mismatch (require 2N = K+16+1).");
-    }
+
     if (B <= 0 || (N % B) != 0) {
         throw std::invalid_argument("rx_info_from_bit_llr: N must be a multiple of B.");
     }

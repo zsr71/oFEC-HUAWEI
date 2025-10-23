@@ -1,17 +1,16 @@
-// chase256.cpp — Pyndiah’98 SISO (eqs. (14)–(17), (20), (21))
+// chase256.cpp — Pyndiah '98 SISO (eqs. (14)–(17), (20), (21))
 // -------------------------------------------------------------------------------------
 // This file implements the soft-input/soft-output (SISO) Chase component decoder
 // exactly following Pyndiah’s derivation:
 //   • (14)–(17): soft output Λ_j = y_j + ω_j, where ω_j is computed from the
-//     “best ML codeword” and the “best competing codeword with flipped bit j”,
+//     “best ML codeword” and the “best competing codeword with flipped bit j”
 //     using correlation (inner-product) metrics equivalent to Euclidean criteria.
 //   • (20): when no competing codeword exists for bit j, use a constant-reliability
 //     fallback L0 whose magnitude reflects the average reliability; sign is that of
 //     the ML decision at bit j.
 //   • (21): the decoder must output ONLY EXTRINSIC information ω_j; the caller
-//     shall form the next input as y(next) = y(channel) + α·ω, with α a schedule.
+//     shall form the next input as y(next) = y(channel) + α·ω, with α being a schedule.
 // -------------------------------------------------------------------------------------
-
 #include "newcode/chase256.hpp"
 #include "newcode/bch_255_239.hpp"
 #include "newcode/params.hpp"
@@ -54,8 +53,8 @@ inline LLR llr_from_float(float x) { return LLR::from_float(x); }
 // ----- select coefficients from Params -----
 static inline void pick_cp(const Params& p, float& beta, float& alpha)
 {
-    // p.CP_B is reused as the fallback magnitude scale for L0 in (20)
-    beta = p.CP_B;
+    // p.beta is reused as the fallback magnitude scale for L0 in (20)
+    beta = p.beta;
     alpha = p.ALPHA;
 }
 
@@ -119,25 +118,6 @@ inline uint8_t parity256_from255(const uint8_t* cw255) {
 
 } // namespace detail
 
-// ============================================================================
-// SISO Chase(256,239) per Pyndiah’98: produce ω (extrinsic) for eq. (21).
-// Inputs:
-//   Lin256 : current a priori LLR y (aka Y_N1) for 256 bits
-//   Lch256 : kept for signature compatibility (unused here; channel LLR is
-//            expected to be mixed at the caller via (21))
-// Output:
-//   Y2_256 : extrinsic ω (same size), to be combined upstream by (21)
-// Params:
-//   p.CHASE_L, p.CHASE_NTEST : unreliable set size and number of patterns
-//   p.CP_B : fallback scaling for L0 in (20)
-// Notes:
-//   • Codewords and metrics strictly follow Pyndiah’s correlation form for
-//     (14)–(17): S(c) = ∑_k y_k · x_k, with x_k=+1 for bit 0 and –1 for bit 1.
-//   • Best ML codeword = argmax_c S(c) over valid BCH decodes.
-//   • For bit j, best competitor = argmax_{c: valid & c_j ≠ ML_j} S(c).
-//   • ω_j = 0.5·( S(ML) – S(comp_j) ) · sgn(ML_j), cf. (16)–(17).
-//   • If no competitor exists at j, ω_j = L0 · sgn(ML_j), with L0 from (20).
-// ============================================================================
 template<typename LLR>
 void chase_decode_256(const LLR* Lin256,
                       const LLR* /*Lch256*/,
@@ -153,7 +133,7 @@ void chase_decode_256(const LLR* Lin256,
     const int L      = std::max(1, p.CHASE_L);
     const int NTEST  = std::max(1, p.CHASE_NTEST);
 
-    // y_k = LLR inputs for correlation metric in (14)–(17)
+    // y_k = LLR inputs for correlation metric in (14)鈥?17)
     float y[BCH_N_TOTAL];
     uint8_t hard_ch[BCH_N_TOTAL];
     for (int i = 0; i < BCH_N_TOTAL; ++i) {
@@ -194,10 +174,10 @@ void chase_decode_256(const LLR* Lin256,
         std::copy(cw255.begin(), cw255.end(), CW.begin());
         CW[PAR_IDX] = parity256_from255(CW.data());
 
-        // correlation metric S(c) = ∑ y_k · x_k, with x_k=+1 for 0, –1 for 1  (→ (14))
+        // correlation metric S(c) = 鈭?y_k 路 x_k, with x_k=+1 for 0, 鈥? for 1  (鈫?(14))
         float score = 0.f;
         for (int k = 0; k < BCH_N_TOTAL; ++k) {
-            const float xk = CW[k] ? -1.f : +1.f; // 0→+1, 1→−1
+            const float xk = CW[k] ? -1.f : +1.f; 
             score += y[k] * xk;
         }
 
@@ -222,7 +202,7 @@ void chase_decode_256(const LLR* Lin256,
         // no valid codeword: take channel hard decisions (extend parity)
         std::copy(hard_ch, hard_ch + BCH_N_CORE, ML.begin());
         ML[PAR_IDX] = parity256_from255(ML.data());
-        // set ml_S on that sequence so ω can still be derived by correlation gaps
+        // set ml_S on that sequence so 蠅 can still be derived by correlation gaps
         ml_S = 0.f;
         for (int k = 0; k < BCH_N_TOTAL; ++k)
             ml_S += y[k] * (ML[k] ? -1.f : +1.f);
@@ -231,63 +211,55 @@ void chase_decode_256(const LLR* Lin256,
     std::vector<float> omega(BCH_N_TOTAL, std::numeric_limits<float>::quiet_NaN());
     for (int j = 0; j < BCH_N_TOTAL; ++j) {
         // ----- find best competing codeword for bit j -----
-    // 在候选集中分别找“第 j 位为 +1/−1”的最佳（合法）码字：
-        int   best_idx_plus  = -1;                     // 索引：c^{+1(j)}
+        int   best_idx_plus  = -1;                    
         float best_S_plus    = -std::numeric_limits<float>::infinity();
-        int   best_idx_minus = -1;                     // 索引：c^{-1(j)}
+        int   best_idx_minus = -1;                     
         float best_S_minus   = -std::numeric_limits<float>::infinity();
 
         for (const auto &cp : comps) {
-            if (!cp.good) continue;                    // 只考虑 BCH 成功的候选
+            if (!cp.good) continue; // 只考虑 BCH 成功的候选
+
             const auto &C = CW_all[cp.idx];
-            if (C[j] == 0) {                           // 第 j 位 = 0 -> BPSK(+1) ⇒ “+1(j)”
-                if (cp.score > best_S_plus) { best_S_plus = cp.score; best_idx_plus = cp.idx; }
-            } else {                                   // 第 j 位 = 1 -> BPSK(−1) ⇒ “−1(j)”
-                if (cp.score > best_S_minus){ best_S_minus = cp.score; best_idx_minus = cp.idx; }
+            if (C[j] == 0) { // j 位为 0 -> BPSK(+1)
+                if (cp.score > best_S_plus) {
+                    best_S_plus = cp.score;
+                    best_idx_plus = cp.idx;
+                }
+            } else { // j 位为 1 -> BPSK(-1)
+                if (cp.score > best_S_minus) {
+                    best_S_minus = cp.score;
+                    best_idx_minus = cp.idx;
+                }
             }
         }
 
-        // 若两类都存在，则严格按 (15)(17) 计算；否则交给 L0 回退：
         if (best_idx_plus >= 0 && best_idx_minus >= 0) {
-            const auto &Cplus  = CW_all[best_idx_plus];   // c^{+1(j)}
-            const auto &Cminus = CW_all[best_idx_minus];  // c^{-1(j)}
+            const auto &Cplus  = CW_all[best_idx_plus];  // c^{+1(j)}
+            const auto &Cminus = CW_all[best_idx_minus]; // c^{-1(j)}
 
             float wj = 0.f;
             for (int l = 0; l < BCH_N_TOTAL; ++l) {
                 if (l == j) continue;
 
-                // r_l ＝ y[l]（本轮的先验/软输入，可视作接收量）
                 const float r_l = y[l];
-
-                // c_l^{+1(j)}、c_l^{-1(j)} ：把比特映射到 BPSK：0→+1，1→−1
                 const float c_plus_l  = Cplus [l] ? -1.f : +1.f;
                 const float c_minus_l = Cminus[l] ? -1.f : +1.f;
-
-                // p_l 按 (15)：两者不同则为 1，相同则为 0
                 const int   p_l = (c_plus_l != c_minus_l) ? 1 : 0;
 
-                // (17)：w_j 累加 r_l * c_l^{+1(j)} * p_l
-                wj += r_l * c_plus_l * (float)p_l;
+                wj += r_l * c_plus_l * static_cast<float>(p_l);
             }
 
-            omega[j] = wj;                // 只输出外信息（不含 r_j）
+            omega[j] = wj; // 只输出外信息（不含 r_j）
         } else {
-            omega[j] = std::numeric_limits<float>::quiet_NaN();   // 交由后面的 L0 回退填充
+            omega[j] = std::numeric_limits<float>::quiet_NaN(); // 交由后面 L0 回退填充
         }
-}   
-
-    // (20) fallback L0: magnitude proportional to average |ω| (when available),
-    //                  otherwise to average |y|; sign = sgn(ML_j).
-
-
-    for (int j = 0; j < BCH_N_TOTAL; ++j) {
         if (std::isnan(omega[j])) {
             const float sgn = ML[j] ? -1.f : +1.f;
             omega[j] = beta * sgn;
         }
     }
 
-    // Output EXTRINSIC ω (not Λ). Per (21), caller shall form y(next) = y(ch) + α·ω.
+    // Output EXTRINSIC  Per (21), caller shall form y(next) = y(ch) + 伪路蠅.
     for (int j = 0; j < BCH_N_TOTAL; ++j)
         Y2_256[j] = llr_from_float<LLR>(omega[j])*alpha;
 }
