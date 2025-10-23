@@ -22,7 +22,7 @@ struct Params {
   size_t NUM_GUARD_SUBROWS = 2;                  // 保护块子行数 G
 
   // ===== 解码组织参数（单位：sub-block rows）=====
-  size_t TILES_PER_WIN   = 5;  // 每个 window 含有的 tile 数量（自下而上处理）
+  size_t TILES_PER_WIN   = 4;  // 每个 window 含有的 tile 数量（自下而上处理）
   size_t TILE_OVERLAP_BR = 0;  // 相邻 tile 在 sub-block-row 方向的重叠行数
   size_t TILE_HEIGHT_BR  = 22; // 单个 tile 的高度（单位：sub-block-row）
   size_t WINDOW_POP_PUSH = 2;  // window 每次滑动的 sub-block-row 数量（pop/push）
@@ -44,8 +44,8 @@ struct Params {
   float ALPHA = 1.0f;
 
   // —— 可按 tile 覆盖的系数表（索引 0..TILES_PER_WIN-1）——
-  std::vector<float> ALPHA_LIST = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f};    // 默认保持 1.0
-  std::vector<float> beta_list  = {1.0f, 1.0f, 0.34f, 0.36f, 0.38f}; // tile 越靠上越放宽
+  std::vector<float> ALPHA_LIST = {0.3f, 0.3f, 0.3f, 0.3f};    // 默认保持 1.0
+  std::vector<float> beta_list  = {1.0f, 1.0f, 1.0f, 1.0f}; // tile 越靠上越放宽
 
   // —— 每个 tile 是否切换到硬判决译码 —— //
   bool HARD_DECODE_DEFAULT = false;                               // 默认仍使用软判决

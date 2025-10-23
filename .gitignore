@@ -14,5 +14,15 @@ Makefile
 *.a
 *.lib
 
+# CSV / LOG（新增）
+*.csv
+*.CSV
+*.log
+*.LOG
+logs/
+log/
+*.out
+*.err
+
 # IDE
 .vscode/

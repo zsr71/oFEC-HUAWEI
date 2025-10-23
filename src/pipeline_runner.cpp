@@ -23,6 +23,21 @@
 namespace newcode {
 namespace {
 
+std::vector<double> compute_early_stop_percentages(const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::vector<double> pct;
+  pct.reserve(counters.size());
+  for (const auto& counter : counters) {
+    double value = 0.0;
+    if (counter.total > 0) {
+      value = static_cast<double>(counter.triggered) /
+              static_cast<double>(counter.total) * 100.0;
+    }
+    pct.push_back(value);
+  }
+  return pct;
+}
+
 // Flatten an encoded matrix (row-major) to a 0/1 bitstream.
 std::vector<uint8_t> flatten_row_major(const Matrix<uint8_t>& matrix)
 {
@@ -42,7 +57,8 @@ PipelineResult run_with_float(const Matrix<float>& llr_mat,
 {
   std::cout << "[INFO] (" << label << ") Running decoder in FLOAT (no quantization, no clipping)\n";
 
-  Matrix<float> post_f = ofec_decode_llr(llr_mat, params);
+  std::vector<TileEarlyStopCounter> tile_stats;
+  Matrix<float> post_f = ofec_decode_llr(llr_mat, params, &tile_stats);
 
   auto rx_info_bits_pre  = rx_info_from_bit_llr(llr_mat, params);
   auto rx_info_bits_post = rx_info_from_bit_llr(post_f,  params);
@@ -56,6 +72,7 @@ PipelineResult run_with_float(const Matrix<float>& llr_mat,
   PipelineResult result;
   result.pre_fec  = compute_and_print_ber(info_bits, rx_info_bits_pre,  pre_label.c_str(),  params);
   result.post_fec = compute_and_print_ber(info_bits, rx_info_bits_post, post_label.c_str(), params);
+  result.tile_early_stop_pct = compute_early_stop_percentages(tile_stats);
 
   std::cout << "[DONE] (" << label << ") Pipeline(float) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> decode(float) -> info extract & BER\n";
   return result;
@@ -73,7 +90,8 @@ PipelineResult run_with_qfloat(const Matrix<float>& llr_mat,
             << qfloat<NBITS>::DEFAULT_CLIP
             << "  code range [-" << qfloat<NBITS>::Q() << ", +" << qfloat<NBITS>::Q() << "]\n";
 
-  auto q_dec = ofec_decode_llr(q_mat, params);
+  std::vector<TileEarlyStopCounter> tile_stats;
+  auto q_dec = ofec_decode_llr(q_mat, params, &tile_stats);
 
   auto pre_f  = cast_matrix_from_qfloat(q_mat);
   auto post_f = cast_matrix_from_qfloat(q_dec);
@@ -90,6 +108,7 @@ PipelineResult run_with_qfloat(const Matrix<float>& llr_mat,
   PipelineResult result;
   result.pre_fec  = compute_and_print_ber(info_bits, rx_info_bits_pre,  pre_label.c_str(),  params);
   result.post_fec = compute_and_print_ber(info_bits, rx_info_bits_post, post_label.c_str(), params);
+  result.tile_early_stop_pct = compute_early_stop_percentages(tile_stats);
 
   std::cout << "[DONE] (" << label << ") Pipeline(qfloat<" << NBITS
             << ">) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> quant(qfloat) -> decode -> info extract & BER\n";

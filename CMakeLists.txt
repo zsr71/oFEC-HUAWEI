@@ -25,6 +25,7 @@ add_library(newcode_core STATIC
   src/qam_llr.cpp
   src/ofec_llr_matrix.cpp
   src/ofec_decoder.cpp
+  src/decoder_core.cpp
   src/ofec_decoder_hard.cpp
   src/info_extract.cpp
   src/ber.cpp
