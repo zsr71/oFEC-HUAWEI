@@ -83,7 +83,8 @@ qam_llr_logsumexp(const std::vector<std::complex<float>>& y,
         // LLR = logsumexp0 - logsumexp1
         const double lse0 = static_cast<double>(m0) + std::log(sum0);
         const double lse1 = static_cast<double>(m1) + std::log(sum1);
-        LLR[n] = static_cast<float>(lse0 - lse1); // >0 表示更偏向 bit=0
+        const float llr_scale = 0.5f * sigma * sigma;   // = σ^2 / 2
+        LLR[n] = static_cast<float>((lse0 - lse1) * static_cast<double>(llr_scale));
     }
     return LLR;
 }

@@ -1,6 +1,8 @@
 #include "newcode/ofec_decoder.hpp"
 #include "newcode/chase256.hpp" // 保留 Chase 头；本文档内有三参前向声明
 #include "newcode/bch_255_239.hpp"
+#include "newcode/ofec_decoder_hard.hpp"
+#include "newcode/llr_utils.hpp"
 #include <stdexcept>
 #include <cassert>
 #include <algorithm>
@@ -17,24 +19,6 @@ namespace newcode {
 // 三参版本前向声明（定义在 chase256.cpp，已对常用类型显式实例化）
 template<typename LLR>
 void chase_decode_256(const LLR* Lin256, const LLR* Lch256, LLR* Y2_256, const Params& p);
-
-template<typename LLR>
-inline float llr_to_float(LLR x) { return static_cast<float>(x); }
-
-template<typename LLR>
-inline LLR llr_from_float(float x) {
-  if constexpr (std::is_floating_point<LLR>::value) {
-    return static_cast<LLR>(x);
-  } else if constexpr (std::is_integral<LLR>::value && std::is_signed<LLR>::value) {
-    const float lo = static_cast<float>(std::numeric_limits<LLR>::min());
-    const float hi = static_cast<float>(std::numeric_limits<LLR>::max());
-    if (x < lo) x = lo;
-    if (x > hi) x = hi;
-    return static_cast<LLR>(std::lrintf(x));
-  } else {
-    return LLR::from_float(x);
-  }
-}
 
 template <typename LLR>
 Matrix<LLR> process_tile(const Matrix<LLR>& tile_in,
@@ -135,38 +119,9 @@ Matrix<LLR> process_tile(const Matrix<LLR>& tile_in,
             std::array<LLR, 256> Y2{}; // 输出：Lpost - Lch
             bool produced_llr = false;
 
-            // 可选硬判
-            if (use_hard_decode)
-            {
-                std::array<uint8_t, 256> hard_in{};
-                for (int i = 0; i < 256; ++i)
-                    hard_in[static_cast<size_t>(i)] = (llr_to_float(Lin256[static_cast<size_t>(i)]) < 0.f) ? 1u : 0u;
-
-                std::array<uint8_t, Params::BCH_N - 1> decoded{};
-                if (bch_255_239_decode_hiho_cw_255(hard_in.data(), decoded.data()))
-                {
-                    std::array<uint8_t, Params::BCH_N> cw{};
-                    for (int i = 0; i < static_cast<int>(Params::BCH_N) - 1; ++i)
-                        cw[static_cast<size_t>(i)] = decoded[static_cast<size_t>(i)];
-                    uint8_t parity = 0;
-                    for (int i = 0; i < static_cast<int>(Params::BCH_N) - 1; ++i)
-                        parity ^= cw[static_cast<size_t>(i)];
-                    cw[static_cast<size_t>(OVR_IDX)] = parity;
-
-                    const float hard_mag = std::fabs(p.HARD_LLR_MAG);
-                    for (int i = 0; i < static_cast<int>(Params::BCH_N); ++i)
-                    {
-                        const float sign = cw[static_cast<size_t>(i)] ? -1.f : 1.f;
-                        const float Lpost = sign * hard_mag;
-                        const float Lch = llr_to_float(Lch256[static_cast<size_t>(i)]);
-                        Y2[static_cast<size_t>(i)] = llr_from_float<LLR>(Lpost - Lch);
-                    }
-                    produced_llr = true;
-                }
-            }
-
-            if (!use_hard_decode)
-            {
+            if (use_hard_decode) {
+                produced_llr = perform_hard_decode<LLR>(Lin256, Lch256, Y2, p);
+            } else {
                 chase_decode_256<LLR>(Lin256.data(), Lch256.data(), Y2.data(), p);
                 produced_llr = true;
             }
@@ -333,7 +288,7 @@ template void process_window<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&, siz
 
 template Matrix<float>  ofec_decode_llr<float >(const Matrix<float>&,  const Params&);
 template Matrix<int8_t> ofec_decode_llr<int8_t>(const Matrix<int8_t>&, const Params&);
-// qfloat ��������
+// qfloat 量化类型
 template Matrix<newcode::qfloat<4>> process_tile<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
                                                                     const Matrix<newcode::qfloat<4>>&,
                                                                     const Params&, size_t, bool);

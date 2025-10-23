@@ -141,7 +141,8 @@ void chase_decode_256(const LLR* Lin256,
         y[i]       = v;
         hard_ch[i] = (v >= 0.f) ? 0u : 1u;
     }
-
+    std::array<float, BCH_N_TOTAL> abs_y{};
+    for (int k = 0; k < BCH_N_TOTAL; ++k) abs_y[k] = std::fabs(y[k]);
     // unreliable set over core (0..254)
     std::vector<int>   lrp_pos; lrp_pos.reserve(L);
     std::vector<float> lrp_abs; lrp_abs.reserve(L);
@@ -175,11 +176,12 @@ void chase_decode_256(const LLR* Lin256,
         CW[PAR_IDX] = parity256_from255(CW.data());
 
         // correlation metric S(c) = 鈭?y_k 路 x_k, with x_k=+1 for 0, 鈥? for 1  (鈫?(14))
-        float score = 0.f;
+        float dist = 0.f;
         for (int k = 0; k < BCH_N_TOTAL; ++k) {
-            const float xk = CW[k] ? -1.f : +1.f; 
-            score += y[k] * xk;
+            const uint8_t diff = (hard_ch[k] ^ CW[k]); // 1=不一致，0=一致
+            dist += abs_y[k] * (diff ? 1.f : 0.f);
         }
+        float score = -dist;  // 越大越好（等价于最小化 dist）
 
         comps.push_back({score, c, ok});
     }

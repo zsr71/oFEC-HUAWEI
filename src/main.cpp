@@ -41,9 +41,10 @@ int main()
   Params base_params;
 
   // 在此调整搜索范围：每个候选值会在所有 tile 上使用同一数值
-  const std::vector<float> alpha_candidates = {0.001f,0.01f,0.05f,0.07f,0.1f, 0.2f, 0.3f,0.4f, 0.5f,1.0f,10.0f};
-  const std::vector<float> beta_candidates   = {0.1f,1.0f,5.0f,10.0f,25.0f,50.0f, 100.0f, 200.0f, 300.0f,500.0f};
-
+  //const std::vector<float> alpha_candidates = {0.001f,0.01f,0.05f,0.07f,0.1f, 0.2f, 0.3f,0.4f, 0.5f,1.0f,10.0f};
+  //const std::vector<float> beta_candidates   = {0.1f,1.0f,5.0f,10.0f,25.0f,50.0f, 100.0f, 200.0f, 300.0f,500.0f};
+  const std::vector<float> alpha_candidates = {0.2f};
+  const std::vector<float> beta_candidates   = {25.0f};
   auto scenarios = build_scenarios(base_params, alpha_candidates, beta_candidates);
 
   double best_post_ber = std::numeric_limits<double>::infinity();
