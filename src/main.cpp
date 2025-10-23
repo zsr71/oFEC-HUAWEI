@@ -41,14 +41,16 @@ int main()
   Params base_params;
 
   // 在此调整搜索范围：每个候选值会在所有 tile 上使用同一数值
-  const std::vector<float> alpha_candidates = {0.01f,0.05f,0.07f,0.1f, 0.2f, 0.3f,0.4f, 0.5f};
-  const std::vector<float> beta_candidates   = {25.0f,50.0f, 100.0f, 200.0f, 300.0f};
+  const std::vector<float> alpha_candidates = {0.001f,0.01f,0.05f,0.07f,0.1f, 0.2f, 0.3f,0.4f, 0.5f,1.0f,10.0f};
+  const std::vector<float> beta_candidates   = {0.1f,1.0f,5.0f,10.0f,25.0f,50.0f, 100.0f, 200.0f, 300.0f,500.0f};
 
   auto scenarios = build_scenarios(base_params, alpha_candidates, beta_candidates);
 
   double best_post_ber = std::numeric_limits<double>::infinity();
   std::size_t best_index = static_cast<std::size_t>(-1);
   PipelineResult best_result{};
+  std::vector<std::string> scenario_summaries;
+  scenario_summaries.reserve(scenarios.size());
 
   for (std::size_t idx = 0; idx < scenarios.size(); ++idx) {
     const auto& scenario = scenarios[idx];
@@ -68,11 +70,13 @@ int main()
 
     auto result = run_pipeline(params, scenario.name);
 
-    std::cout << "[SUMMARY] " << scenario.name
-              << " Pre-FEC BER=" << result.pre_fec.ber
-              << " (errs=" << result.pre_fec.errors << "/" << result.pre_fec.total << ")"
-              << " | Post-FEC BER=" << result.post_fec.ber
-              << " (errs=" << result.post_fec.errors << "/" << result.post_fec.total << ")\n";
+    std::ostringstream summary;
+    summary << "[SUMMARY] " << scenario.name
+            << " Pre-FEC BER=" << result.pre_fec.ber
+            << " (errs=" << result.pre_fec.errors << "/" << result.pre_fec.total << ")"
+            << " | Post-FEC BER=" << result.post_fec.ber
+            << " (errs=" << result.post_fec.errors << "/" << result.post_fec.total << ")";
+    scenario_summaries.push_back(summary.str());
 
     if (result.post_fec.total > 0 && result.post_fec.ber < best_post_ber) {
       best_post_ber = result.post_fec.ber;
@@ -84,6 +88,11 @@ int main()
   if (best_index == static_cast<std::size_t>(-1)) {
     std::cerr << "[ERROR] No valid scenarios evaluated.\n";
     return 1;
+  }
+
+  std::cout << "\n[SUMMARY] All scenarios:\n";
+  for (const auto& line : scenario_summaries) {
+    std::cout << "  " << line << '\n';
   }
 
   const auto& best_scenario = scenarios[best_index];
@@ -105,7 +114,6 @@ int main()
 
   return 0;
 }
-
 
 
 
