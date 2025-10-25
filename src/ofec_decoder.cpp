@@ -97,7 +97,7 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
   // 遍历底部 SBR 个 sub-block rows：从最底开始，组装 decoder 输入矩阵
   for (int s = 0; s < SBR; ++s)
   {
-      const size_t sbr_row0_local = H - static_cast<size_t>((s + 1) * B);
+      const size_t sbr_row0_local = H - static_cast<size_t>((SBR-s) * B);
       for (int r_off = 0; r_off < B; ++r_off)
       {
           const size_t row_idx   = static_cast<size_t>(s * B + r_off);
