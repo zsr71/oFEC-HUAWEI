@@ -4,20 +4,23 @@ project(newcode LANGUAGES CXX)
 # C++20
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Warnings
 if(MSVC)
-  add_compile_options(/W4)
+  add_compile_options(/W4 /permissive-)
 else()
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# pthread / std::thread
+find_package(Threads REQUIRED)
+
 # ------------------------------------------------------------------------------
-# 核心库：收纳所有通用实现源码，供主程�?测试复用
+# Core library：收纳所有算法/流水线实现
 # ------------------------------------------------------------------------------
 add_library(newcode_core STATIC
   src/bitgen.cpp
-  # NOTE: OVERALLLEN is currently unused in ofec_encoder.cpp; mark [[maybe_unused]] if intentional.
   src/ofec_encoder.cpp
   src/bch_255_239.cpp
   src/qam.cpp
@@ -32,19 +35,25 @@ add_library(newcode_core STATIC
   src/llr_to_bit.cpp
   src/llr_qpack.cpp
   src/llr_known_prefix.cpp
-  src/chase256.cpp         # �?必须加入：提�?chase_decode_256<T>() 的定义与显式实例�?  # 如果你把 qfloat 做成 .cpp（非 header-only），也需要在这里加：
-    src/pipeline_runner.cpp
+  src/chase256.cpp
+  src/pipeline_runner.cpp
 )
 target_include_directories(newcode_core PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+target_link_libraries(newcode_core PUBLIC Threads::Threads)
 
 # ------------------------------------------------------------------------------
-# 主程�?# ------------------------------------------------------------------------------
-add_executable(newcode_app
-  src/main.cpp
-)
-target_link_libraries(newcode_app PRIVATE newcode_core)
+# Apps：两个入口（单次调试 / 并行扫参）
+# ------------------------------------------------------------------------------
+add_executable(ofec_single apps/ofec_single.cpp)
+target_link_libraries(ofec_single PRIVATE newcode_core)
+
+add_executable(ofec_sweep  apps/ofec_sweep.cpp)
+target_link_libraries(ofec_sweep  PRIVATE newcode_core)
+
+# （已删除 newcode_app/src/main.cpp，避免多个 main）
+# 如果以后还想保留旧入口，请把旧 main 改名并放到 apps/ 下，作为单独的可执行去构建。
 
 # ------------------------------------------------------------------------------
 # Tests

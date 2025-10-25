@@ -1,4 +1,4 @@
-﻿#include <algorithm>
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <ctime>
@@ -595,7 +595,6 @@ int main()
       ebn0_csv << std::setprecision(8);
     }
 
-    ebn0_csv.close();
   }
 
   out << "[RESULT] Best ALPHA_LIST: ";
