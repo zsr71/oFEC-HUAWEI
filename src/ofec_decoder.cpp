@@ -243,7 +243,7 @@ void process_window(Matrix<LLR>& work_llr,
   for (size_t t = 0; t < TILES_PER_WIN; ++t)
   {
         // 让 t=0 对应窗口最底部的 tile
-        const size_t tile_bottom_row = win_end  - t * tile_height_rows;
+        const size_t tile_bottom_row = win_end  - t * tile_stride_rows;
         const size_t tile_top_row    = tile_bottom_row + 1 - tile_height_rows;
 
 
