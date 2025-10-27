@@ -11,7 +11,7 @@ void apply_known_zero_prefix(Matrix<float>& llr_mat, const Params& p)
         return;
     }
 
-    size_t known_rows = p.win_height_rows();
+    size_t known_rows = p.tile_height_rows();
     known_rows = std::min(known_rows, llr_mat.rows());
 
     if (known_rows == 0) {
