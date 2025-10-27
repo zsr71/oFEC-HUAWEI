@@ -32,6 +32,8 @@ add_library(newcode_core STATIC
   src/ofec_decoder_hard.cpp
   src/info_extract.cpp
   src/ber.cpp
+  src/interleaver.cpp       
+
   src/llr_to_bit.cpp
   src/llr_qpack.cpp
   src/llr_known_prefix.cpp
@@ -83,4 +85,8 @@ if(BUILD_TESTING)
   add_executable(llr_reshape_demo tests/llr_reshape_demo.cpp)
   target_link_libraries(llr_reshape_demo PRIVATE newcode_core)
   add_test(NAME LLRReshapeTest COMMAND llr_reshape_demo)
+
+  add_executable(test_interleaver tests/test_interleaver.cpp)
+  target_link_libraries(test_interleaver PRIVATE newcode_core)
+  add_test(NAME InterleaverTest COMMAND test_interleaver)
 endif()

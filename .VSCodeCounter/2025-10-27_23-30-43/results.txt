@@ -1,0 +1,87 @@
+Date : 2025-10-27 23:30:43
+Directory : /home/zsr71/projects/newcode
+Total : 56 files,  3439 codes, 346 comments, 781 blanks, all 4566 lines
+
+Languages
++----------+------------+------------+------------+------------+------------+
+| language | files      | code       | comment    | blank      | total      |
++----------+------------+------------+------------+------------+------------+
+| C++      |         55 |      3,362 |        346 |        765 |      4,473 |
+| CMake    |          1 |         77 |          0 |         16 |         93 |
++----------+------------+------------+------------+------------+------------+
+
+Directories
++--------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                               | files      | code       | comment    | blank      | total      |
++--------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                  |         56 |      3,439 |        346 |        781 |      4,566 |
+| . (Files)                                                          |          3 |         78 |          0 |         17 |         95 |
+| apps                                                               |          2 |        623 |         21 |         90 |        734 |
+| include                                                            |         22 |        567 |        116 |        169 |        852 |
+| include/newcode                                                    |         22 |        567 |        116 |        169 |        852 |
+| src                                                                |         20 |      1,607 |        141 |        379 |      2,127 |
+| tests                                                              |          9 |        564 |         68 |        126 |        758 |
++--------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++--------------------------------------------------------------------+----------+------------+------------+------------+------------+
+| filename                                                           | language | code       | comment    | blank      | total      |
++--------------------------------------------------------------------+----------+------------+------------+------------+------------+
+| /home/zsr71/projects/newcode/1.cpp                                 | C++      |          1 |          0 |          0 |          1 |
+| /home/zsr71/projects/newcode/CMakeLists.txt                        | CMake    |         77 |          0 |         16 |         93 |
+| /home/zsr71/projects/newcode/apps/ofec_single.cpp                  | C++      |         93 |          9 |         18 |        120 |
+| /home/zsr71/projects/newcode/apps/ofec_sweep.cpp                   | C++      |        530 |         12 |         72 |        614 |
+| /home/zsr71/projects/newcode/include/newcode/awgn.hpp              | C++      |         12 |          3 |          5 |         20 |
+| /home/zsr71/projects/newcode/include/newcode/bch_255_239.hpp       | C++      |         19 |          7 |          6 |         32 |
+| /home/zsr71/projects/newcode/include/newcode/ber.hpp               | C++      |         18 |         13 |          6 |         37 |
+| /home/zsr71/projects/newcode/include/newcode/bitgen.hpp            | C++      |          7 |          1 |          4 |         12 |
+| /home/zsr71/projects/newcode/include/newcode/chase256.hpp          | C++      |         10 |         12 |          5 |         27 |
+| /home/zsr71/projects/newcode/include/newcode/decoder_core.hpp      | C++      |         34 |          0 |          8 |         42 |
+| /home/zsr71/projects/newcode/include/newcode/info_extract.hpp      | C++      |          9 |         15 |          5 |         29 |
+| /home/zsr71/projects/newcode/include/newcode/interleaver.hpp       | C++      |         35 |         10 |         10 |         55 |
+| /home/zsr71/projects/newcode/include/newcode/llr_known_prefix.hpp  | C++      |          7 |          2 |          6 |         15 |
+| /home/zsr71/projects/newcode/include/newcode/llr_qpack.hpp         | C++      |          9 |          3 |          7 |         19 |
+| /home/zsr71/projects/newcode/include/newcode/llr_to_bit.hpp        | C++      |          7 |          2 |          5 |         14 |
+| /home/zsr71/projects/newcode/include/newcode/llr_utils.hpp         | C++      |         26 |          0 |          7 |         33 |
+| /home/zsr71/projects/newcode/include/newcode/matrix.hpp            | C++      |         46 |          0 |         13 |         59 |
+| /home/zsr71/projects/newcode/include/newcode/ofec_decoder.hpp      | C++      |         67 |          8 |         14 |         89 |
+| /home/zsr71/projects/newcode/include/newcode/ofec_decoder_hard.hpp | C++      |         28 |          0 |          7 |         35 |
+| /home/zsr71/projects/newcode/include/newcode/ofec_encoder.hpp      | C++      |          8 |          1 |          4 |         13 |
+| /home/zsr71/projects/newcode/include/newcode/ofec_llr_matrix.hpp   | C++      |         11 |          9 |          6 |         26 |
+| /home/zsr71/projects/newcode/include/newcode/params.hpp            | C++      |         59 |         13 |         15 |         87 |
+| /home/zsr71/projects/newcode/include/newcode/pipeline_runner.hpp   | C++      |         18 |          0 |          8 |         26 |
+| /home/zsr71/projects/newcode/include/newcode/qam.hpp               | C++      |          8 |          4 |          4 |         16 |
+| /home/zsr71/projects/newcode/include/newcode/qam_llr.hpp           | C++      |         15 |          4 |          7 |         26 |
+| /home/zsr71/projects/newcode/include/newcode/qfloat.hpp            | C++      |        114 |          9 |         17 |        140 |
+| /home/zsr71/projects/newcode/pushtest.cpp                          | C++      |          0 |          0 |          1 |          1 |
+| /home/zsr71/projects/newcode/src/awgn.cpp                          | C++      |         35 |          0 |          8 |         43 |
+| /home/zsr71/projects/newcode/src/bch_255_239.cpp                   | C++      |        157 |          6 |         27 |        190 |
+| /home/zsr71/projects/newcode/src/ber.cpp                           | C++      |         50 |          4 |         14 |         68 |
+| /home/zsr71/projects/newcode/src/bitgen.cpp                        | C++      |         14 |          0 |          7 |         21 |
+| /home/zsr71/projects/newcode/src/chase256.cpp                      | C++      |        217 |         36 |         45 |        298 |
+| /home/zsr71/projects/newcode/src/decoder_core.cpp                  | C++      |         65 |          0 |         16 |         81 |
+| /home/zsr71/projects/newcode/src/info_extract.cpp                  | C++      |         38 |          3 |         14 |         55 |
+| /home/zsr71/projects/newcode/src/interleaver.cpp                   | C++      |        120 |         12 |         16 |        148 |
+| /home/zsr71/projects/newcode/src/llr_known_prefix.cpp              | C++      |         22 |          0 |          9 |         31 |
+| /home/zsr71/projects/newcode/src/llr_qpack.cpp                     | C++      |         34 |          0 |         10 |         44 |
+| /home/zsr71/projects/newcode/src/llr_to_bit.cpp                    | C++      |         16 |          0 |          5 |         21 |
+| /home/zsr71/projects/newcode/src/ofec_decoder.cpp                  | C++      |        328 |         29 |         79 |        436 |
+| /home/zsr71/projects/newcode/src/ofec_decoder_hard.cpp             | C++      |         57 |          0 |         12 |         69 |
+| /home/zsr71/projects/newcode/src/ofec_encoder.cpp                  | C++      |         99 |         24 |         26 |        149 |
+| /home/zsr71/projects/newcode/src/ofec_llr_matrix.cpp               | C++      |         40 |          0 |          7 |         47 |
+| /home/zsr71/projects/newcode/src/pipeline_runner.cpp               | C++      |        162 |         10 |         43 |        215 |
+| /home/zsr71/projects/newcode/src/qam.cpp                           | C++      |         38 |          3 |         12 |         53 |
+| /home/zsr71/projects/newcode/src/qam_llr.cpp                       | C++      |         80 |          8 |         16 |        104 |
+| /home/zsr71/projects/newcode/src/qfloat.cpp                        | C++      |         11 |          1 |          4 |         16 |
+| /home/zsr71/projects/newcode/src/test_interleaver.cpp              | C++      |         24 |          5 |          9 |         38 |
+| /home/zsr71/projects/newcode/tests/llr_reshape_demo.cpp            | C++      |         63 |         10 |         16 |         89 |
+| /home/zsr71/projects/newcode/tests/llr_to_bit_cpptest.cpp          | C++      |         26 |          0 |          6 |         32 |
+| /home/zsr71/projects/newcode/tests/test_awgn.cpp                   | C++      |         59 |          4 |         12 |         75 |
+| /home/zsr71/projects/newcode/tests/test_bch.cpp                    | C++      |        228 |         20 |         38 |        286 |
+| /home/zsr71/projects/newcode/tests/test_info_extract.cpp           | C++      |         65 |         11 |         14 |         90 |
+| /home/zsr71/projects/newcode/tests/test_interleaver.cpp            | C++      |         24 |          5 |          9 |         38 |
+| /home/zsr71/projects/newcode/tests/test_matrix.cpp                 | C++      |         18 |          0 |          5 |         23 |
+| /home/zsr71/projects/newcode/tests/test_qam.cpp                    | C++      |         45 |          9 |          9 |         63 |
+| /home/zsr71/projects/newcode/tests/test_qam_llr.cpp                | C++      |         36 |          9 |         17 |         62 |
+| Total                                                              |          |      3,439 |        346 |        781 |      4,566 |
++--------------------------------------------------------------------+----------+------------+------------+------------+------------+

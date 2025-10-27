@@ -19,6 +19,7 @@
 #include "newcode/qam.hpp"
 #include "newcode/qam_llr.hpp"
 #include "newcode/qfloat.hpp"
+#include "newcode/interleaver.hpp"
 
 namespace newcode {
 namespace {
@@ -155,8 +156,19 @@ PipelineResult run_pipeline(const Params& params, const std::string& label, floa
   auto coded_bits = flatten_row_major(code_matrix);
   std::cout << "[INFO] (" << label << ") Coded bits (flattened): " << coded_bits.size() << "\n";
 
+  auto itv = newcode::Interleaver::build_from_shape(
+      static_cast<int>(code_matrix.rows()),
+      static_cast<int>(code_matrix.cols()),
+      16, 16);
+
+
+  auto coded_bits_itlv = itv.interleave_chunks(coded_bits);
+  std::cout << "[INFO] (" << label << ") Interleaved bits: " << coded_bits_itlv.size() << "\n";
+
+
+
   const unsigned n_bps = 2; // QPSK
-  auto tx_syms = qam_modulate(coded_bits, n_bps);
+  auto tx_syms = qam_modulate(coded_bits_itlv, n_bps);
   std::cout << "[INFO] (" << label << ") Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
 
   const int   N        = static_cast<int>(params.NUM_SUBBLOCK_COLS * params.BITS_PER_SUBBLOCK_DIM);
@@ -182,7 +194,9 @@ PipelineResult run_pipeline(const Params& params, const std::string& label, floa
   for (size_t i = 0; i < std::min<size_t>(8, llr.size()); ++i)
     std::cout << llr[i] << (i + 1 < std::min<size_t>(8, llr.size()) ? ", " : "\n");
 
-  Matrix<float> llr_mat = llr_to_matrix_row_major(llr, code_matrix.rows(), code_matrix.cols());
+  auto llr_deint = itv.deinterleave_chunks(llr);  
+  
+  Matrix<float> llr_mat = llr_to_matrix_row_major(llr_deint , code_matrix.rows(), code_matrix.cols());
 
   // 已知前缀的先验处理（如果使用）
   apply_known_zero_prefix(llr_mat, params);
