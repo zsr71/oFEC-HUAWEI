@@ -88,7 +88,8 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
   if (rows_to_decode == 0) {
       return TileProcessResult<LLR>{tile_out, false};
   }
-  const size_t decoder_cols = static_cast<size_t>(2 * N);
+
+  const size_t decoder_cols = static_cast<size_t>(2 * N); // 256
   Matrix<LLR> lin_matrix(rows_to_decode, decoder_cols);
   Matrix<LLR> lch_matrix(rows_to_decode, decoder_cols);
   std::vector<size_t> row_local_lookup(rows_to_decode, 0);
@@ -110,12 +111,13 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
           const long R = static_cast<long>(row_global / static_cast<size_t>(B));
           const int  r = static_cast<int>(row_global % static_cast<size_t>(B));
 
-          // (A) 0..N-1，"旧信息" 128 位（跨块映射）
+          // (A) 0..N-1，"旧信息" 128 位（跨块映射）—— 式 (1)
           for (int k = 0; k < N; ++k)
           {
-              const long br = (R ^ 1L) - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)
-                              - static_cast<long>(2 * (N / B))
-                              + static_cast<long>(2 * (k / B));
+              const long br = (R ^ 1L)
+                            - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)   // −2G
+                            - static_cast<long>(2 * (N / B))               // −2*(N/B)
+                            + static_cast<long>(2 * (k / B));              // +2*floor(k/B)
               const long bc = static_cast<long>(k / B);
               const long bit_row_in_block = static_cast<long>((k % B) ^ r);
               const long bit_col_in_block = static_cast<long>(r);
@@ -139,39 +141,102 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
               }
           }
 
-          // (B) N..K-1，111 个"新信息"（当前行）
+          // (B) 128..238，111 个"新信息"（当前行）—— 式 (2) 列置换
           for (int i = 0; i < TAKE_BITS; ++i) {
-              const float Lch = llr_to_float(ch_tile[row_local][static_cast<size_t>(i)]);
-              const float La  = llr_to_float(tile_in [row_local][static_cast<size_t>(i)]);
-              const size_t col = static_cast<size_t>(N + i);
-              lin_matrix[row_idx][col] = llr_from_float<LLR>(Lch + La);
-              lch_matrix[row_idx][col] = llr_from_float<LLR>(Lch);
-          }
+              const int k = N + i;                                   // 128..238
+              const size_t Ct = static_cast<size_t>((k - N) / B);    // floor((k-N)/B) = floor(i/16)
+              const size_t ct = static_cast<size_t>((k % B) ^ r);    // (k%16) ^ r = (i%16) ^ r
+              const size_t src_col = Ct * static_cast<size_t>(B) + ct;
 
-          // (C) 239..254，16 个 BCH 校验位（当前行）
-          for (int j = 0; j < BCH_PAR; ++j) {
-              const size_t col = static_cast<size_t>(K + j);
-              const float Lch = llr_to_float(ch_tile[row_local][static_cast<size_t>(TAKE_BITS + j)]);
-              const float La  = llr_to_float(tile_in [row_local][static_cast<size_t>(TAKE_BITS + j)]);
-              lin_matrix[row_idx][col] = llr_from_float<LLR>(Lch + La);
-              lch_matrix[row_idx][col] = llr_from_float<LLR>(Lch);
-          }
-
-          // (D) 255，整体偶校验位（当前行）
-          {
-              const size_t col = static_cast<size_t>(OVR_IDX);
-              const size_t src_col = static_cast<size_t>(TAKE_BITS + BCH_PAR);
               const float Lch = llr_to_float(ch_tile[row_local][src_col]);
               const float La  = llr_to_float(tile_in [row_local][src_col]);
-              lin_matrix[row_idx][col] = llr_from_float<LLR>(Lch + La);
-              lch_matrix[row_idx][col] = llr_from_float<LLR>(Lch);
+              lin_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch + La);
+              lch_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch);
+          }
+
+          // (C) 239..254，16 个 BCH 校验位（当前行）—— 式 (2) 列置换
+          for (int j = 0; j < BCH_PAR; ++j) {
+              const int k = K + j;                                   // 239..254
+              const size_t Ct = static_cast<size_t>((k - N) / B);    // floor((k-N)/B)
+              const size_t ct = static_cast<size_t>((k % B) ^ r);    // (k%16) ^ r
+              const size_t src_col = Ct * static_cast<size_t>(B) + ct;
+
+              const float Lch = llr_to_float(ch_tile[row_local][src_col]);
+              const float La  = llr_to_float(tile_in [row_local][src_col]);
+              lin_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch + La);
+              lch_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch);
+          }
+
+          // (D) 255，整体偶校验位（当前行）—— 式 (2) 列置换
+          {
+              const int k = OVR_IDX;                                 // 255
+              const size_t Ct = static_cast<size_t>((k - N) / B);    // floor((k-N)/B) = 7
+              const size_t ct = static_cast<size_t>((k % B) ^ r);    // (15) ^ r
+              const size_t src_col = Ct * static_cast<size_t>(B) + ct;
+
+              const float Lch = llr_to_float(ch_tile[row_local][src_col]);
+              const float La  = llr_to_float(tile_in [row_local][src_col]);
+              lin_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch + La);
+              lch_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch);
           }
       } // r_off
   } // s
 
+  // 早停判据（可选）
   bool early_stop_triggered = tile_should_early_stop(lin_matrix);
 
+  // 调用 Chase/BCH 译码核心（内部已实例化）
   auto decoder_res = Decoder_Core(lin_matrix, lch_matrix, use_hard_decode, p);
+
+  // ===== 外信息归一化（decoder_res.lout 内已是 α·ω）=====
+  // 目标：等价于把 ω 归一到 mean(|ω|)=1；即对 α·ω 乘 scale = α / gα；
+  // 其中 gα = mean(|α·ω|) ，统计时跳过“回退点”（≈ ±αβ）。
+  {
+      auto is_fallback = [&](float w) -> bool {
+          const float target = p.ALPHA * p.beta;             // ≈ |α·β|
+          const float diff   = std::fabs(std::fabs(w) - target);
+          const float tol    = 1e-4f * std::max(1.0f, target);
+          return diff <= tol;
+      };
+
+      double acc = 0.0;
+      std::size_t cnt = 0;
+
+      const std::size_t Rcnt = decoder_res.lout.rows();
+      const std::size_t Ccnt = decoder_res.lout.cols();
+
+      // 先统计 gα
+      for (std::size_t r = 0; r < Rcnt; ++r)
+      {
+          if (!decoder_res.produced_rows[r]) continue;
+          for (std::size_t j = 0; j < Ccnt; ++j)
+          {
+              const float w = llr_to_float(decoder_res.lout[r][j]); // α·ω
+              if (is_fallback(w)) continue;
+              acc += std::fabs(w);
+              ++cnt;
+          }
+      }
+
+      if (cnt > 0)
+      {
+          const float g_alpha = (float)(acc / (double)cnt);
+          if (g_alpha > 0.f)
+          {
+              const float scale = p.ALPHA / g_alpha; // = 1 / mean(|ω|)
+              for (std::size_t r = 0; r < Rcnt; ++r)
+              {
+                  if (!decoder_res.produced_rows[r]) continue;
+                  for (std::size_t j = 0; j < Ccnt; ++j)
+                  {
+                      const float w = llr_to_float(decoder_res.lout[r][j]); // α·ω
+                      if (is_fallback(w)) continue; // 保持 ±αβ 不变
+                      decoder_res.lout[r][j] = llr_from_float<LLR>(w * scale);
+                  }
+              }
+          }
+      }
+  }
 
   // ====== 回写外信息到 tile_out（作为下一轮/下一组件先验） ======
   for (int s = 0; s < SBR; ++s)
@@ -179,56 +244,81 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
       for (int r_off = 0; r_off < B; ++r_off)
       {
           const size_t row_idx = static_cast<size_t>(s * B + r_off);
-          if (row_idx >= decoder_res.produced_rows.size())
-              continue;
-          if (!decoder_res.produced_rows[row_idx])
-              continue; // 仅选择硬判时且失败，保留原外信息
+          if (row_idx >= decoder_res.produced_rows.size()) continue;
+          if (!decoder_res.produced_rows[row_idx])         continue; // 硬判失败：保留原外信息
 
           const size_t row_local  = row_local_lookup[row_idx];
           const size_t row_global = row_global_lookup[row_idx];
           const auto&  lout_row   = decoder_res.lout[row_idx];
 
-          // 当前行：111 新信息 + 16 BCH + 1 overall
-          for (int i = 0; i < TAKE_BITS; ++i)
-              tile_out[row_local][static_cast<size_t>(i)] = lout_row[static_cast<size_t>(N + i)];
-          for (int j = 0; j < BCH_PAR; ++j)
-              tile_out[row_local][static_cast<size_t>(TAKE_BITS + j)] = lout_row[static_cast<size_t>(K + j)];
-          tile_out[row_local][static_cast<size_t>(TAKE_BITS + BCH_PAR)] = lout_row[static_cast<size_t>(OVR_IDX)];
-
-          // 旧信息 128：把 Y2[0..N-1] 按映射散布回对应 (rr,cc)
-          const long R = static_cast<long>(row_global / static_cast<size_t>(B));
-          const int  r = static_cast<int>(row_global % static_cast<size_t>(B));
-
-          for (int k = 0; k < N; ++k)
+          // —— 右半：按式 (2) 回写（111 新信息 + 16 BCH + 1 overall）——
           {
-              const long br = (R ^ 1L) - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)
-                              - static_cast<long>(2 * (N / B))
-                              + static_cast<long>(2 * (k / B));
-              const long bc = static_cast<long>(k / B);
-              const long bit_row_in_block = static_cast<long>((k % B) ^ r);
-              const long bit_col_in_block = static_cast<long>(r);
+              const long R = static_cast<long>(row_global / static_cast<size_t>(B));
+              const int  r = static_cast<int>(row_global % static_cast<size_t>(B));
 
-              const long rr_global = br * B + bit_row_in_block;
-              const long cc_global = bc * B + bit_col_in_block;
+              // 128..238 : 新信息
+              for (int i = 0; i < TAKE_BITS; ++i) {
+                  const int k = N + i;
+                  const size_t Ct = static_cast<size_t>((k - N) / B);
+                  const size_t ct = static_cast<size_t>((k % B) ^ r);
+                  const size_t col = Ct * static_cast<size_t>(B) + ct;
+                  tile_out[row_local][col] = lout_row[static_cast<size_t>(k)];
+              }
+              // 239..254 : BCH
+              for (int j = 0; j < BCH_PAR; ++j) {
+                  const int k = K + j;
+                  const size_t Ct = static_cast<size_t>((k - N) / B);
+                  const size_t ct = static_cast<size_t>((k % B) ^ r);
+                  const size_t col = Ct * static_cast<size_t>(B) + ct;
+                  tile_out[row_local][col] = lout_row[static_cast<size_t>(k)];
+              }
+              // 255 : overall
+              {
+                  const int k = OVR_IDX;
+                  const size_t Ct = static_cast<size_t>((k - N) / B);
+                  const size_t ct = static_cast<size_t>((k % B) ^ r);
+                  const size_t col = Ct * static_cast<size_t>(B) + ct;
+                  tile_out[row_local][col] = lout_row[static_cast<size_t>(k)];
+              }
+          }
 
-              const long rr_local2 = rr_global - static_cast<long>(tile_top_row_global);
-              const long cc_local2 = cc_global;
+          // —— 左半：按式 (1) 回写 Y2[0..N-1] 到历史位置 ——（保持你原逻辑）
+          {
+              const long R = static_cast<long>(row_global / static_cast<size_t>(B));
+              const int  r = static_cast<int>(row_global % static_cast<size_t>(B));
 
-              const bool in_range =
-                  (rr_local2 >= 0 && rr_local2 < static_cast<long>(H) &&
-                  cc_local2 >= 0 && cc_local2 < static_cast<long>(W));
+              for (int k = 0; k < N; ++k)
+              {
+                  const long br = (R ^ 1L)
+                                - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)
+                                - static_cast<long>(2 * (N / B))
+                                + static_cast<long>(2 * (k / B));
+                  const long bc = static_cast<long>(k / B);
+                  const long bit_row_in_block = static_cast<long>((k % B) ^ r);
+                  const long bit_col_in_block = static_cast<long>(r);
 
-              // —— Debug：严格要求必须命中；Release：可选择抛异常或计数 —— //
-              assert(in_range && "process_tile: write-back out of tile range");
+                  const long rr_global = br * B + bit_row_in_block;
+                  const long cc_global = bc * B + bit_col_in_block;
 
-              tile_out[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)] =
+                  const long rr_local2 = rr_global - static_cast<long>(tile_top_row_global);
+                  const long cc_local2 = cc_global;
+
+                  const bool in_range =
+                      (rr_local2 >= 0 && rr_local2 < static_cast<long>(H) &&
+                       cc_local2 >= 0 && cc_local2 < static_cast<long>(W));
+
+                  assert(in_range && "process_tile: write-back out of tile range");
+
+                  tile_out[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)] =
                       lout_row[static_cast<size_t>(k)];
+              }
           }
       } // r_off
   } // s
 
   return TileProcessResult<LLR>{std::move(tile_out), early_stop_triggered};
-} // process_tile
+}
+
 
   // ========== 窗口处理 ==========
 template <typename LLR>

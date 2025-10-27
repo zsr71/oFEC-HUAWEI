@@ -260,15 +260,15 @@ int main()
   Params base_params;
 
   // 示例候选集（起点与步进，可按需调整）
-  const std::vector<float> alpha_start_candidates = {0.01f,0.05f,0.1f,0.15f,0.2f,0.25f,0.3f,0.4f,0.5f,0.6f,0.7f,0.8f};
-  const std::vector<float> alpha_step_candidates  = {0.0f,0.01f,0.05f,0.1f,0.2f};
-  const std::vector<float> beta_start_candidates  = {0.1f,0.2f,0.3f,0.4f,0.5f,0.6f,0.7f,0.9f,1.2f,1.5f};
-  const std::vector<float> beta_step_candidates   = {0.0f,0.01f,0.05f,0.1f,0.2f};
+  const std::vector<float> alpha_start_candidates = {0.01f,0.1f,0.2f,0.25f,0.3f,0.4f,0.5f,0.6f,0.7f,0.8f};
+  const std::vector<float> alpha_step_candidates  = {0.0f,0.01f,0.05f,0.1f};
+  const std::vector<float> beta_start_candidates  = {0.1f,0.2f,0.3f,0.4f,0.5f,0.7f,0.9f,1.5f};
+  const std::vector<float> beta_step_candidates   = {0.0f,0.01f,0.05f,0.1f};
   const std::vector<int>   chase_l_candidates     = {6};
 
   // EbN0 扫描范围配置：起点、终点以及取样点数（均匀分布）
-  const float ebn0_start = 3.00f;
-  const float ebn0_end   = 3.5f;
+  const float ebn0_start = 3.07f;
+  const float ebn0_end   = 3.07f;
   const int   ebn0_points = 1;
 
   std::vector<float> sweep_ebn0_values;

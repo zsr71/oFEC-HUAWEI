@@ -265,25 +265,12 @@ void chase_decode_256(const LLR* Lin256,
                 omega[(size_t)j] = beta * d[(size_t)j];        // 无竞争者：Eq.(19)
             }
         }
-    }
-
-    // 外信息归一化：排除 |w|==β 的点，使 mean(|w|)=1
-    {
-        float acc = 0.f; int cnt = 0;
-        for (int j = 0; j < 256; ++j) {
-            if (std::fabs(omega[(size_t)j]) != beta) { acc += std::fabs(omega[(size_t)j]); cnt++; }
-        }
-        if (cnt > 0) {
-            const float g = acc / cnt;
-            if (g > 0.f) for (int j = 0; j < 256; ++j) omega[(size_t)j] /= g;
-        }
-    }
-
+    
     // 输出 α·ω（上层用“加等于”累加到总 LLR：L_next = L_cur + α·ω）
     for (int j = 0; j < 256; ++j)
         Y2_256[(size_t)j] = llr_from_float<LLR>(alpha * omega[(size_t)j]);
 }
-
+}
 // ======================== 2-arg wrapper (kept for API parity) ========================
 template<typename LLR>
 void chase_decode_256(const LLR* Y256, LLR* Y2_256, const Params& p)

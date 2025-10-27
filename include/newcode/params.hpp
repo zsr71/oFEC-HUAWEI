@@ -17,7 +17,7 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     = 16 * 110 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     = 6 * 110 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 43;                 // 随机种子
   size_t NUM_GUARD_SUBROWS = 2;                  // 保护块子行数 G
 
@@ -49,8 +49,8 @@ struct Params {
 
   // —— 每个 tile 是否切换到硬判决译码 —— //
   bool HARD_DECODE_DEFAULT = false;                               // 默认仍使用软判决
-  std::vector<int> HARD_TILE_LIST = {0, 0, 0, 0, 0};               // 0=软判决，非 0=硬判决
-  float HARD_LLR_MAG = 12.0f;                                      // 硬判决映射的 |LLR| 大小
+  std::vector<int> HARD_TILE_LIST = {0, 0, 0, 0, 1};               // 0=软判决，非 0=硬判决
+  float HARD_LLR_MAG = 1.0f;                                      // 硬判决映射的 |LLR| 大小
 
   // ===== 便捷派生（统一换算为“比特行 rows”）=====
   constexpr size_t tile_height_rows() const {

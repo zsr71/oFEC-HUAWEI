@@ -13,7 +13,7 @@ void apply_known_zero_prefix(Matrix<float>& llr_mat, const Params& p)
     if (R == 0 || C == 0) return;
 
     // 已知前缀行数：取窗口高与总行数的较小者
-    size_t known_rows = std::min(p.win_height_rows(), R);
+    size_t known_rows = std::min(p.tile_height_rows(), R);
 
     // 1) 已知前缀行强制为比特0（大正 LLR）
     if (known_rows > 0)

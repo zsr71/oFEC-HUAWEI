@@ -49,12 +49,22 @@ std::vector<uint8_t> flatten_row_major(const Matrix<uint8_t>& matrix)
   return out;
 }
 
+// 将硬比特矩阵(0/1)转换为“理想”LLR矩阵：0 -> +A，1 -> -A（供提取 TX 参考信息）
+static Matrix<float> hard_bits_to_llr_matrix(const Matrix<uint8_t>& bits_mat, float A = 50.0f)
+{
+  Matrix<float> m(bits_mat.rows(), bits_mat.cols());
+  for (size_t r = 0; r < bits_mat.rows(); ++r)
+    for (size_t c = 0; c < bits_mat.cols(); ++c)
+      m[r][c] = (bits_mat[r][c] ? -A : +A);
+  return m;
+}
+
 // Run the pipeline using plain float LLRs.
-PipelineResult run_with_float(const Matrix<float>& llr_mat,
-                              const Params& params,
-                              const std::vector<uint8_t>& info_bits,
-                              const std::string& label,
-                              float ebn0_dB)
+static PipelineResult run_with_float(const Matrix<float>& llr_mat,
+                                     const Params& params,
+                                     const std::vector<uint8_t>& tx_info_bits_ref,
+                                     const std::string& label,
+                                     float ebn0_dB)
 {
   std::cout << "[INFO] (" << label << ") Running decoder in FLOAT (no quantization, no clipping)\n";
 
@@ -71,9 +81,10 @@ PipelineResult run_with_float(const Matrix<float>& llr_mat,
   const std::string post_label = label + " Post-FEC";
 
   PipelineResult result;
-  result.ebn0_db = ebn0_dB;
-  result.pre_fec  = compute_and_print_ber(info_bits, rx_info_bits_pre,  pre_label.c_str(),  params);
-  result.post_fec = compute_and_print_ber(info_bits, rx_info_bits_post, post_label.c_str(), params);
+  result.ebn0_db  = ebn0_dB;
+  // 基准采用从 code_matrix 生成的 TX 参考信息（通过同一提取器得到）
+  result.pre_fec  = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_pre,  pre_label.c_str(),  params);
+  result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(), params);
   result.tile_early_stop_pct = compute_early_stop_percentages(tile_stats);
 
   std::cout << "[DONE] (" << label << ") Pipeline(float) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> decode(float) -> info extract & BER\n";
@@ -82,11 +93,11 @@ PipelineResult run_with_float(const Matrix<float>& llr_mat,
 
 // Run the pipeline using qfloat-quantised LLRs.
 template<int NBITS>
-PipelineResult run_with_qfloat(const Matrix<float>& llr_mat,
-                               const Params& params,
-                               const std::vector<uint8_t>& info_bits,
-                               const std::string& label,
-                               float ebn0_dB)
+static PipelineResult run_with_qfloat(const Matrix<float>& llr_mat,
+                                      const Params& params,
+                                      const std::vector<uint8_t>& tx_info_bits_ref,
+                                      const std::string& label,
+                                      float ebn0_dB)
 {
   auto q_mat = quantize_matrix_to_qfloat<NBITS>(llr_mat, qfloat<NBITS>::DEFAULT_CLIP);
   std::cout << "[INFO] (" << label << ") Quantized qfloat<" << NBITS << ">: clip="
@@ -109,9 +120,9 @@ PipelineResult run_with_qfloat(const Matrix<float>& llr_mat,
   const std::string post_label = label + " Post-FEC";
 
   PipelineResult result;
-  result.ebn0_db = ebn0_dB;
-  result.pre_fec  = compute_and_print_ber(info_bits, rx_info_bits_pre,  pre_label.c_str(),  params);
-  result.post_fec = compute_and_print_ber(info_bits, rx_info_bits_post, post_label.c_str(), params);
+  result.ebn0_db  = ebn0_dB;
+  result.pre_fec  = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_pre,  pre_label.c_str(),  params);
+  result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(), params);
   result.tile_early_stop_pct = compute_early_stop_percentages(tile_stats);
 
   std::cout << "[DONE] (" << label << ") Pipeline(qfloat<" << NBITS
@@ -128,10 +139,19 @@ PipelineResult run_pipeline(const Params& params, const std::string& label, floa
   auto info_bits = generate_bits(params);
   std::cout << "[INFO] (" << label << ") Generated bits: " << info_bits.size() << "\n";
 
+  // 编码
   auto code_matrix = ofec_encode(info_bits, params);
   std::cout << "[INFO] (" << label << ") oFEC matrix: " << code_matrix.rows()
             << " x " << code_matrix.cols() << "\n";
 
+  // === 新增：从编码矩阵得到“理想”LLR，再用同一提取器抽取 TX 参考信息 ===
+  const float TX_REF_LLR = 50.0f; // 任意足够大的幅度即可
+  Matrix<float> tx_llr_mat = hard_bits_to_llr_matrix(code_matrix, TX_REF_LLR);
+  auto tx_info_bits_ref = rx_info_from_bit_llr(tx_llr_mat, params);
+  std::cout << "[INFO] (" << label << ") tx_info_bits_ref (by extractor): "
+            << tx_info_bits_ref.size() << "\n";
+
+  // 展平比特 -> 调制
   auto coded_bits = flatten_row_major(code_matrix);
   std::cout << "[INFO] (" << label << ") Coded bits (flattened): " << coded_bits.size() << "\n";
 
@@ -164,14 +184,16 @@ PipelineResult run_pipeline(const Params& params, const std::string& label, floa
 
   Matrix<float> llr_mat = llr_to_matrix_row_major(llr, code_matrix.rows(), code_matrix.cols());
 
+  // 已知前缀的先验处理（如果使用）
   apply_known_zero_prefix(llr_mat, params);
 
+  // 选择解码数值格式
   if (params.LLR_BITS == 16) {
-    return run_with_float(llr_mat, params, info_bits, label, ebn0_dB);
+    return run_with_float(llr_mat, params, tx_info_bits_ref, label, ebn0_dB);
   } else if (params.LLR_BITS == 5) {
-    return run_with_qfloat<5>(llr_mat, params, info_bits, label, ebn0_dB);
+    return run_with_qfloat<5>(llr_mat, params, tx_info_bits_ref, label, ebn0_dB);
   } else if (params.LLR_BITS == 4) {
-    return run_with_qfloat<4>(llr_mat, params, info_bits, label, ebn0_dB);
+    return run_with_qfloat<4>(llr_mat, params, tx_info_bits_ref, label, ebn0_dB);
   }
 
   throw std::runtime_error("[ERROR] Unsupported p.LLR_BITS value");
