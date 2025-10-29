@@ -19,58 +19,55 @@ find_package(Threads REQUIRED)
 # 统一头文件路径
 set(NEWCODE_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+# 小助手：按存在情况选 pipeline_runner 源文件位置
+set(PIPELINE_RUNNER_SRC "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/pipeline_runner.cpp")
+  set(PIPELINE_RUNNER_SRC src/pipeline_runner.cpp)
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/frontend/pipeline_runner.cpp")
+  set(PIPELINE_RUNNER_SRC src/frontend/pipeline_runner.cpp)
+endif()
+
 # ==============================
-# Shared "Frontend" Library
-# （解码前/公共流水线）
+# 源文件自动收集（更耐用）
 # ==============================
-# 如果你尚未把这些文件迁到 src/frontend/，请把路径改回当前实际路径即可
+# 解码前 / 公共流水线
+file(GLOB FRONTEND_SRCS CONFIGURE_DEPENDS
+  "src/frontend/*.cpp"
+)
+
+# 两个解码变体
+file(GLOB DECODER_PLAIN_SRCS   CONFIGURE_DEPENDS "src/decoders/plain/*.cpp")
+file(GLOB DECODER_EBCHPF_SRCS  CONFIGURE_DEPENDS "src/decoders/ebchPF/*.cpp")
+
+# 若存在公共译码源（两变体共享），自动并入两边
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/decoder_common")
+  file(GLOB DECODER_COMMON_SRCS CONFIGURE_DEPENDS "src/decoder_common/*.cpp")
+  list(APPEND DECODER_PLAIN_SRCS  ${DECODER_COMMON_SRCS})
+  list(APPEND DECODER_EBCHPF_SRCS ${DECODER_COMMON_SRCS})
+endif()
+
+# ==============================
+# Shared "Frontend" Library（解码前/公共流水线）
+# ==============================
 add_library(newcode_frontend STATIC
-  src/frontend/bitgen.cpp
-  src/frontend/ofec_encoder.cpp
-  src/frontend/qam.cpp
-  src/frontend/awgn.cpp
-  src/frontend/qam_llr.cpp
-  src/frontend/ofec_llr_matrix.cpp
-  src/frontend/info_extract.cpp
-  src/frontend/llr_qpack.cpp
-  src/frontend/llr_known_prefix.cpp
-  src/frontend/qfloat.cpp
-  src/frontend/interleaver_identity.cpp
-  src/frontend/interleaver_ofec.cpp
-  # 如果你希望把 pipeline_runner 作为公共组件复用，请取消下一行注释并把文件移动到 frontend
-  # src/frontend/pipeline_runner.cpp
+  ${FRONTEND_SRCS}
 )
 target_include_directories(newcode_frontend PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(newcode_frontend PUBLIC Threads::Threads)
 
 # ==============================
-# Decoder Variants
-# （解码后两套实现）
+# Decoder Variants（解码后两套实现）
 # ==============================
-# —— Plain 变体：无交织/或你的“非 ebchPF”路径 —— #
+# —— Plain 变体：无交织/非 ebchPF —— #
 add_library(decoder_plain STATIC
-  src/decoders/plain/ofec_decoder.cpp
-  src/decoders/plain/decoder_core.cpp
-  src/decoders/plain/ofec_decoder_hard.cpp
-  src/decoders/plain/chase256.cpp
-  src/decoders/plain/llr_to_bit.cpp
-  src/decoders/plain/bch_255_239.cpp
-  src/decoders/plain/decoder_factory.cpp   # 你的工厂（make_decoder("plain")）
-  # 如有其它专属实现文件，在此追加
+  ${DECODER_PLAIN_SRCS}
 )
 target_include_directories(decoder_plain PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_plain PUBLIC newcode_frontend)
 
 # —— ebchPF 变体：有交织/你的 ebchPF 路径 —— #
 add_library(decoder_ebchPF STATIC
-  src/decoders/ebchPF/ofec_decoder.cpp
-  src/decoders/ebchPF/decoder_core.cpp
-  src/decoders/ebchPF/ofec_decoder_hard.cpp
-  src/decoders/ebchPF/chase256.cpp
-  src/decoders/ebchPF/llr_to_bit.cpp
-  src/decoders/ebchPF/bch_255_239.cpp
-  src/decoders/ebchPF/decoder_factory.cpp  # 你的工厂（make_decoder("ebchPF")）
-  # 如有其它专属实现文件，在此追加
+  ${DECODER_EBCHPF_SRCS}
 )
 target_include_directories(decoder_ebchPF PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_ebchPF PUBLIC newcode_frontend)
@@ -78,11 +75,10 @@ target_link_libraries(decoder_ebchPF PUBLIC newcode_frontend)
 # ==============================
 # Apps
 # ==============================
-# 方案A：两个新的 demo 入口（建议）
+# 新的 demo 入口
 add_executable(ofec_app_plain
   apps/ofec_app_plain.cpp
-  # 若 pipeline_runner 仍在 src/ 下而非 frontend，请把它编进可执行：
-  src/pipeline_runner.cpp
+  ${PIPELINE_RUNNER_SRC}
 )
 target_link_libraries(ofec_app_plain
   PRIVATE newcode_frontend decoder_plain
@@ -90,18 +86,17 @@ target_link_libraries(ofec_app_plain
 
 add_executable(ofec_app_interleaved
   apps/ofec_app_interleaved.cpp
-  # 同上，如未迁移：
-  src/pipeline_runner.cpp
+  ${PIPELINE_RUNNER_SRC}
 )
 target_link_libraries(ofec_app_interleaved
   PRIVATE newcode_frontend decoder_ebchPF
 )
 
-# 方案B：保留你现有的两个入口，默认走 plain 变体（你可按需改为 ebchPF）
-add_executable(ofec_single apps/ofec_single.cpp src/pipeline_runner.cpp)
+# 保留你现有的两个入口，默认走 plain 变体（可按需改）
+add_executable(ofec_single apps/ofec_single.cpp ${PIPELINE_RUNNER_SRC})
 target_link_libraries(ofec_single PRIVATE newcode_frontend decoder_plain)
 
-add_executable(ofec_sweep  apps/ofec_sweep.cpp  src/pipeline_runner.cpp)
+add_executable(ofec_sweep  apps/ofec_sweep.cpp  ${PIPELINE_RUNNER_SRC})
 target_link_libraries(ofec_sweep  PRIVATE newcode_frontend decoder_plain)
 
 # ==============================
@@ -109,7 +104,6 @@ target_link_libraries(ofec_sweep  PRIVATE newcode_frontend decoder_plain)
 # ==============================
 include(CTest)
 if(BUILD_TESTING)
-  # 这些测试大多只依赖“前处理”与基础类型即可
   add_executable(test_matrix tests/test_matrix.cpp)
   target_link_libraries(test_matrix PRIVATE newcode_frontend)
   add_test(NAME MatrixTest COMMAND test_matrix)
