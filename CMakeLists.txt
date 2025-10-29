@@ -71,6 +71,16 @@ add_library(decoder_ebchPF STATIC
 )
 target_include_directories(decoder_ebchPF PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_ebchPF PUBLIC newcode_frontend)
+# ------- Compatibility fallbacks: use legacy file locations if still present -------
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/bch_255_239.cpp")
+  target_sources(decoder_plain  PRIVATE src/bch_255_239.cpp)
+  target_sources(decoder_ebchPF PRIVATE src/bch_255_239.cpp)
+endif()
+
+# 如果 ofec_encoder 还没移动到 frontend，也先把旧路径编入（以便 llr_reshape_demo 链接过）
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/ofec_encoder.cpp")
+  target_sources(newcode_frontend PRIVATE src/ofec_encoder.cpp)
+endif()
 
 # ==============================
 # Apps
