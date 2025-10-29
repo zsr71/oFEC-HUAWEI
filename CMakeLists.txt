@@ -58,38 +58,38 @@ target_link_libraries(newcode_frontend PUBLIC Threads::Threads)
 # ==============================
 # Decoder Variants（解码后两套实现）
 # ==============================
-# —— Plain 变体：无交织/非 ebchPF —— #
 add_library(decoder_plain STATIC
   ${DECODER_PLAIN_SRCS}
 )
 target_include_directories(decoder_plain PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_plain PUBLIC newcode_frontend)
 
-# —— ebchPF 变体：有交织/你的 ebchPF 路径 —— #
 add_library(decoder_ebchPF STATIC
   ${DECODER_EBCHPF_SRCS}
 )
 target_include_directories(decoder_ebchPF PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_ebchPF PUBLIC newcode_frontend)
-# ------- Compatibility fallbacks: use legacy file locations if still present -------
+
+# ------- Compatibility fallbacks（临时兜底，便于平滑迁移） -------
+# 编码侧依赖的 BCH：让 frontend 也能提供 parity/encode
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/bch_255_239.cpp")
-  target_sources(decoder_plain  PRIVATE src/bch_255_239.cpp)
-  target_sources(decoder_ebchPF PRIVATE src/bch_255_239.cpp)
+  target_sources(newcode_frontend PRIVATE src/bch_255_239.cpp)
 endif()
 
-# 如果 ofec_encoder 还没移动到 frontend，也先把旧路径编入（以便 llr_reshape_demo 链接过）
+# 如果 ofec_encoder 仍在旧路径，也一起编进 frontend
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/ofec_encoder.cpp")
   target_sources(newcode_frontend PRIVATE src/ofec_encoder.cpp)
 endif()
-# ------- Compatibility fallbacks: legacy file locations to satisfy encoder side -------
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/bch_255_239.cpp")
-  target_sources(newcode_frontend PRIVATE src/bch_255_239.cpp)
+
+# 如果专门的模板实例化文件存在（建议放在 src/decoder_common/）
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/decoder_common/ofec_decoder_inst.cpp")
+  target_sources(decoder_plain  PRIVATE src/decoder_common/ofec_decoder_inst.cpp)
+  target_sources(decoder_ebchPF PRIVATE src/decoder_common/ofec_decoder_inst.cpp)
 endif()
 
 # ==============================
 # Apps
 # ==============================
-# 新的 demo 入口
 add_executable(ofec_app_plain
   apps/ofec_app_plain.cpp
   ${PIPELINE_RUNNER_SRC}
@@ -106,7 +106,7 @@ target_link_libraries(ofec_app_interleaved
   PRIVATE newcode_frontend decoder_ebchPF
 )
 
-# 保留你现有的两个入口，默认走 plain 变体（可按需改）
+# 保留现有两个入口，默认走 plain 变体
 add_executable(ofec_single apps/ofec_single.cpp ${PIPELINE_RUNNER_SRC})
 target_link_libraries(ofec_single PRIVATE newcode_frontend decoder_plain)
 
@@ -135,14 +135,15 @@ if(BUILD_TESTING)
   add_test(NAME QAMLLRTest COMMAND test_qam_llr)
 
   add_executable(llr_reshape_demo tests/llr_reshape_demo.cpp)
-  target_link_libraries(llr_reshape_demo PRIVATE newcode_frontend)
+  # 注意：为了满足 ofec_encoder 对 BCH 的依赖，这里也链接 decoder_plain（带来 BCH/译码侧符号）
+  target_link_libraries(llr_reshape_demo PRIVATE newcode_frontend decoder_plain)
   add_test(NAME LLRReshapeTest COMMAND llr_reshape_demo)
 
   add_executable(test_interleaver tests/test_interleaver.cpp)
   target_link_libraries(test_interleaver PRIVATE newcode_frontend)
   add_test(NAME InterleaverTest COMMAND test_interleaver)
 
-  # BCH 专项测试通常依赖译码实现，这里链接到一个变体（任选其一）
+  # BCH 专项测试依赖译码实现，这里链接到一个变体（任选其一）
   add_executable(test_bch tests/test_bch.cpp)
   target_link_libraries(test_bch PRIVATE newcode_frontend decoder_plain)
   add_test(NAME BCHTest COMMAND test_bch)
