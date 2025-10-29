@@ -31,3 +31,5 @@ log/
 .VSCodeCounter/2025-10-27_23-30-43/diff-details.md
 .gitignore
 .gitignore
+.VSCodeCounter/
+**/.VSCodeCounter/

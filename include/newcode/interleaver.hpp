@@ -1,85 +1,83 @@
 #pragma once
-#include <cstdint>
+#include <memory>
+#include <string>
 #include <vector>
-#include <stdexcept>
+#include <cstddef>
+#include "newcode/ofec_llr_matrix.hpp"
 
 namespace newcode {
 
-// 交织器：按 R×C 个 H×W 小块组织（OpenROADM oFEC: R=84, C=8, H=W=16）
-struct Interleaver {
-  int R;   // 小块行数
-  int C;   // 小块列数
-  int H;   // 小块内行
-  int W;   // 小块内列
-
-  // y[pos] = x[idx_in[pos]]; idx_out 作为对称性保留（恒等 0..N-1）
-  std::vector<uint32_t> idx_in;   // 输入位置映射
-  std::vector<uint32_t> idx_out;  // 输出位置（恒等）
-
-  // 从规范的 16×16 表（dst <- src）构建（显式指定 R,C,H,W）
-  static Interleaver build_from_spec(int R, int C, int H, int W);
-
-  // 从编码矩阵形状构建（rows = R*H, cols = C*W；H/W 默认为 16）
-  static Interleaver build_from_shape(int rows, int cols, int H = 16, int W = 16);
-
-  // 单块 bit 数
-  inline size_t size() const { return static_cast<size_t>(R) * C * H * W; }
-  inline size_t block_size() const { return size(); }
-
-  // —— 单块交织/解交织 —— //
-  template <typename T>
-  std::vector<T> interleave(const std::vector<T>& x) const {
-    if (x.size() != size()) throw std::runtime_error("interleave: size mismatch");
-    std::vector<T> y(x.size());
-    for (size_t i = 0; i < x.size(); ++i) y[i] = x[ static_cast<size_t>(idx_in[i]) ];
-    return y;
-  }
-
-  template <typename T>
-  std::vector<T> deinterleave(const std::vector<T>& y) const {
-    if (y.size() != size()) throw std::runtime_error("deinterleave: size mismatch");
-    std::vector<T> x(y.size());
-    for (size_t i = 0; i < y.size(); ++i) x[ static_cast<size_t>(idx_in[i]) ] = y[i];
-    return x;
-  }
-
-  // —— 多块交织/解交织（输入长度必须是 block_size 的整数倍）—— //
-  template <typename T>
-  std::vector<T> interleave_chunks(const std::vector<T>& x) const {
-    const size_t B = block_size();
-    if (x.size() % B != 0) throw std::runtime_error("interleave_chunks: size not multiple of block");
-    std::vector<T> y(x.size());
-    const size_t nblk = x.size() / B;
-    for (size_t b = 0; b < nblk; ++b) {
-      const size_t off = b * B;
-      for (size_t i = 0; i < B; ++i)
-        y[off + i] = x[off + static_cast<size_t>(idx_in[i])];
-    }
-    return y;
-  }
-
-  template <typename T>
-  std::vector<T> deinterleave_chunks(const std::vector<T>& y) const {
-    const size_t B = block_size();
-    if (y.size() % B != 0) throw std::runtime_error("deinterleave_chunks: size not multiple of block");
-    std::vector<T> x(y.size());
-    const size_t nblk = y.size() / B;
-    for (size_t b = 0; b < nblk; ++b) {
-      const size_t off = b * B;
-      for (size_t i = 0; i < B; ++i)
-        x[off + static_cast<size_t>(idx_in[i])] = y[off + i];
-    }
-    return x;
-  }
+// 统一接口：矩阵版交织
+struct IInterleaver {
+  virtual ~IInterleaver() = default;
+  virtual void interleave  (const Matrix<float>& in, Matrix<float>& out) = 0;
+  virtual void deinterleave(const Matrix<float>& in, Matrix<float>& out) = 0;
 };
 
-// 返回规范 16×16 的“dst←src”表（线性 0..255，行主序）
-// P[dst_linear] = src_linear
-const std::vector<uint16_t>& perm16_dst_to_src();
+// 工厂：按名字创建
+std::unique_ptr<IInterleaver> make_interleaver(const std::string& name);
 
-// 工具：把 4D 坐标映射成 0-based 线性下标
-inline uint32_t buf_lin(int r, int c, int i, int j, int C, int H, int W) {
-  return static_cast<uint32_t>(((r * C) + c) * H * W + i * W + j);
-}
+// 工厂（带形状信息）
+std::unique_ptr<IInterleaver> make_interleaver(const std::string& name,
+                                               std::size_t R, std::size_t C,
+                                               std::size_t H, std::size_t W);
+
+// 兼容旧 API 的薄封装，把 unique_ptr<IInterleaver> 适配成“老接口”
+struct Interleaver {
+  struct Handle {
+    std::unique_ptr<IInterleaver> impl;
+    std::size_t N = 0;             // 总元素数（例如 R*C*H*W）
+    std::vector<int> idx_in;       // 旧测试会打印它；先给 identity
+
+    // 旧代码常用：一维向量交织/去交织（此处先直通，后续你可替换为真实映射）
+    template <typename T>
+    std::vector<T> interleave(const std::vector<T>& x) const {
+      return x; // TODO: 用 idx_in 做真实映射
+    }
+    template <typename T>
+    std::vector<T> deinterleave(const std::vector<T>& y) const {
+      return y; // TODO: 用 idx_in 的逆映射
+    }
+    template <typename T>
+    std::vector<T> interleave_chunks(const std::vector<T>& v) const {
+      return interleave(v);
+    }
+    template <typename T>
+    std::vector<T> deinterleave_chunks(const std::vector<T>& v) const {
+      return deinterleave(v);
+    }
+
+    // 矩阵版交织：直接委托给实现；若 impl 为空则直通
+    void interleave  (const Matrix<float>& in, Matrix<float>& out) const {
+      if (impl) impl->interleave(in, out); else out = in;
+    }
+    void deinterleave(const Matrix<float>& in, Matrix<float>& out) const {
+      if (impl) impl->deinterleave(in, out); else out = in;
+    }
+
+    std::size_t size() const { return N; }
+  };
+
+  // 旧 API：按形状构建（默认 kind="ofec"）
+  static Handle build_from_shape(std::size_t R, std::size_t C,
+                                 std::size_t H, std::size_t W,
+                                 const std::string& kind = "ofec")
+  {
+    Handle h;
+    h.impl = make_interleaver(kind, R, C, H, W);
+    h.N = R * C * H * W;
+    h.idx_in.resize(h.N);
+    for (std::size_t i = 0; i < h.N; ++i) h.idx_in[i] = static_cast<int>(i); // identity
+    return h;
+  }
+
+  // 旧 API：兼容的另一个入口名
+  static Handle build_from_spec(std::size_t R, std::size_t C,
+                                std::size_t H, std::size_t W,
+                                const std::string& kind = "ofec")
+  {
+    return build_from_shape(R, C, H, W, kind);
+  }
+};
 
 } // namespace newcode

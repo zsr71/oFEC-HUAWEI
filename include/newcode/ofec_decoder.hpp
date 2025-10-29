@@ -84,5 +84,4 @@ extern template TileProcessResult<newcode::qfloat<4>> process_tile<newcode::qflo
 extern template TileProcessResult<newcode::qfloat<5>> process_tile<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
                                                                                        const Matrix<newcode::qfloat<5>>&,
                                                                                        const Params&, std::size_t, bool);
-
 } // namespace newcode

@@ -4,7 +4,7 @@
 #include <cassert>
 
 int main() {
-  using namespace ofec;
+  using namespace newcode;
 
   // OpenROADM oFEC 常用参数
   const int R = 84, C = 8, H = 16, W = 16;
