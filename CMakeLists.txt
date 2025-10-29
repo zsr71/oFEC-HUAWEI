@@ -81,6 +81,10 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/ofec_encoder.cpp")
   target_sources(newcode_frontend PRIVATE src/ofec_encoder.cpp)
 endif()
+# ------- Compatibility fallbacks: legacy file locations to satisfy encoder side -------
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/bch_255_239.cpp")
+  target_sources(newcode_frontend PRIVATE src/bch_255_239.cpp)
+endif()
 
 # ==============================
 # Apps
