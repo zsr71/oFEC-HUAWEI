@@ -54,6 +54,9 @@ add_library(newcode_frontend STATIC
 )
 target_include_directories(newcode_frontend PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(newcode_frontend PUBLIC Threads::Threads)
+target_sources(newcode_frontend PRIVATE
+  src/ber.cpp
+)
 
 # ==============================
 # Decoder Variants（解码后两套实现）
@@ -63,12 +66,26 @@ add_library(decoder_plain STATIC
 )
 target_include_directories(decoder_plain PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_plain PUBLIC newcode_frontend)
+target_sources(decoder_plain PRIVATE
+  src/chase256.cpp
+  src/decoder_core.cpp
+  src/llr_to_bit.cpp
+  src/ofec_decoder.cpp
+  src/ofec_decoder_hard.cpp
+)
 
 add_library(decoder_ebchPF STATIC
   ${DECODER_EBCHPF_SRCS}
 )
 target_include_directories(decoder_ebchPF PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_ebchPF PUBLIC newcode_frontend)
+target_sources(decoder_ebchPF PRIVATE
+  src/chase256.cpp
+  src/decoder_core.cpp
+  src/llr_to_bit.cpp
+  src/ofec_decoder.cpp
+  src/ofec_decoder_hard.cpp
+)
 
 # ------- Compatibility fallbacks（临时兜底，便于平滑迁移） -------
 # 编码侧依赖的 BCH：让 frontend 也能提供 parity/encode
