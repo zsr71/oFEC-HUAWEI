@@ -21,8 +21,8 @@ static constexpr float       kEbN0_db       = 3.07f;
 static constexpr int         kChaseL_override = 6;   // 设为 -1 则沿用 Params 默认
 
 // 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
-static constexpr float kAlpha_fill = 0.10f;
-static constexpr float kBeta_fill  = 0.80f;
+static constexpr float kAlpha_fill = 0.8f;
+static constexpr float kBeta_fill  = 0.90f;
 
 // 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
 static const std::vector<float> kAlpha_explicit = {

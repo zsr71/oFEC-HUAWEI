@@ -98,7 +98,7 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
   // 遍历底部 SBR 个 sub-block rows：从最底开始，组装 decoder 输入矩阵
   for (int s = 0; s < SBR; ++s)
   {
-      const size_t sbr_row0_local = H - static_cast<size_t>((s + 1) * B);
+      const size_t sbr_row0_local = H - static_cast<size_t>((SBR-s) * B);
       for (int r_off = 0; r_off < B; ++r_off)
       {
           const size_t row_idx   = static_cast<size_t>(s * B + r_off);
@@ -187,6 +187,56 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
 
   // 调用 Chase/BCH 译码核心（内部已实例化）
   auto decoder_res = Decoder_Core(lin_matrix, lch_matrix, use_hard_decode, p);
+
+  // ===== 外信息归一化（decoder_res.lout 内已是 α·ω）=====
+  // 目标：等价于把 ω 归一到 mean(|ω|)=1；即对 α·ω 乘 scale = α / gα；
+  // 其中 gα = mean(|α·ω|) ，统计时跳过“回退点”（≈ ±αβ）。
+  {
+      auto is_fallback = [&](float w) -> bool {
+          const float target = p.ALPHA * p.beta;             // ≈ |α·β|
+          const float diff   = std::fabs(std::fabs(w) - target);
+          const float tol    = 1e-4f * std::max(1.0f, target);
+          return diff <= tol;
+      };
+
+      double acc = 0.0;
+      std::size_t cnt = 0;
+
+      const std::size_t Rcnt = decoder_res.lout.rows();
+      const std::size_t Ccnt = decoder_res.lout.cols();
+
+      // 先统计 gα
+      for (std::size_t r = 0; r < Rcnt; ++r)
+      {
+          if (!decoder_res.produced_rows[r]) continue;
+          for (std::size_t j = 0; j < Ccnt; ++j)
+          {
+              const float w = llr_to_float(decoder_res.lout[r][j]); // α·ω
+              if (is_fallback(w)) continue;
+              acc += std::fabs(w);
+              ++cnt;
+          }
+      }
+
+      if (cnt > 0)
+      {
+          const float g_alpha = (float)(acc / (double)cnt);
+          if (g_alpha > 0.f)
+          {
+              const float scale = p.ALPHA / g_alpha; // = 1 / mean(|ω|)
+              for (std::size_t r = 0; r < Rcnt; ++r)
+              {
+                  if (!decoder_res.produced_rows[r]) continue;
+                  for (std::size_t j = 0; j < Ccnt; ++j)
+                  {
+                      const float w = llr_to_float(decoder_res.lout[r][j]); // α·ω
+                      if (is_fallback(w)) continue; // 保持 ±αβ 不变
+                      decoder_res.lout[r][j] = llr_from_float<LLR>(w * scale);
+                  }
+              }
+          }
+      }
+  }
 
   // ====== 回写外信息到 tile_out（作为下一轮/下一组件先验） ======
   for (int s = 0; s < SBR; ++s)
