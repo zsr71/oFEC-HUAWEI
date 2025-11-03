@@ -13,7 +13,8 @@ static void print_usage(const char* prog) {
   std::cout
     << "Usage: " << prog << " [--ebn0 2,4,6,8]\n"
     << "  Run the oFEC pipeline without interleaving (plain).\n"
-    << "  --ebn0   Comma-separated Eb/N0 list in dB (default: 2,4,6,8)\n";
+    << "  --ebn0       Comma-separated Eb/N0 list in dB (default: 2,4,6,8)\n"
+    << "  --no-norm    Disable extrinsic normalization (default: on)\n";
 }
 
 static std::vector<float> parse_ebn0_list(const std::string& s) {
@@ -29,6 +30,7 @@ static std::vector<float> parse_ebn0_list(const std::string& s) {
 int main(int argc, char** argv) {
   // 默认的 Eb/N0 列表
   std::vector<float> ebn0_list = {2.f, 4.f, 6.f, 8.f};
+  bool normalize_extrinsic = true;
 
   // 解析命令行
   for (int i = 1; i < argc; ++i) {
@@ -38,6 +40,8 @@ int main(int argc, char** argv) {
       return 0;
     } else if (arg == "--ebn0" && i + 1 < argc) {
       ebn0_list = parse_ebn0_list(argv[++i]);
+    } else if (arg == "--no-norm") {
+      normalize_extrinsic = false;
     } else {
       std::cerr << "Unknown option: " << arg << "\n";
       print_usage(argv[0]);
@@ -47,11 +51,15 @@ int main(int argc, char** argv) {
 
   // 运行流水线：不交织（用标签区分场景）
   Params p; // 使用默认参数（块尺寸、调制、帧长等都走默认）
+  PipelineConfig cfg;
+  cfg.interleaver_name = "identity";
+  cfg.decoder_name = "plain";
+  cfg.normalize_extrinsic = normalize_extrinsic;
   for (float eb : ebn0_list) {
     std::cout << "\n=== [plain] Eb/N0 = " << eb << " dB ===\n";
     // run_pipeline 内部会完成编码/调制/加噪/LLR/译码并打印 BER（若你在 pipeline 中实现了打印）
     // 第2个参数是场景标签，便于统计/输出区分
-    (void)run_pipeline(p, /*label=*/"plain", /*ebn0_db=*/eb);
+    (void)run_pipeline(p, cfg, /*label=*/"plain", /*ebn0_db=*/eb);
   }
   return 0;
 }

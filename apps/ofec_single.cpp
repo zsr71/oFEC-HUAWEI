@@ -19,6 +19,7 @@ namespace fs = std::filesystem;
 static constexpr const char* kLabel         = "debug_L6";
 static constexpr float       kEbN0_db       = 3.07f;
 static constexpr int         kChaseL_override = 6;   // 设为 -1 则沿用 Params 默认
+static constexpr bool        kNormalizeExtrinsic = false;
 
 // 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
 static constexpr float kAlpha_fill = 0.8f;
@@ -26,11 +27,13 @@ static constexpr float kBeta_fill  = 0.90f;
 
 // 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
 static const std::vector<float> kAlpha_explicit = {
-  0.3f, 0.35f, 0.40f, 0.45f,0.45f
+  0.4f,0.4f,0.4f,0.8f
 };
 static const std::vector<float> kBeta_explicit = {
-  0.10f, 0.20f, 0.30f, 0.40f,0.40f
+  0.30f,0.30f,0.60f,0.80f
 };
+static constexpr const char* kInterleaverName = "identity";
+static constexpr const char* kDecoderName = "plain";
 // =============================
 
 static std::string now_stamp() {
@@ -50,6 +53,17 @@ static std::string now_stamp() {
 static void ensure_dir(const fs::path& p) {
   std::error_code ec;
   fs::create_directories(p, ec);
+}
+
+static std::string format_positions(const std::vector<std::size_t>& positions) {
+  std::ostringstream oss;
+  oss << "[";
+  for (size_t i = 0; i < positions.size(); ++i) {
+    if (i) oss << ", ";
+    oss << positions[i];
+  }
+  oss << "]";
+  return oss.str();
 }
 
 int main() {
@@ -96,13 +110,26 @@ int main() {
   both(", Eb/N0="); both(kEbN0_db);
   both(" dB, CHASE_L="); both(p.CHASE_L); both(")\n");
 
-  PipelineResult r = run_pipeline(p, kLabel, kEbN0_db);
+  PipelineConfig cfg;
+  cfg.interleaver_name = kInterleaverName;
+  cfg.decoder_name = kDecoderName;
+  cfg.normalize_extrinsic = kNormalizeExtrinsic;
+
+  PipelineResult r = run_pipeline(p, cfg, kLabel, kEbN0_db);
 
   // 4) 概要
   both("[RESULT] Pre-FEC BER="); both(r.pre_fec.ber);
   both(" (errs="); both(r.pre_fec.errors); both("/"); both(r.pre_fec.total); both(")");
   both(" | Post-FEC BER="); both(r.post_fec.ber);
   both(" (errs="); both(r.post_fec.errors); both("/"); both(r.post_fec.total); both(")\n");
+
+  // both("[DETAIL] Pre-FEC error positions: ");
+  // both(format_positions(r.pre_fec_error_positions));
+  // both("\n");
+
+  both("[DETAIL] Post-FEC error positions: ");
+  both(format_positions(r.post_fec_error_positions));
+  both("\n");
 
   if (!r.tile_early_stop_pct.empty()) {
     both("[RESULT] EarlyStop hit rates (%): ");

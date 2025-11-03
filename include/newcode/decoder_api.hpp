@@ -1,20 +1,57 @@
 #pragma once
+#pragma once
+
+#include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <vector>
+
 #include "newcode/ofec_llr_matrix.hpp"
+#include "newcode/ofec_decoder.hpp"
+#include "newcode/params.hpp"
 
 namespace newcode {
 
-struct DecodeStats { int iters = 0; bool success = false; };
+enum class LlrFormat {
+  Float,
+  QFloat5,
+  QFloat4
+};
+
+struct DecodeStats {
+  int iters = 0;
+  bool success = false;
+};
+
+struct DecodeRequest {
+  std::string_view label;
+  const Matrix<float>& channel_llr;
+  const Params& params;
+  LlrFormat format = LlrFormat::Float;
+  bool normalize_extrinsic = true;
+};
+
+struct DecodeResult {
+  Matrix<float> pre_decoder_llr;
+  Matrix<float> post_decoder_llr;
+  std::vector<TileEarlyStopCounter> tile_stats;
+  DecodeStats stats;
+};
 
 struct IDecoder {
   virtual ~IDecoder() = default;
-  virtual DecodeStats decode(const Matrix<float>& lin,
-                             const Matrix<float>& lch,
-                             Matrix<float>& lout) = 0;
+  virtual DecodeResult decode(const DecodeRequest& request) = 0;
 };
 
-// 由各变体各自“部分实现”的工厂；某实现不认识的 name 返回 nullptr
+using DecoderFactory = std::function<std::unique_ptr<IDecoder>(const std::string& name)>;
+
+void register_decoder_factory(DecoderFactory factory);
+
 std::unique_ptr<IDecoder> make_decoder(const std::string& name);
+
+// Built-in decoder registration hooks (implemented by each decoder module)
+void register_decoder_plain_factory();
+void register_decoder_ebchPF_factory();
 
 } // namespace newcode

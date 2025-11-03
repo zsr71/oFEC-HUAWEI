@@ -14,12 +14,13 @@ static inline std::size_t saturating_mul(std::size_t a, std::size_t b, std::size
 
 BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
                      const std::vector<uint8_t>& rx_bits,
-                     const Params& p)
+                     const Params& p,
+                     std::vector<std::size_t>* error_positions)
 {
     const std::size_t L = std::min(ref_bits.size(), rx_bits.size());
 
-    // 每行比特数 = 8 * 16 = 128（由 Params 得出，不再依赖矩阵形状）
-    const std::size_t row_bits = p.NUM_SUBBLOCK_COLS * p.BITS_PER_SUBBLOCK_DIM;
+    // 每行比特数  = 111（由 Params 得出，不再依赖矩阵形状）
+    const std::size_t row_bits = 111;
 
     // 窗口高度（比特行） * 每行比特数 = 一个 window 覆盖的比特数
     const std::size_t win_rows  = p.win_height_rows(); // 已是“比特行”数量
@@ -27,14 +28,18 @@ BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
 
     // 去掉首尾各一个 window 覆盖的比特
     const std::size_t skip_prefix = std::min(L, 1*win_bits);
-    const std::size_t skip_suffix = std::min(L - skip_prefix, win_bits);
+    const std::size_t skip_suffix = std::min(L - skip_prefix, 1*win_bits);
 
     const std::size_t start = skip_prefix;
     const std::size_t stop  = L - skip_suffix;
 
+    if (error_positions) error_positions->clear();
     std::size_t err = 0;
     for (std::size_t i = start; i < stop; ++i) {
-        err += (ref_bits[i] ^ rx_bits[i]) & 1u;
+        if ((ref_bits[i] ^ rx_bits[i]) & 1u) {
+            ++err;
+            if (error_positions) error_positions->push_back(i);
+        }
     }
 
     BerStats s;
@@ -47,9 +52,10 @@ BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
 BerStats compute_and_print_ber(const std::vector<uint8_t>& ref_bits,
                                const std::vector<uint8_t>& rx_bits,
                                const char* label,
-                               const Params& p)
+                               const Params& p,
+                               std::vector<std::size_t>* error_positions)
 {
-    BerStats s = compute_ber(ref_bits, rx_bits, p);
+    BerStats s = compute_ber(ref_bits, rx_bits, p, error_positions);
 
     // 为了可见性，把被剔除的前后窗口比特数也打印出来
     const std::size_t L = std::min(ref_bits.size(), rx_bits.size());

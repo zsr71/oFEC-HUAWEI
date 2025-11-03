@@ -21,6 +21,17 @@
 using namespace newcode;
 namespace fs = std::filesystem;
 
+static constexpr const char* kInterleaverName = "ofec";
+static constexpr const char* kDecoderName = "ebchPF";
+
+static PipelineConfig make_pipeline_config() {
+  PipelineConfig cfg;
+  cfg.interleaver_name = kInterleaverName;
+  cfg.decoder_name = kDecoderName;
+  cfg.normalize_extrinsic = true;
+  return cfg;
+}
+
 // -------------------- 并发限流：C++17 简单信号量 --------------------
 class Semaphore {
   std::mutex m_;
@@ -343,7 +354,8 @@ int main()
                                       out.ebn0_db     = scenario.ebn0_db;
 
                                       Params local_params = params;
-                                      out.result = run_pipeline(local_params, scenario.name, scenario.ebn0_db);
+                                      PipelineConfig cfg = make_pipeline_config();
+                                      out.result = run_pipeline(local_params, cfg, scenario.name, scenario.ebn0_db);
                                       out.ebn0_db = out.result.ebn0_db;
                                       return out;
                                     }));
@@ -541,7 +553,8 @@ int main()
                                              std::ostringstream oss;
                                              oss << base_label << "_EbN0_" << std::fixed << std::setprecision(2) << ebn0_db;
                                              std::string label = oss.str();
-                                             PipelineResult result = run_pipeline(params, label, ebn0_db);
+                                             PipelineConfig cfg = make_pipeline_config();
+                                             PipelineResult result = run_pipeline(params, cfg, label, ebn0_db);
                                              return EbN0Output{ebn0_db, std::move(result)};
                                            }));
     }

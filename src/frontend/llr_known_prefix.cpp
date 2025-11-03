@@ -18,7 +18,7 @@ void apply_known_zero_prefix(Matrix<float>& llr_mat, const Params& p)
     // 1) 已知前缀行强制为比特0（大正 LLR）
     if (known_rows > 0)
     {
-        constexpr float bit0_llr = 1.0f;
+        constexpr float bit0_llr = 2.0f;
         for (size_t r = 0; r < known_rows; ++r)
             for (size_t c = 0; c < C; ++c)
                 llr_mat[r][c] = bit0_llr;

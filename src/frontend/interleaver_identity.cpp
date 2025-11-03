@@ -1,24 +1,44 @@
-#include "newcode/frontend/interleaver.hpp"
+#include "newcode/interleaver.hpp"
 
 namespace newcode {
+namespace {
 
-struct IdentityInterleaver : IInterleaver {
-  void interleave  (const Matrix<float>& in, Matrix<float>& out) override { out = in; }
-  void deinterleave(const Matrix<float>& in, Matrix<float>& out) override { out = in; }
+class IdentityInterleaver final : public IInterleaver {
+public:
+  IdentityInterleaver() = default;
+  explicit IdentityInterleaver(std::size_t size) { set_size(size); }
+
+  void set_size(std::size_t size) {
+    mapping_.resize(size);
+    for (std::size_t i = 0; i < size; ++i)
+      mapping_[i] = static_cast<int>(i);
+  }
+
+  void interleave(const Matrix<float>& in, Matrix<float>& out) const override { out = in; }
+  void deinterleave(const Matrix<float>& in, Matrix<float>& out) const override { out = in; }
+
+  const std::vector<int>& forward_mapping() const override { return mapping_; }
+  const std::vector<int>& inverse_mapping() const override { return mapping_; }
+
+private:
+  std::vector<int> mapping_;
 };
 
-// 无形状版本：直接返回
+} // namespace
+
 std::unique_ptr<IInterleaver> make_interleaver(const std::string& name) {
-  if (name == "identity") return std::make_unique<IdentityInterleaver>();
-  return nullptr; // 其它名字由 ofec.cpp 处理
+  if (name == "identity")
+    return std::make_unique<IdentityInterleaver>();
+  return nullptr;
 }
 
-// 带形状版本：identity 忽略形状
 std::unique_ptr<IInterleaver> make_interleaver(const std::string& name,
-                                               std::size_t /*R*/, std::size_t /*C*/,
-                                               std::size_t /*H*/, std::size_t /*W*/) {
-  if (name == "identity") return std::make_unique<IdentityInterleaver>();
-  return nullptr;
+                                               std::size_t R, std::size_t C,
+                                               std::size_t H, std::size_t W) {
+  if (name != "identity") return nullptr;
+  auto ptr = std::make_unique<IdentityInterleaver>();
+  ptr->set_size(R * C * H * W);
+  return ptr;
 }
 
 } // namespace newcode

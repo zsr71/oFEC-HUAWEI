@@ -7,9 +7,11 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "newcode/awgn.hpp"
 #include "newcode/bitgen.hpp"
+#include "newcode/decoder_api.hpp"
 #include "newcode/info_extract.hpp"
 #include "newcode/llr_known_prefix.hpp"
 #include "newcode/llr_qpack.hpp"
@@ -18,11 +20,18 @@
 #include "newcode/ofec_llr_matrix.hpp"
 #include "newcode/qam.hpp"
 #include "newcode/qam_llr.hpp"
-#include "newcode/qfloat.hpp"
 #include "newcode/interleaver.hpp"
 
 namespace newcode {
 namespace {
+
+void ensure_decoders_registered() {
+  static std::once_flag once;
+  std::call_once(once, [] {
+    register_decoder_plain_factory();
+    register_decoder_ebchPF_factory();
+  });
+}
 
 std::vector<double> compute_early_stop_percentages(const std::vector<TileEarlyStopCounter>& counters)
 {
@@ -60,80 +69,19 @@ static Matrix<float> hard_bits_to_llr_matrix(const Matrix<uint8_t>& bits_mat, fl
   return m;
 }
 
-// Run the pipeline using plain float LLRs.
-static PipelineResult run_with_float(const Matrix<float>& llr_mat,
-                                     const Params& params,
-                                     const std::vector<uint8_t>& tx_info_bits_ref,
-                                     const std::string& label,
-                                     float ebn0_dB)
-{
-  std::cout << "[INFO] (" << label << ") Running decoder in FLOAT (no quantization, no clipping)\n";
-
-  std::vector<TileEarlyStopCounter> tile_stats;
-  Matrix<float> post_f = ofec_decode_llr(llr_mat, params, &tile_stats);
-
-  auto rx_info_bits_pre  = rx_info_from_bit_llr(llr_mat, params);
-  auto rx_info_bits_post = rx_info_from_bit_llr(post_f,  params);
-
-  std::cout << "[INFO] (" << label << ") rx_info_bits: " << rx_info_bits_pre.size()
-            << " (flattened, warmup skipped)\n";
-
-  const std::string pre_label  = label + " Pre-FEC";
-  const std::string post_label = label + " Post-FEC";
-
-  PipelineResult result;
-  result.ebn0_db  = ebn0_dB;
-  // 基准采用从 code_matrix 生成的 TX 参考信息（通过同一提取器得到）
-  result.pre_fec  = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_pre,  pre_label.c_str(),  params);
-  result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(), params);
-  result.tile_early_stop_pct = compute_early_stop_percentages(tile_stats);
-
-  std::cout << "[DONE] (" << label << ") Pipeline(float) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> decode(float) -> info extract & BER\n";
-  return result;
-}
-
-// Run the pipeline using qfloat-quantised LLRs.
-template<int NBITS>
-static PipelineResult run_with_qfloat(const Matrix<float>& llr_mat,
-                                      const Params& params,
-                                      const std::vector<uint8_t>& tx_info_bits_ref,
-                                      const std::string& label,
-                                      float ebn0_dB)
-{
-  auto q_mat = quantize_matrix_to_qfloat<NBITS>(llr_mat, qfloat<NBITS>::DEFAULT_CLIP);
-  std::cout << "[INFO] (" << label << ") Quantized qfloat<" << NBITS << ">: clip="
-            << qfloat<NBITS>::DEFAULT_CLIP
-            << "  code range [-" << qfloat<NBITS>::Q() << ", +" << qfloat<NBITS>::Q() << "]\n";
-
-  std::vector<TileEarlyStopCounter> tile_stats;
-  auto q_dec = ofec_decode_llr(q_mat, params, &tile_stats);
-
-  auto pre_f  = cast_matrix_from_qfloat(q_mat);
-  auto post_f = cast_matrix_from_qfloat(q_dec);
-
-  auto rx_info_bits_pre  = rx_info_from_bit_llr(pre_f,  params);
-  auto rx_info_bits_post = rx_info_from_bit_llr(post_f, params);
-
-  std::cout << "[INFO] (" << label << ") rx_info_bits: " << rx_info_bits_pre.size()
-            << " (flattened, warmup skipped)\n";
-
-  const std::string pre_label  = label + " Pre-FEC";
-  const std::string post_label = label + " Post-FEC";
-
-  PipelineResult result;
-  result.ebn0_db  = ebn0_dB;
-  result.pre_fec  = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_pre,  pre_label.c_str(),  params);
-  result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(), params);
-  result.tile_early_stop_pct = compute_early_stop_percentages(tile_stats);
-
-  std::cout << "[DONE] (" << label << ") Pipeline(qfloat<" << NBITS
-            << ">) bits -> oFEC -> QAM -> AWGN -> QAM LLR -> quant(qfloat) -> decode -> info extract & BER\n";
-  return result;
+LlrFormat pick_llr_format(const Params& params) {
+  if (params.LLR_BITS == 16) return LlrFormat::Float;
+  if (params.LLR_BITS == 5)  return LlrFormat::QFloat5;
+  if (params.LLR_BITS == 4)  return LlrFormat::QFloat4;
+  throw std::runtime_error("[ERROR] Unsupported Params::LLR_BITS value");
 }
 
 } // namespace
 
-PipelineResult run_pipeline(const Params& params, const std::string& label, float ebn0_dB)
+PipelineResult run_pipeline(const Params& params,
+                            const PipelineConfig& config,
+                            const std::string& label,
+                            float ebn0_dB)
 {
   std::cout << "\n[RUN] Scenario: " << label << "\n";
 
@@ -156,16 +104,12 @@ PipelineResult run_pipeline(const Params& params, const std::string& label, floa
   auto coded_bits = flatten_row_major(code_matrix);
   std::cout << "[INFO] (" << label << ") Coded bits (flattened): " << coded_bits.size() << "\n";
 
-  auto itv = newcode::Interleaver::build_from_shape(
-      static_cast<int>(code_matrix.rows()),
-      static_cast<int>(code_matrix.cols()),
-      16, 16);
+  const std::size_t block_dim = static_cast<std::size_t>(Params::BITS_PER_SUBBLOCK_DIM);
+  auto interleaver = newcode::Interleaver::build_from_shape(
+      code_matrix.rows(), code_matrix.cols(), block_dim, block_dim, config.interleaver_name);
 
-
-  auto coded_bits_itlv = itv.interleave_chunks(coded_bits);
+  auto coded_bits_itlv = interleaver.interleave_chunks(coded_bits);
   std::cout << "[INFO] (" << label << ") Interleaved bits: " << coded_bits_itlv.size() << "\n";
-
-
 
   const unsigned n_bps = 2; // QPSK
   auto tx_syms = qam_modulate(coded_bits_itlv, n_bps);
@@ -194,23 +138,57 @@ PipelineResult run_pipeline(const Params& params, const std::string& label, floa
   for (size_t i = 0; i < std::min<size_t>(8, llr.size()); ++i)
     std::cout << llr[i] << (i + 1 < std::min<size_t>(8, llr.size()) ? ", " : "\n");
 
-  auto llr_deint = itv.deinterleave_chunks(llr);  
-  
-  Matrix<float> llr_mat = llr_to_matrix_row_major(llr_deint , code_matrix.rows(), code_matrix.cols());
+  auto llr_deint = interleaver.deinterleave_chunks(llr);
+
+  Matrix<float> llr_mat = llr_to_matrix_row_major(llr_deint, code_matrix.rows(), code_matrix.cols());
 
   // 已知前缀的先验处理（如果使用）
   apply_known_zero_prefix(llr_mat, params);
 
-  // 选择解码数值格式
-  if (params.LLR_BITS == 16) {
-    return run_with_float(llr_mat, params, tx_info_bits_ref, label, ebn0_dB);
-  } else if (params.LLR_BITS == 5) {
-    return run_with_qfloat<5>(llr_mat, params, tx_info_bits_ref, label, ebn0_dB);
-  } else if (params.LLR_BITS == 4) {
-    return run_with_qfloat<4>(llr_mat, params, tx_info_bits_ref, label, ebn0_dB);
+  ensure_decoders_registered();
+  auto decoder = make_decoder(config.decoder_name);
+  if (!decoder) {
+    throw std::runtime_error("[ERROR] make_decoder: unknown decoder '" + config.decoder_name + "'");
   }
 
-  throw std::runtime_error("[ERROR] Unsupported p.LLR_BITS value");
+  DecodeRequest request{
+      .label = label,
+      .channel_llr = llr_mat,
+      .params = params,
+      .format = pick_llr_format(params),
+      .normalize_extrinsic = config.normalize_extrinsic
+  };
+
+  auto decode_result = decoder->decode(request);
+
+  auto rx_info_bits_pre  = rx_info_from_bit_llr(decode_result.pre_decoder_llr,  params);
+  auto rx_info_bits_post = rx_info_from_bit_llr(decode_result.post_decoder_llr, params);
+
+  std::cout << "[INFO] (" << label << ") rx_info_bits: " << rx_info_bits_pre.size()
+            << " (flattened, warmup skipped)\n";
+
+  const std::string pre_label  = label + " Pre-FEC";
+  const std::string post_label = label + " Post-FEC";
+
+  PipelineResult result;
+  result.ebn0_db  = ebn0_dB;
+  result.pre_fec_error_positions.clear();
+  result.post_fec_error_positions.clear();
+  result.pre_fec  = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_pre,  pre_label.c_str(),  params, &result.pre_fec_error_positions);
+  result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(), params, &result.post_fec_error_positions);
+  result.tile_early_stop_pct = compute_early_stop_percentages(decode_result.tile_stats);
+
+  std::cout << "[DONE] (" << label << ") Pipeline bits -> channel -> decoder(" << config.decoder_name
+            << ") using interleaver '" << config.interleaver_name << "' completed\n";
+  return result;
+}
+
+PipelineResult run_pipeline(const Params& params,
+                            const std::string& label,
+                            float ebn0_dB)
+{
+  PipelineConfig cfg{};
+  return run_pipeline(params, cfg, label, ebn0_dB);
 }
 
 } // namespace newcode

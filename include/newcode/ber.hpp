@@ -20,7 +20,8 @@ struct BerStats {
  */
 BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
                      const std::vector<uint8_t>& rx_bits,
-                     const Params& p);
+                     const Params& p,
+                     std::vector<std::size_t>* error_positions = nullptr);
 
 /**
  * 计算并打印 BER（同上规则丢弃首尾 window）。
@@ -31,6 +32,7 @@ BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
 BerStats compute_and_print_ber(const std::vector<uint8_t>& ref_bits,
                                const std::vector<uint8_t>& rx_bits,
                                const char* label,
-                               const Params& p);
+                               const Params& p,
+                               std::vector<std::size_t>* error_positions = nullptr);
 
 } // namespace newcode

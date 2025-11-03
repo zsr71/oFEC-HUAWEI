@@ -55,7 +55,9 @@ add_library(newcode_frontend STATIC
 target_include_directories(newcode_frontend PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(newcode_frontend PUBLIC Threads::Threads)
 target_sources(newcode_frontend PRIVATE
+  src/decoder_registry.cpp
   src/ber.cpp
+  src/chase255.cpp
 )
 
 # ==============================
@@ -67,7 +69,7 @@ add_library(decoder_plain STATIC
 target_include_directories(decoder_plain PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_plain PUBLIC newcode_frontend)
 target_sources(decoder_plain PRIVATE
-  src/chase256.cpp
+  src/decoders/plain/chase256_plain.cpp
   src/decoder_core.cpp
   src/llr_to_bit.cpp
   src/ofec_decoder.cpp
@@ -80,7 +82,7 @@ add_library(decoder_ebchPF STATIC
 target_include_directories(decoder_ebchPF PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_ebchPF PUBLIC newcode_frontend)
 target_sources(decoder_ebchPF PRIVATE
-  src/chase256.cpp
+  src/decoders/ebchPF/chase256_ebchPF.cpp
   src/decoder_core.cpp
   src/llr_to_bit.cpp
   src/ofec_decoder.cpp
@@ -112,7 +114,7 @@ add_executable(ofec_app_plain
   ${PIPELINE_RUNNER_SRC}
 )
 target_link_libraries(ofec_app_plain
-  PRIVATE newcode_frontend decoder_plain
+  PRIVATE newcode_frontend decoder_plain decoder_ebchPF
 )
 
 add_executable(ofec_app_interleaved
@@ -120,15 +122,22 @@ add_executable(ofec_app_interleaved
   ${PIPELINE_RUNNER_SRC}
 )
 target_link_libraries(ofec_app_interleaved
-  PRIVATE newcode_frontend decoder_ebchPF
+  PRIVATE newcode_frontend decoder_plain decoder_ebchPF
 )
 
 # 保留现有两个入口，默认走 plain 变体
 add_executable(ofec_single apps/ofec_single.cpp ${PIPELINE_RUNNER_SRC})
-target_link_libraries(ofec_single PRIVATE newcode_frontend decoder_plain)
+target_link_libraries(ofec_single PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
 
 add_executable(ofec_sweep  apps/ofec_sweep.cpp  ${PIPELINE_RUNNER_SRC})
-target_link_libraries(ofec_sweep  PRIVATE newcode_frontend decoder_plain)
+target_link_libraries(ofec_sweep  PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
+
+add_executable(bch_bpsk_demo
+  apps/bch_bpsk_demo.cpp
+)
+target_link_libraries(bch_bpsk_demo
+  PRIVATE newcode_frontend decoder_plain
+)
 
 # ==============================
 # Tests

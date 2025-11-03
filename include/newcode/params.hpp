@@ -17,12 +17,12 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     = 6 * 110 * 16 * 111; // 信息比特总数
-  int    BITGEN_SEED       = 43;                 // 随机种子
+  size_t NUM_INFO_BITS     = 3 * 88 * 16 * 111; // 信息比特总数
+  int    BITGEN_SEED       = 47;                 // 随机种子
   size_t NUM_GUARD_SUBROWS = 2;                  // 保护块子行数 G
 
   // ===== 解码组织参数（单位：sub-block rows）=====
-  size_t TILES_PER_WIN   = 5;  // 每个 window 含有的 tile 数量（自下而上处理）
+  size_t TILES_PER_WIN   = 4;  // 每个 window 含有的 tile 数量（自下而上处理）
   size_t TILE_OVERLAP_BR = 0;  // 相邻 tile 在 sub-block-row 方向的重叠行数
   size_t TILE_HEIGHT_BR  = 22; // 单个 tile 的高度（单位：sub-block-row）
   size_t WINDOW_POP_PUSH = 2;  // window 每次滑动的 sub-block-row 数量（pop/push）
@@ -35,7 +35,6 @@ struct Params {
   int CHASE_L     = 6;  // 选取“最不可靠”位置的数量
   int CHASE_NTEST = 64; // 生成的测试向量数量（<= 2^CHASE_L）
   int CHASE_SBR   = 2;  // 每个 tile 底部解码的子块行数（1 或 2）
-  int CHASE_TP    = 1;  // 兼容旧代码的占位参数（未使用时可忽略）
 
   // —— fallback 可靠度系数（Chase(256) 中 L0 的回退幅度）——
   float beta = 0.35f;
@@ -49,7 +48,7 @@ struct Params {
 
   // —— 每个 tile 是否切换到硬判决译码 —— //
   bool HARD_DECODE_DEFAULT = false;                               // 默认仍使用软判决
-  std::vector<int> HARD_TILE_LIST = {0, 0, 0, 0, 1};               // 0=软判决，非 0=硬判决
+  std::vector<int> HARD_TILE_LIST = {0, 0, 0, 0, 0};               // 0=软判决，非 0=硬判决
   float HARD_LLR_MAG = 1.0f;                                      // 硬判决映射的 |LLR| 大小
 
   // ===== 便捷派生（统一换算为“比特行 rows”）=====
