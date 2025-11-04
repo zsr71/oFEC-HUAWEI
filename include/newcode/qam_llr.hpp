@@ -8,7 +8,7 @@ namespace newcode {
 
 
 
-// 精确版：log-sum-exp（数值稳定、准确）
+// 精确版：BPSK 走解析 LLR，其余调制走 log-sum-exp（数值稳定、准确）
 std::vector<float>
 qam_llr_logsumexp(const std::vector<std::complex<float>>& y,
                   unsigned n_bps,

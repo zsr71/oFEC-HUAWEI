@@ -21,14 +21,16 @@
 using namespace newcode;
 namespace fs = std::filesystem;
 
-static constexpr const char* kInterleaverName = "ofec";
-static constexpr const char* kDecoderName = "ebchPF";
+static constexpr const char* kInterleaverName = "identity";
+static constexpr const char* kDecoderName = "plain";
+static constexpr unsigned    kBitsPerSymbol = 2; // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
 
 static PipelineConfig make_pipeline_config() {
   PipelineConfig cfg;
   cfg.interleaver_name = kInterleaverName;
   cfg.decoder_name = kDecoderName;
   cfg.normalize_extrinsic = true;
+  cfg.bits_per_symbol = kBitsPerSymbol;
   return cfg;
 }
 

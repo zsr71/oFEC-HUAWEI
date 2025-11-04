@@ -111,8 +111,23 @@ PipelineResult run_pipeline(const Params& params,
   auto coded_bits_itlv = interleaver.interleave_chunks(coded_bits);
   std::cout << "[INFO] (" << label << ") Interleaved bits: " << coded_bits_itlv.size() << "\n";
 
-  const unsigned n_bps = 2; // QPSK
+  unsigned n_bps = config.bits_per_symbol;
+  if (n_bps == 0) n_bps = 2;
+
+  std::string modulation_name;
+  if (n_bps == 1) {
+    modulation_name = "BPSK";
+  } else if ((n_bps & 1u) == 0u) {
+    modulation_name = (n_bps == 2)
+        ? "QPSK"
+        : (std::to_string(1ull << n_bps) + "-QAM");
+  } else {
+    throw std::invalid_argument("[ERROR] bits_per_symbol must be 1 or a positive even number.");
+  }
+
   auto tx_syms = qam_modulate(coded_bits_itlv, n_bps);
+  std::cout << "[INFO] (" << label << ") Modulation: " << modulation_name
+            << " (n_bps=" << n_bps << ")\n";
   std::cout << "[INFO] (" << label << ") Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
 
   const int   N        = static_cast<int>(params.NUM_SUBBLOCK_COLS * params.BITS_PER_SUBBLOCK_DIM);

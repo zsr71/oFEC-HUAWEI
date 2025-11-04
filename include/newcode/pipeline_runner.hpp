@@ -14,6 +14,7 @@ struct PipelineConfig {
   std::string decoder_name = "ebchPF";
   std::string interleaver_name = "ofec";
   bool normalize_extrinsic = true;
+  unsigned bits_per_symbol = 2;
 };
 
 struct PipelineResult {

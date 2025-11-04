@@ -17,21 +17,31 @@ namespace fs = std::filesystem;
 // ======== 用户可改区域 ========
 // 只需要改这里的常量/列表即可完成一次“单次调试运行”的配置
 static constexpr const char* kLabel         = "debug_L6";
-static constexpr float       kEbN0_db       = 3.07f;
+static constexpr float       kEbN0_db       =3.07f;
 static constexpr int         kChaseL_override = 6;   // 设为 -1 则沿用 Params 默认
 static constexpr bool        kNormalizeExtrinsic = false;
+static constexpr unsigned    kBitsPerSymbol = 1;     // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
 
 // 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
 static constexpr float kAlpha_fill = 0.8f;
 static constexpr float kBeta_fill  = 0.90f;
 
-// 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
+//方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
 static const std::vector<float> kAlpha_explicit = {
-  0.4f,0.4f,0.4f,0.8f
+  0.3f,0.35f,0.40f,0.45f,0.0f
 };
 static const std::vector<float> kBeta_explicit = {
-  0.30f,0.30f,0.60f,0.80f
+  0.40f,0.5f,0.60f,0.7f,0.0f
 };
+
+// static const std::vector<float> kAlpha_explicit = {
+//   0.0f
+// };
+// static const std::vector<float> kBeta_explicit = {
+//   0.0f
+// };
+
+
 static constexpr const char* kInterleaverName = "identity";
 static constexpr const char* kDecoderName = "plain";
 // =============================
@@ -114,6 +124,7 @@ int main() {
   cfg.interleaver_name = kInterleaverName;
   cfg.decoder_name = kDecoderName;
   cfg.normalize_extrinsic = kNormalizeExtrinsic;
+  cfg.bits_per_symbol = kBitsPerSymbol;
 
   PipelineResult r = run_pipeline(p, cfg, kLabel, kEbN0_db);
 

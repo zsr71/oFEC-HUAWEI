@@ -28,12 +28,28 @@ bits_to_symbol_gray_qam(const uint8_t* b, unsigned n_bps)
 std::vector<std::complex<float>>
 qam_modulate(const std::vector<uint8_t>& bits, unsigned n_bps)
 {
-    if (n_bps == 0 || (n_bps & 1u))
-        throw std::invalid_argument("qam_modulate: n_bps must be a positive even number.");
+    if (n_bps == 0)
+        throw std::invalid_argument("qam_modulate: n_bps must be > 0.");
 
     const size_t n_sym = (bits.size() + n_bps - 1) / n_bps; // ceil
+
     std::vector<std::complex<float>> syms;
     syms.reserve(n_sym);
+
+    if (n_bps == 1)
+    {
+        size_t p = 0;
+        for (size_t s = 0; s < n_sym; ++s)
+        {
+            const uint8_t bit = (p < bits.size()) ? (bits[p++] & 1u) : 0u;
+            const float I = 1.0f - 2.0f * float(bit);
+            syms.emplace_back(I, 0.0f); // BPSK 沿实轴
+        }
+        return syms;
+    }
+
+    if (n_bps & 1u)
+        throw std::invalid_argument("qam_modulate: n_bps must be 1 or a positive even number.");
 
     std::vector<uint8_t> buf(n_bps, 0); // 每符号的局部比特缓存（不足补 0）
     size_t p = 0;

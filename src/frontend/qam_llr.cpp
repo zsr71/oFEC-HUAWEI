@@ -14,8 +14,10 @@ namespace newcode {
 static std::vector<std::complex<float>>
 build_constellation(unsigned n_bps)
 {
-    if (n_bps == 0 || (n_bps & 1u))
-        throw std::invalid_argument("qam demod: n_bps must be a positive even number.");
+    if (n_bps == 0)
+        throw std::invalid_argument("qam demod: n_bps must be > 0.");
+    if (n_bps > 1 && (n_bps & 1u))
+        throw std::invalid_argument("qam demod: n_bps must be 1 or a positive even number.");
 
     const unsigned M = 1u << n_bps;
     std::vector<uint8_t> bits;
@@ -34,10 +36,26 @@ qam_llr_logsumexp(const std::vector<std::complex<float>>& y,
                   float sigma)
 {
     if (y.empty()) return {};
-    if (n_bps == 0 || (n_bps & 1u))
-        throw std::invalid_argument("qam_llr_logsumexp: n_bps must be a positive even number.");
     if (!(sigma > 0.f))
         throw std::invalid_argument("qam_llr_logsumexp: sigma must be > 0.");
+
+    if (n_bps == 0)
+        throw std::invalid_argument("qam_llr_logsumexp: n_bps must be > 0.");
+
+    if (n_bps == 1)
+    {
+        const float inv_sigma_sq = 1.0f / (sigma * sigma);
+        std::vector<float> LLR(y.size());
+        for (size_t i = 0; i < y.size(); ++i)
+        {
+            const float llr = 2.0f * y[i].real() * inv_sigma_sq;
+            LLR[i] = llr;
+        }
+        return LLR;
+    }
+
+    if (n_bps & 1u)
+        throw std::invalid_argument("qam_llr_logsumexp: n_bps must be 1 or a positive even number.");
 
     const float inv_sigma2 = 1.f / (2.f * sigma * sigma); // 1/N0
     const unsigned M = 1u << n_bps;
