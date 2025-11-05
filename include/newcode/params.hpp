@@ -17,8 +17,8 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     = 16 * 110 * 16 * 111; // 信息比特总数
-  int    BITGEN_SEED       = 48;                 // 随机种子
+  size_t NUM_INFO_BITS     = 64 * 110 * 16 * 111; // 信息比特总数
+  int    BITGEN_SEED       = 1712;                 // 随机种子
   size_t NUM_GUARD_SUBROWS = 2;                  // 保护块子行数 G
 
   // ===== 解码组织参数（单位：sub-block rows）=====

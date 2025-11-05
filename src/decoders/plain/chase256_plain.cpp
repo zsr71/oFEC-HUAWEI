@@ -120,10 +120,10 @@ inline uint8_t parity256_from255(const uint8_t* cw255) {
 } // namespace detail
 
 template<typename LLR>
-void chase_decode_256(const LLR* Lin256,
-                      const LLR* /*Lch256*/,
-                      LLR* Y2_256,
-                      const Params& p)
+void chase_decode_256_plain(const LLR* Lin256,
+                            const LLR* /*Lch256*/,
+                            LLR* Y2_256,
+                            const Params& p)
 {
     using namespace detail;
 
@@ -176,7 +176,6 @@ void chase_decode_256(const LLR* Lin256,
         std::copy(cw255.begin(), cw255.end(), CW.begin());
         CW[PAR_IDX] = parity256_from255(CW.data());
 
-        // correlation metric S(c) = 鈭?y_k 路 x_k, with x_k=+1 for 0, 鈥? for 1  (鈫?(14))
         float dist = 0.f;
         for (int k = 0; k < BCH_N_TOTAL; ++k) {
             const uint8_t diff = (hard_ch[k] ^ CW[k]); // 1=不一致，0=一致
@@ -270,30 +269,30 @@ void chase_decode_256(const LLR* Lin256,
 
 // ======================== 2-arg wrapper (kept for API parity) ========================
 template<typename LLR>
-void chase_decode_256(const LLR* Y256, LLR* Y2_256, const Params& p)
+void chase_decode_256_plain(const LLR* Y256, LLR* Y2_256, const Params& p)
 {
-    chase_decode_256<LLR>(Y256, Y256, Y2_256, p);
+    chase_decode_256_plain<LLR>(Y256, Y256, Y2_256, p);
 }
 
 // ======================== explicit instantiations ========================
-template void chase_decode_256<float >(const float*,  const float*,  float*,  const Params&);
-template void chase_decode_256<int8_t>(const int8_t*, const int8_t*, int8_t*, const Params&);
-template void chase_decode_256<newcode::qfloat<4>>(const newcode::qfloat<4>*,
-                                                   const newcode::qfloat<4>*,
-                                                   newcode::qfloat<4>*,
-                                                   const Params&);
-template void chase_decode_256<newcode::qfloat<5>>(const newcode::qfloat<5>*,
-                                                   const newcode::qfloat<5>*,
-                                                   newcode::qfloat<5>*,
-                                                   const Params&);
+template void chase_decode_256_plain<float >(const float*,  const float*,  float*,  const Params&);
+template void chase_decode_256_plain<int8_t>(const int8_t*, const int8_t*, int8_t*, const Params&);
+template void chase_decode_256_plain<newcode::qfloat<4>>(const newcode::qfloat<4>*,
+                                                         const newcode::qfloat<4>*,
+                                                         newcode::qfloat<4>*,
+                                                         const Params&);
+template void chase_decode_256_plain<newcode::qfloat<5>>(const newcode::qfloat<5>*,
+                                                         const newcode::qfloat<5>*,
+                                                         newcode::qfloat<5>*,
+                                                         const Params&);
 
-template void chase_decode_256<float >(const float*,  float*,  const Params&);
-template void chase_decode_256<int8_t>(const int8_t*, int8_t*, const Params&);
-template void chase_decode_256<newcode::qfloat<4>>(const newcode::qfloat<4>*,
-                                                   newcode::qfloat<4>*,
-                                                   const Params&);
-template void chase_decode_256<newcode::qfloat<5>>(const newcode::qfloat<5>*,
-                                                   newcode::qfloat<5>*,
-                                                   const Params&);
+template void chase_decode_256_plain<float >(const float*,  float*,  const Params&);
+template void chase_decode_256_plain<int8_t>(const int8_t*, int8_t*, const Params&);
+template void chase_decode_256_plain<newcode::qfloat<4>>(const newcode::qfloat<4>*,
+                                                         newcode::qfloat<4>*,
+                                                         const Params&);
+template void chase_decode_256_plain<newcode::qfloat<5>>(const newcode::qfloat<5>*,
+                                                         newcode::qfloat<5>*,
+                                                         const Params&);
 
 } // namespace newcode

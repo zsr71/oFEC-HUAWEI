@@ -4,22 +4,19 @@
 #include "newcode/ofec_decoder_hard.hpp"
 #include "newcode/decoder_core.hpp"
 #include "newcode/llr_utils.hpp"
-#include <stdexcept>
-#include <cassert>
+
 #include <algorithm>
-#include <vector>
 #include <array>
+#include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cmath>
-#include <type_traits>
 #include <limits>
+#include <stdexcept>
+#include <type_traits>
+#include <vector>
 
 namespace newcode {
-
-// 三参版本前向声明（定义在 chase256.cpp，已对常用类型显式实例化）
-template<typename LLR>
-void chase_decode_256(const LLR* Lin256, const LLR* Lch256, LLR* Y2_256, const Params& p);
 
 template <typename LLR>
 static bool tile_should_early_stop(const Matrix<LLR>& lin_matrix)
@@ -34,38 +31,41 @@ static bool tile_should_early_stop(const Matrix<LLR>& lin_matrix)
 
   for (size_t r = 0; r < rows; ++r)
   {
-    // 1) LLR -> 硬判到 {0,1}，其中 1 表示比特“1”
     for (int j = 0; j < 255; ++j) {
       const float v = llr_to_float(lin_matrix[r][static_cast<size_t>(j)]);
       hard255[static_cast<size_t>(j)] = (v < 0.0f) ? 1u : 0u;
     }
 
-    // 2) 判定是否为合法 BCH(255,239) 码字
     if (!bch_255_239_decode_hiho_cw_255(hard255.data(), decoded255.data()))
-      return false; // 该行无法成功译码，不能早停
+      return false;
 
-    // 3) 扩展整体偶校验（第 256 位在索引 255）
     uint8_t parity255 = 0u;
     for (int j = 0; j < 255; ++j) parity255 ^= (hard255[static_cast<size_t>(j)] & 1u);
     const uint8_t overall = (llr_to_float(lin_matrix[r][255]) < 0.0f) ? 1u : 0u;
 
-    // 扩展码要求 255 位与整体位异或为 0（偶校验通过）
     if ((parity255 ^ overall) != 0u)
-      return false; // 整体校验失败，不能早停
+      return false;
   }
 
-  // 所有行均满足：BCH 综合全零且整体偶校验通过 => 触发早停
   return true;
 }
 
+namespace {
 
 template <typename LLR>
-TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
-                                    const Matrix<LLR>& ch_tile,
-                                    const Params& p,
-                                    size_t tile_top_row_global,
-                                    bool use_hard_decode,
-                                    bool normalize_extrinsic)
+using CoreFn = DecoderCoreResult<LLR> (*)(const Matrix<LLR>&,
+                                          const Matrix<LLR>&,
+                                          bool,
+                                          const Params&);
+
+template <typename LLR>
+TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
+                                         const Matrix<LLR>& ch_tile,
+                                         const Params& p,
+                                         size_t tile_top_row_global,
+                                         bool use_hard_decode,
+                                         bool normalize_extrinsic,
+                                         CoreFn<LLR> core_fn)
 {
   constexpr int B         = static_cast<int>(Params::BITS_PER_SUBBLOCK_DIM);            // 16
   constexpr int N         = static_cast<int>(Params::NUM_SUBBLOCK_COLS * B);            // 128
@@ -79,7 +79,7 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
   assert(W == static_cast<size_t>(N));
   assert(ch_tile.rows() == H && ch_tile.cols() == W);
 
-  Matrix<LLR> tile_out = tile_in; // 回写外信息时覆盖相关位置
+  Matrix<LLR> tile_out = tile_in;
 
   const int SBR = p.CHASE_SBR;
   if (SBR != 1 && SBR != 2)
@@ -96,7 +96,6 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
   std::vector<size_t> row_local_lookup(rows_to_decode, 0);
   std::vector<size_t> row_global_lookup(rows_to_decode, 0);
 
-  // 遍历底部 SBR 个 sub-block rows：从最底开始，组装 decoder 输入矩阵
   for (int s = 0; s < SBR; ++s){
       const size_t sbr_row0_local = H - static_cast<size_t>((SBR-s) * B);
       for (int r_off = 0; r_off < B; ++r_off)
@@ -111,13 +110,12 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
           const long R = static_cast<long>(row_global / static_cast<size_t>(B));
           const int  r = static_cast<int>(row_global % static_cast<size_t>(B));
 
-          // (A) 0..N-1，"旧信息" 128 位（跨块映射）—— 式 (1)
           for (int k = 0; k < N; ++k)
           {
               const long br = (R ^ 1L)
-                            - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)   // −2G
-                            - static_cast<long>(2 * (N / B))               // −2*(N/B)
-                            + static_cast<long>(2 * (k / B));              // +2*floor(k/B)
+                            - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)
+                            - static_cast<long>(2 * (N / B))
+                            + static_cast<long>(2 * (k / B));
               const long bc = static_cast<long>(k / B);
               const long bit_row_in_block = static_cast<long>((k % B) ^ r);
               const long bit_col_in_block = static_cast<long>(r);
@@ -126,7 +124,7 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
               const long cc_global = bc * B + bit_col_in_block;
 
               const long rr_local2 = rr_global - static_cast<long>(tile_top_row_global);
-              const long cc_local2 = cc_global; // 0..N-1
+              const long cc_local2 = cc_global;
 
               if (rr_local2 >= 0 && rr_local2 < static_cast<long>(H) &&
                   cc_local2 >= 0 && cc_local2 < static_cast<long>(W))
@@ -141,11 +139,10 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
               }
           }
 
-          // (B) 128..238，111 个"新信息"（当前行）—— 式 (2) 列置换
           for (int i = 0; i < TAKE_BITS; ++i) {
-              const int k = N + i;                                   // 128..238
-              const size_t Ct = static_cast<size_t>((k - N) / B);    // floor((k-N)/B) = floor(i/16)
-              const size_t ct = static_cast<size_t>((k % B) ^ r);    // (k%16) ^ r = (i%16) ^ r
+              const int k = N + i;
+              const size_t Ct = static_cast<size_t>((k - N) / B);
+              const size_t ct = static_cast<size_t>((k % B) ^ r);
               const size_t src_col = Ct * static_cast<size_t>(B) + ct;
 
               const float Lch = llr_to_float(ch_tile[row_local][src_col]);
@@ -154,11 +151,10 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
               lch_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch);
           }
 
-          // (C) 239..254，16 个 BCH 校验位（当前行）—— 式 (2) 列置换
           for (int j = 0; j < BCH_PAR; ++j) {
-              const int k = K + j;                                   // 239..254
-              const size_t Ct = static_cast<size_t>((k - N) / B);    // floor((k-N)/B)
-              const size_t ct = static_cast<size_t>((k % B) ^ r);    // (k%16) ^ r
+              const int k = K + j;
+              const size_t Ct = static_cast<size_t>((k - N) / B);
+              const size_t ct = static_cast<size_t>((k % B) ^ r);
               const size_t src_col = Ct * static_cast<size_t>(B) + ct;
 
               const float Lch = llr_to_float(ch_tile[row_local][src_col]);
@@ -167,11 +163,10 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
               lch_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch);
           }
 
-          // (D) 255，整体偶校验位（当前行）—— 式 (2) 列置换
           {
-              const int k = OVR_IDX;                                 // 255
-              const size_t Ct = static_cast<size_t>((k - N) / B);    // floor((k-N)/B) = 7
-              const size_t ct = static_cast<size_t>((k % B) ^ r);    // (15) ^ r
+              const int k = OVR_IDX;
+              const size_t Ct = static_cast<size_t>((k - N) / B);
+              const size_t ct = static_cast<size_t>((k % B) ^ r);
               const size_t src_col = Ct * static_cast<size_t>(B) + ct;
 
               const float Lch = llr_to_float(ch_tile[row_local][src_col]);
@@ -179,22 +174,17 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
               lin_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch + La);
               lch_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch);
           }
-      } // r_off
+      }
     }
 
-  // 早停判据（可选）
   bool early_stop_triggered = tile_should_early_stop(lin_matrix);
 
-  // 调用 Chase/BCH 译码核心（内部已实例化）
-  auto decoder_res = Decoder_Core(lin_matrix, lch_matrix, use_hard_decode, p);
+  auto decoder_res = core_fn(lin_matrix, lch_matrix, use_hard_decode, p);
 
-  // ===== 外信息归一化（decoder_res.lout 内已是 α·ω）=====
-  // 目标：等价于把 ω 归一到 mean(|ω|)=1；即对 α·ω 乘 scale = α / gα；
-  // 其中 gα = mean(|α·ω|) ，统计时跳过“回退点”（≈ ±αβ）。
   if (normalize_extrinsic)
   {
       auto is_fallback = [&](float w) -> bool {
-          const float target = p.ALPHA * p.beta;             // ≈ |α·β|
+          const float target = p.ALPHA * p.beta;
           const float diff   = std::fabs(std::fabs(w) - target);
           const float tol    = 1e-4f * std::max(1.0f, target);
           return diff <= tol;
@@ -206,13 +196,12 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
       const std::size_t Rcnt = decoder_res.lout.rows();
       const std::size_t Ccnt = decoder_res.lout.cols();
 
-      // 先统计 gα
       for (std::size_t r = 0; r < Rcnt; ++r)
       {
           if (!decoder_res.produced_rows[r]) continue;
           for (std::size_t j = 0; j < Ccnt; ++j)
           {
-              const float w = llr_to_float(decoder_res.lout[r][j]); // α·ω
+              const float w = llr_to_float(decoder_res.lout[r][j]);
               if (is_fallback(w)) continue;
               acc += std::fabs(w);
               ++cnt;
@@ -221,17 +210,17 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
 
       if (cnt > 0)
       {
-          const float g_alpha = (float)(acc / (double)cnt);
+          const float g_alpha = static_cast<float>(acc / static_cast<double>(cnt));
           if (g_alpha > 0.f)
           {
-              const float scale = p.ALPHA / g_alpha; // = 1 / mean(|ω|)
+              const float scale = p.ALPHA / g_alpha;
               for (std::size_t r = 0; r < Rcnt; ++r)
               {
                   if (!decoder_res.produced_rows[r]) continue;
                   for (std::size_t j = 0; j < Ccnt; ++j)
                   {
-                      const float w = llr_to_float(decoder_res.lout[r][j]); // α·ω
-                      if (is_fallback(w)) continue; // 保持 ±αβ 不变
+                      const float w = llr_to_float(decoder_res.lout[r][j]);
+                      if (is_fallback(w)) continue;
                       decoder_res.lout[r][j] = llr_from_float<LLR>(w * scale);
                   }
               }
@@ -239,119 +228,102 @@ TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
       }
   }
 
-  // ====== 回写外信息到 tile_out（作为下一轮/下一组件先验） ======
   for (int s = 0; s < SBR; ++s)
   {
       for (int r_off = 0; r_off < B; ++r_off)
       {
           const size_t row_idx = static_cast<size_t>(s * B + r_off);
           if (row_idx >= decoder_res.produced_rows.size()) continue;
-          if (!decoder_res.produced_rows[row_idx])         continue; // 硬判失败：保留原外信息
+          if (!decoder_res.produced_rows[row_idx]) continue;
 
           const size_t row_local  = row_local_lookup[row_idx];
           const size_t row_global = row_global_lookup[row_idx];
           const auto&  lout_row   = decoder_res.lout[row_idx];
 
-          // —— 右半：按式 (2) 回写（111 新信息 + 16 BCH + 1 overall）——
-          {
-              const int r = static_cast<int>(row_global % static_cast<size_t>(B));
+          const int r = static_cast<int>(row_global % static_cast<size_t>(B));
 
-              // 128..238 : 新信息
-              for (int i = 0; i < TAKE_BITS; ++i) {
-                  const int k = N + i;
-                  const size_t Ct = static_cast<size_t>((k - N) / B);
-                  const size_t ct = static_cast<size_t>((k % B) ^ r);
-                  const size_t col = Ct * static_cast<size_t>(B) + ct;
-                  tile_out[row_local][col] = lout_row[static_cast<size_t>(k)];
-              }
-              // 239..254 : BCH
-              for (int j = 0; j < BCH_PAR; ++j) {
-                  const int k = K + j;
-                  const size_t Ct = static_cast<size_t>((k - N) / B);
-                  const size_t ct = static_cast<size_t>((k % B) ^ r);
-                  const size_t col = Ct * static_cast<size_t>(B) + ct;
-                  tile_out[row_local][col] = lout_row[static_cast<size_t>(k)];
-              }
-              // 255 : overall
-              {
-                  const int k = OVR_IDX;
-                  const size_t Ct = static_cast<size_t>((k - N) / B);
-                  const size_t ct = static_cast<size_t>((k % B) ^ r);
-                  const size_t col = Ct * static_cast<size_t>(B) + ct;
-                  tile_out[row_local][col] = lout_row[static_cast<size_t>(k)];
-              }
+          for (int i = 0; i < TAKE_BITS; ++i) {
+              const int k = N + i;
+              const size_t Ct = static_cast<size_t>((k - N) / B);
+              const size_t ct = static_cast<size_t>((k % B) ^ r);
+              const size_t col = Ct * static_cast<size_t>(B) + ct;
+              tile_out[row_local][col] = lout_row[static_cast<size_t>(k)];
+          }
+          for (int j = 0; j < BCH_PAR; ++j) {
+              const int k = K + j;
+              const size_t Ct = static_cast<size_t>((k - N) / B);
+              const size_t ct = static_cast<size_t>((k % B) ^ r);
+              const size_t col = Ct * static_cast<size_t>(B) + ct;
+              tile_out[row_local][col] = lout_row[static_cast<size_t>(k)];
+          }
+          {
+              const int k = OVR_IDX;
+              const size_t Ct = static_cast<size_t>((k - N) / B);
+              const size_t ct = static_cast<size_t>((k % B) ^ r);
+              const size_t col = Ct * static_cast<size_t>(B) + ct;
+              tile_out[row_local][col] = lout_row[static_cast<size_t>(k)];
           }
 
-          //—— 左半：按式 (1) 回写 Y2[0..N-1] 到历史位置 ——（保持你原逻辑）
-          if (true)
+          const long R = static_cast<long>(row_global / static_cast<size_t>(B));
+          for (int k = 0; k < N; ++k)
           {
-              const long R = static_cast<long>(row_global / static_cast<size_t>(B));
-              const int  r = static_cast<int>(row_global % static_cast<size_t>(B));
+              const long br = (R ^ 1L)
+                            - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)
+                            - static_cast<long>(2 * (N / B))
+                            + static_cast<long>(2 * (k / B));
+              const long bc = static_cast<long>(k / B);
+              const long bit_row_in_block = static_cast<long>((k % B) ^ r);
+              const long bit_col_in_block = static_cast<long>(r);
 
-              for (int k = 0; k < N; ++k)
-              {
-                  const long br = (R ^ 1L)
-                                - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)
-                                - static_cast<long>(2 * (N / B))
-                                + static_cast<long>(2 * (k / B));
-                  const long bc = static_cast<long>(k / B);
-                  const long bit_row_in_block = static_cast<long>((k % B) ^ r);
-                  const long bit_col_in_block = static_cast<long>(r);
+              const long rr_global = br * B + bit_row_in_block;
+              const long cc_global = bc * B + bit_col_in_block;
 
-                  const long rr_global = br * B + bit_row_in_block;
-                  const long cc_global = bc * B + bit_col_in_block;
+              const long rr_local2 = rr_global - static_cast<long>(tile_top_row_global);
+              const long cc_local2 = cc_global;
 
-                  const long rr_local2 = rr_global - static_cast<long>(tile_top_row_global);
-                  const long cc_local2 = cc_global;
+              const bool in_range =
+                  (rr_local2 >= 0 && rr_local2 < static_cast<long>(H) &&
+                   cc_local2 >= 0 && cc_local2 < static_cast<long>(W));
 
-                  const bool in_range =
-                      (rr_local2 >= 0 && rr_local2 < static_cast<long>(H) &&
-                       cc_local2 >= 0 && cc_local2 < static_cast<long>(W));
+              assert(in_range && "process_tile: write-back out of tile range");
 
-                  assert(in_range && "process_tile: write-back out of tile range");
-
-                  tile_out[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)] =
-                      lout_row[static_cast<size_t>(k)];
-              }
+              tile_out[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)] =
+                  lout_row[static_cast<size_t>(k)];
           }
-      } // r_off
-  } // s
+      }
+  }
 
   return TileProcessResult<LLR>{std::move(tile_out), early_stop_triggered};
 }
 
-
-  // ========== 窗口处理 ==========
 template <typename LLR>
-void process_window(Matrix<LLR>& work_llr,
-                    const Matrix<LLR>& channel_llr,
-                    size_t win_start, size_t win_end, const Params& p,
-                    size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
-                    std::vector<TileEarlyStopCounter>* tile_stats,
-                    bool normalize_extrinsic)
+void process_window_impl(Matrix<LLR>& work_llr,
+                         const Matrix<LLR>& channel_llr,
+                         size_t win_start, size_t win_end, const Params& p,
+                         size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
+                         std::vector<TileEarlyStopCounter>* tile_stats,
+                         bool normalize_extrinsic,
+                         CoreFn<LLR> core_fn)
 {
   (void)win_start;
   const size_t N = Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM;
 
   for (size_t t = 0; t < TILES_PER_WIN; ++t)
   {
-        // 让 t=0 对应窗口最底部的 tile
         const size_t tile_bottom_row = win_end  - t * tile_stride_rows;
         const size_t tile_top_row    = tile_bottom_row + 1 - tile_height_rows;
 
+        const size_t tile_height_rows_actual = tile_bottom_row - tile_top_row + 1;
+        Matrix<LLR> tile_in(tile_height_rows_actual, N);
+        Matrix<LLR> ch_tile(tile_height_rows_actual, N);
 
-        const size_t tile_height_rows = tile_bottom_row - tile_top_row + 1;
-        Matrix<LLR> tile_in(tile_height_rows, N);
-        Matrix<LLR> ch_tile(tile_height_rows, N);
-
-        for (size_t r = 0; r < tile_height_rows; ++r) {
+        for (size_t r = 0; r < tile_height_rows_actual; ++r) {
             for (size_t c = 0; c < N; ++c) {
                 tile_in[r][c]  = work_llr[tile_top_row + r][c];
                 ch_tile[r][c]  = channel_llr[tile_top_row + r][c];
             }
         }
 
-        // 参数选取
         auto pick_float = [](const std::vector<float>& tbl, size_t idx, float fallback) -> float {
             return (idx < tbl.size()) ? tbl[idx] : fallback;
         };
@@ -365,10 +337,11 @@ void process_window(Matrix<LLR>& work_llr,
 
     const bool use_hard = pick_int(p.HARD_TILE_LIST, t, p.HARD_DECODE_DEFAULT ? 1 : 0) != 0;
 
-    TileProcessResult<LLR> tile_result = process_tile<LLR>(tile_in, ch_tile, tile_params,
-                                                           /*tile_top_row_global=*/tile_top_row,
-                                                           /*use_hard_decode=*/use_hard,
-                                                           /*normalize_extrinsic=*/normalize_extrinsic);
+    TileProcessResult<LLR> tile_result = process_tile_impl<LLR>(tile_in, ch_tile, tile_params,
+                                                                /*tile_top_row_global=*/tile_top_row,
+                                                                /*use_hard_decode=*/use_hard,
+                                                                /*normalize_extrinsic=*/normalize_extrinsic,
+                                                                core_fn);
 
     if (tile_stats && t < tile_stats->size()) {
       auto& counter = (*tile_stats)[t];
@@ -378,51 +351,46 @@ void process_window(Matrix<LLR>& work_llr,
       }
     }
 
-    for (size_t r = 0; r < tile_height_rows; ++r)
+    for (size_t r = 0; r < tile_height_rows_actual; ++r)
       for (size_t c = 0; c < work_llr.cols(); ++c){
         work_llr[tile_top_row + r][c] = tile_result.tile_out[r][c];
       }
   }
 }
 
-
-
-
-// ===================== 顶层解码 =====================
 template <typename LLR>
-Matrix<LLR> ofec_decode_llr(const Matrix<LLR>& llr_mat, const Params& p,
-                            std::vector<TileEarlyStopCounter>* tile_stats,
-                            bool normalize_extrinsic)
+Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
+                                 std::vector<TileEarlyStopCounter>* tile_stats,
+                                 bool normalize_extrinsic,
+                                 CoreFn<LLR> core_fn)
 {
   const size_t N = Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM;
 
   const size_t RROWS = llr_mat.rows();
-    const size_t CCOLS = llr_mat.cols();
-    if (CCOLS != N)
-        throw std::invalid_argument("ofec_decode_llr: llr_mat cols != N.");
+  const size_t CCOLS = llr_mat.cols();
+  if (CCOLS != N)
+      throw std::invalid_argument("ofec_decode_llr: llr_mat cols != N.");
 
-    assert(p.valid());
+  assert(p.valid());
 
-    const size_t TILE_HEIGHT_ROWS = p.tile_height_rows();
-    const size_t TILE_STRIDE_ROWS = p.tile_stride_rows();
-    const size_t WIN_HEIGHT_ROWS  = p.win_height_rows();
-    const size_t POP_PUSH_ROWS    = p.pop_push_rows();
-    const size_t TILES_PER_WIN    = p.TILES_PER_WIN;
+  const size_t TILE_HEIGHT_ROWS = p.tile_height_rows();
+  const size_t TILE_STRIDE_ROWS = p.tile_stride_rows();
+  const size_t WIN_HEIGHT_ROWS  = p.win_height_rows();
+  const size_t POP_PUSH_ROWS    = p.pop_push_rows();
+  const size_t TILES_PER_WIN    = p.TILES_PER_WIN;
 
-    // 通道 LLR：固定（Lch）
-    Matrix<LLR> channel_llr = llr_mat;
+  Matrix<LLR> channel_llr = llr_mat;
 
-    // 工作矩阵：仅存外信息（La/Le）。首轮先验为 0。
-    Matrix<LLR> work_llr(RROWS, N);
-    for (size_t r = 0; r < RROWS; ++r)
-        for (size_t c = 0; c < N; ++c)
-            work_llr[r][c] = llr_from_float<LLR>(0.0f);
+  Matrix<LLR> work_llr(RROWS, N);
+  for (size_t r = 0; r < RROWS; ++r)
+      for (size_t c = 0; c < N; ++c)
+          work_llr[r][c] = llr_from_float<LLR>(0.0f);
 
   if (RROWS < WIN_HEIGHT_ROWS) {
     if (tile_stats) {
       tile_stats->assign(p.TILES_PER_WIN, TileEarlyStopCounter{});
     }
-    return channel_llr; // 不能开窗：直接回传 Lch
+    return channel_llr;
   }
 
   size_t win_start     = p.initial_win_start_rows();
@@ -438,11 +406,12 @@ Matrix<LLR> ofec_decode_llr(const Matrix<LLR>& llr_mat, const Params& p,
   while (win_start <= last_ws) {
     const size_t win_end = win_start + WIN_HEIGHT_ROWS - 1;
 
-    process_window<LLR>(work_llr, channel_llr,
-                        win_start, win_end, p,
-                        TILE_HEIGHT_ROWS, TILE_STRIDE_ROWS, TILES_PER_WIN,
-                        stats_ptr,
-                        normalize_extrinsic);
+    process_window_impl<LLR>(work_llr, channel_llr,
+                             win_start, win_end, p,
+                             TILE_HEIGHT_ROWS, TILE_STRIDE_ROWS, TILES_PER_WIN,
+                             stats_ptr,
+                             normalize_extrinsic,
+                             core_fn);
 
     win_start += POP_PUSH_ROWS;
   }
@@ -451,7 +420,6 @@ Matrix<LLR> ofec_decode_llr(const Matrix<LLR>& llr_mat, const Params& p,
     *tile_stats = std::move(local_tile_stats);
   }
 
-  // 输出：L = Lch + Le
   Matrix<LLR> out(RROWS, N);
   for (size_t r = 0; r < RROWS; ++r) {
     for (size_t c = 0; c < N; ++c) {
@@ -462,31 +430,160 @@ Matrix<LLR> ofec_decode_llr(const Matrix<LLR>& llr_mat, const Params& p,
   return out;
 }
 
+} // namespace
+
+template <typename LLR>
+TileProcessResult<LLR> process_tile_plain(const Matrix<LLR>& tile_in,
+                                          const Matrix<LLR>& ch_tile,
+                                          const Params& p,
+                                          size_t tile_top_row_global,
+                                          bool use_hard_decode,
+                                          bool normalize_extrinsic)
+{
+  return process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
+                           use_hard_decode, normalize_extrinsic,
+                           &Decoder_Core_plain<LLR>);
+}
+
+template <typename LLR>
+TileProcessResult<LLR> process_tile_ebchPF(const Matrix<LLR>& tile_in,
+                                           const Matrix<LLR>& ch_tile,
+                                           const Params& p,
+                                           size_t tile_top_row_global,
+                                           bool use_hard_decode,
+                                           bool normalize_extrinsic)
+{
+  return process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
+                           use_hard_decode, normalize_extrinsic,
+                           &Decoder_Core_ebchPF<LLR>);
+}
+
+template <typename LLR>
+void process_window_plain(Matrix<LLR>& work_llr,
+                          const Matrix<LLR>& channel_llr,
+                          size_t win_start, size_t win_end, const Params& p,
+                          size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
+                          std::vector<TileEarlyStopCounter>* tile_stats,
+                          bool normalize_extrinsic)
+{
+  process_window_impl(work_llr, channel_llr, win_start, win_end, p,
+                      tile_height_rows, tile_stride_rows, TILES_PER_WIN,
+                      tile_stats, normalize_extrinsic,
+                      &Decoder_Core_plain<LLR>);
+}
+
+template <typename LLR>
+void process_window_ebchPF(Matrix<LLR>& work_llr,
+                           const Matrix<LLR>& channel_llr,
+                           size_t win_start, size_t win_end, const Params& p,
+                           size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
+                           std::vector<TileEarlyStopCounter>* tile_stats,
+                           bool normalize_extrinsic)
+{
+  process_window_impl(work_llr, channel_llr, win_start, win_end, p,
+                      tile_height_rows, tile_stride_rows, TILES_PER_WIN,
+                      tile_stats, normalize_extrinsic,
+                      &Decoder_Core_ebchPF<LLR>);
+}
+
+template <typename LLR>
+Matrix<LLR> ofec_decode_llr_plain(const Matrix<LLR>& llr_mat, const Params& p,
+                                  std::vector<TileEarlyStopCounter>* tile_stats,
+                                  bool normalize_extrinsic)
+{
+  return ofec_decode_llr_impl(llr_mat, p, tile_stats, normalize_extrinsic,
+                              &Decoder_Core_plain<LLR>);
+}
+
+template <typename LLR>
+Matrix<LLR> ofec_decode_llr_ebchPF(const Matrix<LLR>& llr_mat, const Params& p,
+                                   std::vector<TileEarlyStopCounter>* tile_stats,
+                                   bool normalize_extrinsic)
+{
+  return ofec_decode_llr_impl(llr_mat, p, tile_stats, normalize_extrinsic,
+                              &Decoder_Core_ebchPF<LLR>);
+}
+
 // ===== 显式实例化 =====
-template TileProcessResult<float>  process_tile<float >(const Matrix<float>&,  const Matrix<float>&,  const Params&, size_t, bool, bool);
-template TileProcessResult<int8_t> process_tile<int8_t>(const Matrix<int8_t>&,const Matrix<int8_t>&,const Params&,size_t,bool,bool);
+template TileProcessResult<float>  process_tile_plain<float >(const Matrix<float>&,  const Matrix<float>&,  const Params&, size_t, bool, bool);
+template TileProcessResult<int8_t> process_tile_plain<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&, const Params&, size_t, bool, bool);
+template TileProcessResult<float>  process_tile_ebchPF<float >(const Matrix<float>&,  const Matrix<float>&,  const Params&, size_t, bool, bool);
+template TileProcessResult<int8_t> process_tile_ebchPF<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&, const Params&, size_t, bool, bool);
 
-template void process_window<float >(Matrix<float>&,  const Matrix<float>&,  size_t, size_t, const Params&,
-                                     size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
-template void process_window<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&, size_t, size_t, const Params&,
-                                     size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
+template void process_window_plain<float >(Matrix<float>&,  const Matrix<float>&,  size_t, size_t, const Params&,
+                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
+template void process_window_plain<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&, size_t, size_t, const Params&,
+                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
+template void process_window_ebchPF<float >(Matrix<float>&,  const Matrix<float>&,  size_t, size_t, const Params&,
+                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
+template void process_window_ebchPF<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&, size_t, size_t, const Params&,
+                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
 
-template Matrix<float>  ofec_decode_llr<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool);
-template Matrix<int8_t> ofec_decode_llr<int8_t>(const Matrix<int8_t>&, const Params&, std::vector<TileEarlyStopCounter>*, bool);
-// qfloat 量化类型
-template TileProcessResult<newcode::qfloat<4>> process_tile<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
-                                                                               const Matrix<newcode::qfloat<4>>&,
-                                                                               const Params&, size_t, bool, bool);
-template TileProcessResult<newcode::qfloat<5>> process_tile<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
-                                                                               const Matrix<newcode::qfloat<5>>&,
-                                                                               const Params&, size_t, bool, bool);
+template Matrix<float>  ofec_decode_llr_plain<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool);
+template Matrix<int8_t> ofec_decode_llr_plain<int8_t>(const Matrix<int8_t>&, const Params&, std::vector<TileEarlyStopCounter>*, bool);
+template Matrix<float>  ofec_decode_llr_ebchPF<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool);
+template Matrix<int8_t> ofec_decode_llr_ebchPF<int8_t>(const Matrix<int8_t>&, const Params&, std::vector<TileEarlyStopCounter>*, bool);
 
-template void process_window<newcode::qfloat<4>>(Matrix<newcode::qfloat<4>>&, const Matrix<newcode::qfloat<4>>&, size_t, size_t, const Params&,
-                                                size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
-template void process_window<newcode::qfloat<5>>(Matrix<newcode::qfloat<5>>&, const Matrix<newcode::qfloat<5>>&, size_t, size_t, const Params&,
-                                                size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
+template TileProcessResult<newcode::qfloat<4>> process_tile_plain<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
+                                                                                       const Matrix<newcode::qfloat<4>>&,
+                                                                                       const Params&, size_t, bool, bool);
+template TileProcessResult<newcode::qfloat<5>> process_tile_plain<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
+                                                                                       const Matrix<newcode::qfloat<5>>&,
+                                                                                       const Params&, size_t, bool, bool);
+template TileProcessResult<newcode::qfloat<4>> process_tile_ebchPF<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
+                                                                                       const Matrix<newcode::qfloat<4>>&,
+                                                                                       const Params&, size_t, bool, bool);
+template TileProcessResult<newcode::qfloat<5>> process_tile_ebchPF<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
+                                                                                       const Matrix<newcode::qfloat<5>>&,
+                                                                                       const Params&, size_t, bool, bool);
 
-template Matrix<newcode::qfloat<4>> ofec_decode_llr<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&, const Params&, std::vector<TileEarlyStopCounter>*, bool);
-template Matrix<newcode::qfloat<5>> ofec_decode_llr<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&, const Params&, std::vector<TileEarlyStopCounter>*, bool);
+template void process_window_plain<newcode::qfloat<4>>(Matrix<newcode::qfloat<4>>&,
+                                                       const Matrix<newcode::qfloat<4>>&,
+                                                       size_t, size_t, const Params&,
+                                                       size_t, size_t, size_t,
+                                                       std::vector<TileEarlyStopCounter>*, bool);
+template void process_window_plain<newcode::qfloat<5>>(Matrix<newcode::qfloat<5>>&,
+                                                       const Matrix<newcode::qfloat<5>>&,
+                                                       size_t, size_t, const Params&,
+                                                       size_t, size_t, size_t,
+                                                       std::vector<TileEarlyStopCounter>*, bool);
+template void process_window_ebchPF<newcode::qfloat<4>>(Matrix<newcode::qfloat<4>>&,
+                                                       const Matrix<newcode::qfloat<4>>&,
+                                                       size_t, size_t, const Params&,
+                                                       size_t, size_t, size_t,
+                                                       std::vector<TileEarlyStopCounter>*, bool);
+template void process_window_ebchPF<newcode::qfloat<5>>(Matrix<newcode::qfloat<5>>&,
+                                                       const Matrix<newcode::qfloat<5>>&,
+                                                       size_t, size_t, const Params&,
+                                                       size_t, size_t, size_t,
+                                                       std::vector<TileEarlyStopCounter>*, bool);
+
+template Matrix<newcode::qfloat<4>> ofec_decode_llr_plain<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
+                                                                             const Params&, std::vector<TileEarlyStopCounter>*, bool);
+template Matrix<newcode::qfloat<5>> ofec_decode_llr_plain<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
+                                                                             const Params&, std::vector<TileEarlyStopCounter>*, bool);
+template Matrix<newcode::qfloat<4>> ofec_decode_llr_ebchPF<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
+                                                                             const Params&, std::vector<TileEarlyStopCounter>*, bool);
+template Matrix<newcode::qfloat<5>> ofec_decode_llr_ebchPF<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
+                                                                             const Params&, std::vector<TileEarlyStopCounter>*, bool);
+
+template void process_window<float >(Matrix<float>&,  const Matrix<float>&,
+                                     std::size_t, std::size_t, const Params&,
+                                     std::size_t, std::size_t, std::size_t,
+                                     std::vector<TileEarlyStopCounter>*, bool);
+template void process_window<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&,
+                                     std::size_t, std::size_t, const Params&,
+                                     std::size_t, std::size_t, std::size_t,
+                                     std::vector<TileEarlyStopCounter>*, bool);
+template void process_window<newcode::qfloat<4>>(Matrix<newcode::qfloat<4>>&,
+                                                 const Matrix<newcode::qfloat<4>>&,
+                                                 std::size_t, std::size_t, const Params&,
+                                                 std::size_t, std::size_t, std::size_t,
+                                                 std::vector<TileEarlyStopCounter>*, bool);
+template void process_window<newcode::qfloat<5>>(Matrix<newcode::qfloat<5>>&,
+                                                 const Matrix<newcode::qfloat<5>>&,
+                                                 std::size_t, std::size_t, const Params&,
+                                                 std::size_t, std::size_t, std::size_t,
+                                                 std::vector<TileEarlyStopCounter>*, bool);
 
 } // namespace newcode

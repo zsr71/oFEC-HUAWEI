@@ -7,15 +7,17 @@
 #include <stdexcept>
 
 namespace newcode {
+namespace {
 
 template<typename LLR>
-void chase_decode_256(const LLR* Lin256, const LLR* Lch256, LLR* Y2_256, const Params& p);
+using ChaseFn = void (*)(const LLR*, const LLR*, LLR*, const Params&);
 
-template <typename LLR>
-DecoderCoreResult<LLR> Decoder_Core(const Matrix<LLR>& lin_matrix,
-                                    const Matrix<LLR>& lch_matrix,
-                                    bool use_hard_decode,
-                                    const Params& p)
+template<typename LLR>
+DecoderCoreResult<LLR> Decoder_Core_impl(const Matrix<LLR>& lin_matrix,
+                                         const Matrix<LLR>& lch_matrix,
+                                         bool use_hard_decode,
+                                         const Params& p,
+                                         ChaseFn<LLR> chase_fn)
 {
   const size_t rows = lin_matrix.rows();
   const size_t cols = lin_matrix.cols();
@@ -44,7 +46,7 @@ DecoderCoreResult<LLR> Decoder_Core(const Matrix<LLR>& lin_matrix,
     if (use_hard_decode) {
       produced = perform_hard_decode<LLR>(LinVec, LchVec, Y2, p);
     } else {
-      chase_decode_256<LLR>(LinVec.data(), LchVec.data(), Y2.data(), p);
+      chase_fn(LinVec.data(), LchVec.data(), Y2.data(), p);
       produced = true;
     }
 
@@ -59,22 +61,60 @@ DecoderCoreResult<LLR> Decoder_Core(const Matrix<LLR>& lin_matrix,
   return result;
 }
 
-template DecoderCoreResult<float> Decoder_Core<float>(const Matrix<float>&,
-                                                      const Matrix<float>&,
-                                                      bool,
-                                                      const Params&);
-template DecoderCoreResult<int8_t> Decoder_Core<int8_t>(const Matrix<int8_t>&,
-                                                        const Matrix<int8_t>&,
-                                                        bool,
-                                                        const Params&);
-template DecoderCoreResult<qfloat<4>> Decoder_Core<qfloat<4>>(const Matrix<qfloat<4>>&,
-                                                              const Matrix<qfloat<4>>&,
+} // namespace
+
+template<typename LLR>
+DecoderCoreResult<LLR> Decoder_Core_plain(const Matrix<LLR>& lin_matrix,
+                                          const Matrix<LLR>& lch_matrix,
+                                          bool use_hard_decode,
+                                          const Params& p)
+{
+  return Decoder_Core_impl(lin_matrix, lch_matrix, use_hard_decode, p,
+                           &chase_decode_256_plain<LLR>);
+}
+
+template<typename LLR>
+DecoderCoreResult<LLR> Decoder_Core_ebchPF(const Matrix<LLR>& lin_matrix,
+                                           const Matrix<LLR>& lch_matrix,
+                                           bool use_hard_decode,
+                                           const Params& p)
+{
+  return Decoder_Core_impl(lin_matrix, lch_matrix, use_hard_decode, p,
+                           &chase_decode_256_ebchPF<LLR>);
+}
+
+template DecoderCoreResult<float> Decoder_Core_plain<float>(const Matrix<float>&,
+                                                            const Matrix<float>&,
+                                                            bool,
+                                                            const Params&);
+template DecoderCoreResult<int8_t> Decoder_Core_plain<int8_t>(const Matrix<int8_t>&,
+                                                              const Matrix<int8_t>&,
                                                               bool,
                                                               const Params&);
-template DecoderCoreResult<qfloat<5>> Decoder_Core<qfloat<5>>(const Matrix<qfloat<5>>&,
-                                                              const Matrix<qfloat<5>>&,
-                                                              bool,
-                                                              const Params&);
+template DecoderCoreResult<qfloat<4>> Decoder_Core_plain<qfloat<4>>(const Matrix<qfloat<4>>&,
+                                                                    const Matrix<qfloat<4>>&,
+                                                                    bool,
+                                                                    const Params&);
+template DecoderCoreResult<qfloat<5>> Decoder_Core_plain<qfloat<5>>(const Matrix<qfloat<5>>&,
+                                                                    const Matrix<qfloat<5>>&,
+                                                                    bool,
+                                                                    const Params&);
+
+template DecoderCoreResult<float> Decoder_Core_ebchPF<float>(const Matrix<float>&,
+                                                             const Matrix<float>&,
+                                                             bool,
+                                                             const Params&);
+template DecoderCoreResult<int8_t> Decoder_Core_ebchPF<int8_t>(const Matrix<int8_t>&,
+                                                               const Matrix<int8_t>&,
+                                                               bool,
+                                                               const Params&);
+template DecoderCoreResult<qfloat<4>> Decoder_Core_ebchPF<qfloat<4>>(const Matrix<qfloat<4>>&,
+                                                                     const Matrix<qfloat<4>>&,
+                                                                     bool,
+                                                                     const Params&);
+template DecoderCoreResult<qfloat<5>> Decoder_Core_ebchPF<qfloat<5>>(const Matrix<qfloat<5>>&,
+                                                                     const Matrix<qfloat<5>>&,
+                                                                     bool,
+                                                                     const Params&);
 
 } // namespace newcode
-

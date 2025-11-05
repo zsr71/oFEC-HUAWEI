@@ -20,8 +20,8 @@ public:
         std::cout << "[INFO] (" << request.label << ") ebchPF decoder running in FLOAT\n";
         result.pre_decoder_llr = request.channel_llr;
         result.post_decoder_llr =
-            ofec_decode_llr(result.pre_decoder_llr, request.params, &result.tile_stats,
-                            request.normalize_extrinsic);
+            ofec_decode_llr_ebchPF(result.pre_decoder_llr, request.params, &result.tile_stats,
+                                   request.normalize_extrinsic);
         break;
 
       case LlrFormat::QFloat5: {
@@ -31,8 +31,8 @@ public:
         std::cout << "[INFO] (" << request.label << ") Quant clip=" << qfloat<5>::DEFAULT_CLIP
                   << " levels ±" << qfloat<5>::Q() << "\n";
         result.pre_decoder_llr = cast_matrix_from_qfloat(quantized);
-        auto decoded = ofec_decode_llr(quantized, request.params, &result.tile_stats,
-                                       request.normalize_extrinsic);
+        auto decoded = ofec_decode_llr_ebchPF(quantized, request.params, &result.tile_stats,
+                                              request.normalize_extrinsic);
         result.post_decoder_llr = cast_matrix_from_qfloat(decoded);
         break;
       }
@@ -44,8 +44,8 @@ public:
         std::cout << "[INFO] (" << request.label << ") Quant clip=" << qfloat<4>::DEFAULT_CLIP
                   << " levels ±" << qfloat<4>::Q() << "\n";
         result.pre_decoder_llr = cast_matrix_from_qfloat(quantized);
-        auto decoded = ofec_decode_llr(quantized, request.params, &result.tile_stats,
-                                       request.normalize_extrinsic);
+        auto decoded = ofec_decode_llr_ebchPF(quantized, request.params, &result.tile_stats,
+                                              request.normalize_extrinsic);
         result.post_decoder_llr = cast_matrix_from_qfloat(decoded);
         break;
       }

@@ -51,7 +51,9 @@ Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const Params& p)
         if (br < 0) return 0; // 启动期/负索引置 0
         const size_t rr = static_cast<size_t>(br) * static_cast<size_t>(B) + static_cast<size_t>(rr_in_blk);
         const size_t cc = static_cast<size_t>(bc) * static_cast<size_t>(B) + static_cast<size_t>(cc_in_blk);
-        if (rr >= mat.rows() || cc >= mat.cols()) return 0; // 越界兜底
+        if (rr >= mat.rows() || cc >= mat.cols()) {
+            throw std::out_of_range("Error: Index out of bounds. rr = " + std::to_string(rr) + ", cc = " + std::to_string(cc) + ", matrix size: (" + std::to_string(mat.rows()) + ", " + std::to_string(mat.cols()) + ")");
+        }        
         return mat[rr][cc];
     };
 

@@ -149,10 +149,10 @@ static inline float eucldist_sq_256(const float* softin, const std::array<float,
 } // namespace detail
 
 template<typename LLR>
-void chase_decode_256(const LLR* Lin256,
-                      const LLR* /*Lch256*/,
-                      LLR* Y2_256,
-                      const Params& p)
+void chase_decode_256_ebchPF(const LLR* Lin256,
+                             const LLR* /*Lch256*/,
+                             LLR* Y2_256,
+                             const Params& p)
 {
     using namespace detail;
 
@@ -208,15 +208,10 @@ void chase_decode_256(const LLR* Lin256,
     std::vector<std::array<float,256>> codeset; // M × 256, ±1
     build_unique_codeset_pm1(CW_all, ok_mask, codeset);
 
-    // softin = y（本轮输入），做行级均值绝对值归一化
+    // softin = y（本轮输入）
     float softin[256];
-    for (int i = 0; i < 256; ++i) softin[i] = y[i];
-    {
-        float m = 0.f;
-        for (int i = 0; i < 256; ++i) m += std::fabs(softin[i]);
-        m /= 256.f;
-        if (m > 0.f) for (int i = 0; i < 256; ++i) softin[i] /= m;
-    }
+    for (int i = 0; i < 256; ++i) {softin[i] = y[i];}
+
 
     // 若没有任何合法候选：按 MATLAB chasedec fallback，取“0翻转”硬判并补整体位
     if (codeset.empty()) {
@@ -273,30 +268,30 @@ void chase_decode_256(const LLR* Lin256,
 }
 // ======================== 2-arg wrapper (kept for API parity) ========================
 template<typename LLR>
-void chase_decode_256(const LLR* Y256, LLR* Y2_256, const Params& p)
+void chase_decode_256_ebchPF(const LLR* Y256, LLR* Y2_256, const Params& p)
 {
-    chase_decode_256<LLR>(Y256, Y256, Y2_256, p);
+    chase_decode_256_ebchPF<LLR>(Y256, Y256, Y2_256, p);
 }
 
 // ======================== explicit instantiations ========================
-template void chase_decode_256<float >(const float*,  const float*,  float*,  const Params&);
-template void chase_decode_256<int8_t>(const int8_t*, const int8_t*, int8_t*, const Params&);
-template void chase_decode_256<newcode::qfloat<4>>(const newcode::qfloat<4>*,
-                                                   const newcode::qfloat<4>*,
-                                                   newcode::qfloat<4>*,
-                                                   const Params&);
-template void chase_decode_256<newcode::qfloat<5>>(const newcode::qfloat<5>*,
-                                                   const newcode::qfloat<5>*,
-                                                   newcode::qfloat<5>*,
-                                                   const Params&);
+template void chase_decode_256_ebchPF<float >(const float*,  const float*,  float*,  const Params&);
+template void chase_decode_256_ebchPF<int8_t>(const int8_t*, const int8_t*, int8_t*, const Params&);
+template void chase_decode_256_ebchPF<newcode::qfloat<4>>(const newcode::qfloat<4>*,
+                                                         const newcode::qfloat<4>*,
+                                                         newcode::qfloat<4>*,
+                                                         const Params&);
+template void chase_decode_256_ebchPF<newcode::qfloat<5>>(const newcode::qfloat<5>*,
+                                                         const newcode::qfloat<5>*,
+                                                         newcode::qfloat<5>*,
+                                                         const Params&);
 
-template void chase_decode_256<float >(const float*,  float*,  const Params&);
-template void chase_decode_256<int8_t>(const int8_t*, int8_t*, const Params&);
-template void chase_decode_256<newcode::qfloat<4>>(const newcode::qfloat<4>*,
-                                                   newcode::qfloat<4>*,
-                                                   const Params&);
-template void chase_decode_256<newcode::qfloat<5>>(const newcode::qfloat<5>*,
-                                                   newcode::qfloat<5>*,
-                                                   const Params&);
+template void chase_decode_256_ebchPF<float >(const float*,  float*,  const Params&);
+template void chase_decode_256_ebchPF<int8_t>(const int8_t*, int8_t*, const Params&);
+template void chase_decode_256_ebchPF<newcode::qfloat<4>>(const newcode::qfloat<4>*,
+                                                         newcode::qfloat<4>*,
+                                                         const Params&);
+template void chase_decode_256_ebchPF<newcode::qfloat<5>>(const newcode::qfloat<5>*,
+                                                         newcode::qfloat<5>*,
+                                                         const Params&);
 
 } // namespace newcode
