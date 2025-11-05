@@ -114,7 +114,7 @@ static void ensure_csv_header(const std::string& csv_path)
   if (fin.good() && fin.peek() != std::ifstream::traits_type::eof()) return;
 
   std::ofstream fout(csv_path, std::ios::out | std::ios::app);
-  fout << "timestamp,run_id,scenario,alpha_start,alpha_step,beta_start,beta_step,chase_L,chase_n_test,ebn0_db,ALPHA_LIST,beta_list,"
+  fout << "timestamp,run_id,scenario,alpha_start,alpha_step,beta_start,beta_step,chase_L,chase_n_test,bitgen_seed,ebn0_db,ALPHA_LIST,beta_list,"
           "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
           "early_stop_mean_pct,early_stop_list\n";
 }
@@ -125,7 +125,7 @@ static void ensure_ebn0_csv_header(const std::string& csv_path)
   if (fin.good() && fin.peek() != std::ifstream::traits_type::eof()) return;
 
   std::ofstream fout(csv_path, std::ios::out | std::ios::app);
-  fout << "timestamp,run_id,scenario,ebn0_db,pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
+  fout << "timestamp,run_id,scenario,bitgen_seed,ebn0_db,pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
           "early_stop_mean_pct,early_stop_list\n";
 }
 
@@ -148,6 +148,7 @@ struct SweepScenario {
   float beta_step   = 0.0f;
   int   chase_L     = 0;
   int   chase_n_test = 0;
+  int   bitgen_seed = 0;
   float ebn0_db     = DEFAULT_EBN0_DB;
 };
 
@@ -171,9 +172,15 @@ static std::vector<SweepScenario> build_scenarios(const Params& base_params,
                                                   const std::vector<float>& beta_starts,
                                                   const std::vector<float>& beta_steps,
                                                   const std::vector<int>& chase_l_candidates,
+                                                  const std::vector<int>& seed_candidates,
                                                   const std::vector<float>& ebn0_candidates)
 {
   std::vector<SweepScenario> scenarios;
+
+  std::vector<int> seeds = seed_candidates;
+  if (seeds.empty()) {
+    seeds.push_back(base_params.BITGEN_SEED);
+  }
 
   SweepScenario baseline;
   baseline.name = "baseline";
@@ -189,6 +196,7 @@ static std::vector<SweepScenario> build_scenarios(const Params& base_params,
   }
   baseline.chase_L = base_params.CHASE_L;
   baseline.chase_n_test = 1 << base_params.CHASE_L;
+  baseline.bitgen_seed = base_params.BITGEN_SEED;
   baseline.ebn0_db = !ebn0_candidates.empty() ? ebn0_candidates.front() : DEFAULT_EBN0_DB;
   scenarios.push_back(std::move(baseline));
 
@@ -199,34 +207,39 @@ static std::vector<SweepScenario> build_scenarios(const Params& base_params,
         for (float b_step : beta_steps) {
           for (int chase_L : chase_l_candidates) {
             for (float ebn0_db : ebn0_candidates) {
-              SweepScenario sc;
-              sc.alpha_start = a_start;
-              sc.alpha_step  = a_step;
-              sc.beta_start  = b_start;
-              sc.beta_step   = b_step;
-              sc.chase_L     = chase_L;
-              sc.chase_n_test = 1 << chase_L;
-              sc.ebn0_db     = ebn0_db;
-              sc.alpha_list  = generate_sequence(a_start, a_step, len);
-              sc.beta_list   = generate_sequence(b_start, b_step, len);
+              for (int bitgen_seed : seeds) {
+                SweepScenario sc;
+                sc.alpha_start = a_start;
+                sc.alpha_step  = a_step;
+                sc.beta_start  = b_start;
+                sc.beta_step   = b_step;
+                sc.chase_L     = chase_L;
+                sc.chase_n_test = 1 << chase_L;
+                sc.bitgen_seed = bitgen_seed;
+                sc.ebn0_db     = ebn0_db;
+                sc.alpha_list  = generate_sequence(a_start, a_step, len);
+                sc.beta_list   = generate_sequence(b_start, b_step, len);
 
-              const SweepScenario& base = scenarios.front();
-              if (sc.alpha_list == base.alpha_list &&
-                  sc.beta_list  == base.beta_list &&
-                  sc.chase_L    == base.chase_L &&
-                  std::fabs(sc.ebn0_db - base.ebn0_db) < 1e-6f) {
-                continue; // 与基线重复，跳过
+                const SweepScenario& base = scenarios.front();
+                if (sc.alpha_list == base.alpha_list &&
+                    sc.beta_list  == base.beta_list &&
+                    sc.chase_L    == base.chase_L &&
+                    sc.bitgen_seed == base.bitgen_seed &&
+                    std::fabs(sc.ebn0_db - base.ebn0_db) < 1e-6f) {
+                  continue; // 与基线重复，跳过
+                }
+
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(3)
+                    << "alphaS" << a_start << "_d" << a_step
+                    << "_betaS" << b_start << "_d" << b_step
+                    << "_chL" << chase_L
+                    << "_EbN0_" << ebn0_db
+                    << "_seed" << bitgen_seed;
+                sc.name = oss.str();
+
+                scenarios.push_back(std::move(sc));
               }
-
-              std::ostringstream oss;
-              oss << std::fixed << std::setprecision(3)
-                  << "alphaS" << a_start << "_d" << a_step
-                  << "_betaS" << b_start << "_d" << b_step
-                  << "_chL" << chase_L
-                  << "_EbN0_" << ebn0_db;
-              sc.name = oss.str();
-
-              scenarios.push_back(std::move(sc));
             }
           }
         }
@@ -248,6 +261,7 @@ struct ScenarioOutput {
   float beta_step   = 0.0f;
   int   chase_L     = 0;
   int   chase_n_test = 0;
+  int   bitgen_seed = 0;
   float ebn0_db     = DEFAULT_EBN0_DB;
   PipelineResult result;
 };
@@ -278,6 +292,11 @@ int main()
   const std::vector<float> beta_start_candidates  = {0.1f,0.2f,0.25f,0.3f,0.35f,0.4f,0.5f,0.6f,0.7f,0.9f,1.2f,1.5f,1.7f};
   const std::vector<float> beta_step_candidates   = {0.0f,0.025f,0.05f,0.1f,0.15f,0.2f};
   const std::vector<int>   chase_l_candidates     = {6};
+  const std::vector<int>   bitgen_seed_candidates = {
+    base_params.BITGEN_SEED,
+    base_params.BITGEN_SEED + 101,
+    base_params.BITGEN_SEED + 202
+  };
 
   // EbN0 扫描范围配置：起点、终点以及取样点数（均匀分布）
   const float ebn0_start = 3.07f;
@@ -299,7 +318,7 @@ int main()
   auto scenarios = build_scenarios(base_params,
                                    alpha_start_candidates, alpha_step_candidates,
                                    beta_start_candidates, beta_step_candidates,
-                                   chase_l_candidates, sweep_ebn0_values);
+                                   chase_l_candidates, bitgen_seed_candidates, sweep_ebn0_values);
   const std::size_t NS = scenarios.size();
 
   out << "[INFO] total scenarios = " << NS << "\n";
@@ -334,6 +353,7 @@ int main()
     if (!params.beta_list.empty())  params.beta  = params.beta_list.front();
     params.CHASE_L     = scenario.chase_L;
     params.CHASE_NTEST = scenario.chase_n_test;
+    params.BITGEN_SEED = scenario.bitgen_seed;
 
     sem.acquire();
     futures.emplace_back(std::async(std::launch::async,
@@ -353,6 +373,7 @@ int main()
                                       out.beta_step   = scenario.beta_step;
                                       out.chase_L     = scenario.chase_L;
                                       out.chase_n_test = scenario.chase_n_test;
+                                      out.bitgen_seed = scenario.bitgen_seed;
                                       out.ebn0_db     = scenario.ebn0_db;
 
                                       Params local_params = params;
@@ -377,6 +398,7 @@ int main()
   float best_beta_step   = 0.0f;
   int   best_chase_L     = base_params.CHASE_L;
   int   best_chase_n_test = 1 << base_params.CHASE_L;
+  int   best_bitgen_seed  = base_params.BITGEN_SEED;
   float best_ebn0_db      = !sweep_ebn0_values.empty() ? sweep_ebn0_values.front() : DEFAULT_EBN0_DB;
 
   std::vector<ScenarioOutput> results;
@@ -439,6 +461,7 @@ int main()
             << std::defaultfloat
             << " | CHASE_L=" << pack.chase_L
             << " CHASE_NTEST=" << pack.chase_n_test
+            << " | Seed=" << pack.bitgen_seed
             << early_stop_summary;
     scenario_summaries.push_back(summary.str());
     out << summary.str() << "\n";
@@ -454,6 +477,7 @@ int main()
         << pack.beta_step   << ","
         << pack.chase_L     << ","
         << pack.chase_n_test<< ","
+        << pack.bitgen_seed << ","
         << pack.ebn0_db     << ","
         << '"' << join_vec(pack.alpha_list, '|', 6) << "\","
         << '"' << join_vec(pack.beta_list , '|', 6) << "\","
@@ -479,6 +503,7 @@ int main()
       best_beta_step   = pack.beta_step;
       best_chase_L     = pack.chase_L;
       best_chase_n_test = pack.chase_n_test;
+      best_bitgen_seed  = pack.bitgen_seed;
       best_ebn0_db      = pack.ebn0_db;
     }
   }
@@ -504,6 +529,7 @@ int main()
   out << std::defaultfloat;
   out << "[RESULT] Best CHASE_L/CHASE_NTEST: " << best_chase_L
       << " / " << best_chase_n_test << "\n";
+  out << "[RESULT] Best BITGEN_SEED: " << best_bitgen_seed << "\n";
 
   if (!best_tile_early_stop_pct.empty()) {
     out << "[RESULT] Best tile early-stop hit rates (%): ";
@@ -538,6 +564,7 @@ int main()
     if (!best_params.beta_list.empty())  best_params.beta  = best_params.beta_list.front();
     best_params.CHASE_L     = best_chase_L;
     best_params.CHASE_NTEST = best_chase_n_test;
+    best_params.BITGEN_SEED = best_bitgen_seed;
 
     Semaphore ebn0_sem(max_workers);
     std::vector<std::future<EbN0Output>> ebn0_futures;
@@ -598,6 +625,7 @@ int main()
       ebn0_csv << now_stamp() << ","
                << run_id << ","
                << best_scenario.name << ","
+               << best_bitgen_seed << ","
                << entry.ebn0_db << ","
                << res.pre_fec.ber    << ","
                << res.pre_fec.errors << ","
