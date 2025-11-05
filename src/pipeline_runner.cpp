@@ -134,7 +134,7 @@ PipelineResult run_pipeline(const Params& params,
   const int   K        = 239;
   const int   TAKEBITS = K - N;
   const float code_rate = static_cast<float>(TAKEBITS) / static_cast<float>(N);
-  const uint32_t awgn_seed = static_cast<uint32_t>(params.BITGEN_SEED + 100);
+  const uint32_t awgn_seed = static_cast<uint32_t>(params.CHANNEL_SEED);
   auto rx_syms = add_awgn(tx_syms, ebn0_dB, n_bps, awgn_seed);
 
   std::cout << "[INFO] (" << label << ") Eb/N0 set to " << ebn0_dB << " dB\n";

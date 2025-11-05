@@ -21,6 +21,8 @@ static constexpr float       kEbN0_db       =3.07f;
 static constexpr int         kChaseL_override = 6;   // 设为 -1 则沿用 Params 默认
 static constexpr bool        kNormalizeExtrinsic = false;
 static constexpr unsigned    kBitsPerSymbol = 2;     // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
+static constexpr int         kBitgenSeed    = 1712;
+static constexpr int         kChannelSeed   = 1812;
 
 // 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
 static constexpr float kAlpha_fill = 0.8f;
@@ -86,6 +88,8 @@ int main() {
 
   // 2) 组装 Params
   Params p; // 用默认初始化
+  p.BITGEN_SEED = kBitgenSeed;
+  p.CHANNEL_SEED = kChannelSeed;
   if (kChaseL_override >= 0) {
     p.CHASE_L = kChaseL_override;
     p.CHASE_NTEST = 1 << p.CHASE_L;
@@ -119,6 +123,8 @@ int main() {
   both("[INFO] run_pipeline(label="); both(kLabel);
   both(", Eb/N0="); both(kEbN0_db);
   both(" dB, CHASE_L="); both(p.CHASE_L); both(")\n");
+  both("[INFO] RNG seeds (bitgen/channel) = ");
+  both(p.BITGEN_SEED); both("/"); both(p.CHANNEL_SEED); both("\n");
 
   PipelineConfig cfg;
   cfg.interleaver_name = kInterleaverName;

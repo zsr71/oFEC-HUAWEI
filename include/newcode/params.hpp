@@ -19,6 +19,7 @@ struct Params {
   // ===== 运行/仿真参数 =====
   size_t NUM_INFO_BITS     = 32 * 110 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 1712;                 // 随机种子
+  int    CHANNEL_SEED      = BITGEN_SEED + 100;    // 信道噪声随机种子
   size_t NUM_GUARD_SUBROWS = 2;                  // 保护块子行数 G
 
   // ===== 解码组织参数（单位：sub-block rows）=====
