@@ -29,7 +29,7 @@ static PipelineConfig make_pipeline_config() {
   PipelineConfig cfg;
   cfg.interleaver_name = kInterleaverName;
   cfg.decoder_name = kDecoderName;
-  cfg.normalize_extrinsic = true;
+  cfg.normalize_extrinsic = false;
   cfg.bits_per_symbol = kBitsPerSymbol;
   return cfg;
 }
@@ -287,15 +287,30 @@ int main()
   Params base_params;
 
   // 示例候选集（起点与步进，可按需调整）
-  const std::vector<float> alpha_start_candidates = {0.01f,0.05f,0.1f,0.15f,0.2f,0.25f,0.3f,0.35f,0.4f,0.5f,0.6f,0.7f};
-  const std::vector<float> alpha_step_candidates  = {0.0f,0.025f,0.05f,0.1f,0.15f,0.2f};
-  const std::vector<float> beta_start_candidates  = {0.1f,0.2f,0.25f,0.3f,0.35f,0.4f,0.5f,0.6f,0.7f,0.9f,1.2f,1.5f,1.7f};
-  const std::vector<float> beta_step_candidates   = {0.0f,0.025f,0.05f,0.1f,0.15f,0.2f};
+  const std::vector<float> alpha_start_candidates = {0.3f};
+  const std::vector<float> alpha_step_candidates  = {0.05f};
+  const std::vector<float> beta_start_candidates  = {0.4f};
+  const std::vector<float> beta_step_candidates   = {0.1f};
+  // const std::vector<float> alpha_start_candidates = {0.01f,0.05f,0.1f,0.15f,0.2f,0.25f,0.3f,0.35f,0.4f,0.5f,0.6f,0.7f};
+  // const std::vector<float> alpha_step_candidates  = {0.0f,0.025f,0.05f,0.1f,0.15f,0.2f};
+  // const std::vector<float> beta_start_candidates  = {0.1f,0.2f,0.25f,0.3f,0.35f,0.4f,0.5f,0.6f,0.7f,0.9f,1.2f,1.5f,1.7f};
+  // const std::vector<float> beta_step_candidates   = {0.0f,0.025f,0.05f,0.1f,0.15f,0.2f};
   const std::vector<int>   chase_l_candidates     = {6};
   const std::vector<int>   bitgen_seed_candidates = {
     base_params.BITGEN_SEED,
     base_params.BITGEN_SEED + 101,
-    base_params.BITGEN_SEED + 202
+    base_params.BITGEN_SEED + 102,
+    base_params.BITGEN_SEED + 103,
+    base_params.BITGEN_SEED + 1014,
+    base_params.BITGEN_SEED + 1015,
+    base_params.BITGEN_SEED + 1016,
+    base_params.BITGEN_SEED + 1017,
+    base_params.BITGEN_SEED + 1317,
+    base_params.BITGEN_SEED + 1417,
+    base_params.BITGEN_SEED + 1517,
+    base_params.BITGEN_SEED + 1617,
+    base_params.BITGEN_SEED + 1084,
+    base_params.BITGEN_SEED + 2022
   };
 
   // EbN0 扫描范围配置：起点、终点以及取样点数（均匀分布）
