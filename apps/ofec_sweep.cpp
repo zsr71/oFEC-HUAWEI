@@ -331,8 +331,8 @@ int main()
   // const std::vector<float> beta_start_candidates  = {0.1f,0.2f,0.25f,0.3f,0.35f,0.4f,0.5f,0.6f,0.7f,0.9f,1.2f,1.5f,1.7f};
   // const std::vector<float> beta_step_candidates   = {0.0f,0.025f,0.05f,0.1f,0.15f,0.2f};
   const std::vector<int>   chase_l_candidates     = {6};
-  static constexpr int bitgen_seed_count   = 14; // 修改此值可调整 bitgen 随机种子数量
-  static constexpr int channel_seed_count  = 14;  // 修改此值可调整信道噪声随机种子数量
+  static constexpr int bitgen_seed_count   = 4; // 修改此值可调整 bitgen 随机种子数量
+  static constexpr int channel_seed_count  = 4;  // 修改此值可调整信道噪声随机种子数量
   const std::vector<int>   bitgen_seed_candidates   = generate_random_seeds(bitgen_seed_count);
   const std::vector<int>   channel_seed_candidates  = generate_random_seeds(channel_seed_count);
 

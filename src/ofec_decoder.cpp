@@ -181,10 +181,11 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
 
   auto decoder_res = core_fn(lin_matrix, lch_matrix, use_hard_decode, p);
 
-  if (normalize_extrinsic)
+  // Normalization only applies to soft extrinsics; skip for hard-decoded tiles.
+  if (normalize_extrinsic && !use_hard_decode)
   {
       auto is_fallback = [&](float w) -> bool {
-          const float target = p.ALPHA * p.beta;
+          const float target = p.beta;
           const float diff   = std::fabs(std::fabs(w) - target);
           const float tol    = 1e-4f * std::max(1.0f, target);
           return diff <= tol;
@@ -213,7 +214,7 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
           const float g_alpha = static_cast<float>(acc / static_cast<double>(cnt));
           if (g_alpha > 0.f)
           {
-              const float scale = p.ALPHA / g_alpha;
+              const float scale = 1.0f / g_alpha;
               for (std::size_t r = 0; r < Rcnt; ++r)
               {
                   if (!decoder_res.produced_rows[r]) continue;
@@ -224,6 +225,21 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
                       decoder_res.lout[r][j] = llr_from_float<LLR>(w * scale);
                   }
               }
+          }
+      }
+  }
+
+  {
+      // Apply global α scaling on extrinsic outputs (moved from Chase decoder).
+      const std::size_t Rcnt = decoder_res.lout.rows();
+      const std::size_t Ccnt = decoder_res.lout.cols();
+      for (std::size_t r = 0; r < Rcnt; ++r)
+      {
+          if (!decoder_res.produced_rows[r]) continue;
+          for (std::size_t j = 0; j < Ccnt; ++j)
+          {
+              const float w = llr_to_float(decoder_res.lout[r][j]);
+              decoder_res.lout[r][j] = llr_from_float<LLR>(w * p.ALPHA);
           }
       }
   }

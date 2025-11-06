@@ -128,8 +128,9 @@ void chase_decode_256_plain(const LLR* Lin256,
     using namespace detail;
 
     float beta;  // (20) fallback magnitude scale
-    float alpha; // (21) extrinsic scaling
+    float alpha; // (21) extrinsic scaling (applied by caller)
     pick_cp(p, beta, alpha);
+    (void)alpha; // scaling moved to decoder wrapper
 
     const int L      = std::max(1, p.CHASE_L);
     const int NTEST  = std::max(1, p.CHASE_NTEST);
@@ -262,9 +263,9 @@ void chase_decode_256_plain(const LLR* Lin256,
         }
     }
 
-    // Output EXTRINSIC  Per (21), caller shall form y(next) = y(ch) + 伪路蠅.
+    // Output EXTRINSIC  Per (21), caller shall form y(next) = y(ch) + α·ω.
     for (int j = 0; j < BCH_N_TOTAL; ++j)
-        Y2_256[j] = llr_from_float<LLR>(omega[j])*alpha;
+        Y2_256[j] = llr_from_float<LLR>(omega[j]);
 }
 
 // ======================== 2-arg wrapper (kept for API parity) ========================
