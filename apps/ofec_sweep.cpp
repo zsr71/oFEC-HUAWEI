@@ -247,49 +247,51 @@ static std::vector<SweepScenario> build_scenarios(const Params& base_params,
   };
 
   const std::size_t len = base_params.TILES_PER_WIN;
-  for (float a_start : alpha_starts) {
-    for (float a_step : alpha_steps) {
-      for (float b_start : beta_starts) {
-          for (float b_step : beta_steps) {
-            for (int chase_L : chase_l_candidates) {
-              for (float ebn0_db : ebn0_candidates) {
-                for (int bitgen_seed : bit_seeds) {
-                  for (int channel_seed : channel_seeds) {
-                    SweepScenario sc;
-                    sc.alpha_start = a_start;
-                    sc.alpha_step  = a_step;
-                    sc.beta_start  = b_start;
-                    sc.beta_step   = b_step;
-                    sc.chase_L     = chase_L;
-                    sc.chase_n_test = 1 << chase_L;
-                    sc.bitgen_seed = bitgen_seed;
-                    sc.channel_seed = channel_seed;
-                    sc.ebn0_db     = ebn0_db;
-                    sc.alpha_list  = generate_sequence(a_start, a_step, len);
-                    sc.beta_list   = generate_sequence(b_start, b_step, len);
+  if (explicit_patterns.empty()) {
+    for (float a_start : alpha_starts) {
+      for (float a_step : alpha_steps) {
+        for (float b_start : beta_starts) {
+            for (float b_step : beta_steps) {
+              for (int chase_L : chase_l_candidates) {
+                for (float ebn0_db : ebn0_candidates) {
+                  for (int bitgen_seed : bit_seeds) {
+                    for (int channel_seed : channel_seeds) {
+                      SweepScenario sc;
+                      sc.alpha_start = a_start;
+                      sc.alpha_step  = a_step;
+                      sc.beta_start  = b_start;
+                      sc.beta_step   = b_step;
+                      sc.chase_L     = chase_L;
+                      sc.chase_n_test = 1 << chase_L;
+                      sc.bitgen_seed = bitgen_seed;
+                      sc.channel_seed = channel_seed;
+                      sc.ebn0_db     = ebn0_db;
+                      sc.alpha_list  = generate_sequence(a_start, a_step, len);
+                      sc.beta_list   = generate_sequence(b_start, b_step, len);
 
-                    if (matches_baseline(sc)) {
-                      continue; // 与基线重复，跳过
+                      if (matches_baseline(sc)) {
+                        continue; // 与基线重复，跳过
+                      }
+
+                      std::ostringstream oss;
+                      oss << std::fixed << std::setprecision(3)
+                          << "alphaS" << a_start << "_d" << a_step
+                          << "_betaS" << b_start << "_d" << b_step
+                          << "_chL" << chase_L
+                          << "_EbN0_" << ebn0_db
+                          << "_bitSeed" << bitgen_seed
+                          << "_chanSeed" << channel_seed;
+                      sc.name = oss.str();
+
+                      scenarios.push_back(std::move(sc));
                     }
-
-                    std::ostringstream oss;
-                    oss << std::fixed << std::setprecision(3)
-                        << "alphaS" << a_start << "_d" << a_step
-                        << "_betaS" << b_start << "_d" << b_step
-                        << "_chL" << chase_L
-                        << "_EbN0_" << ebn0_db
-                        << "_bitSeed" << bitgen_seed
-                        << "_chanSeed" << channel_seed;
-                    sc.name = oss.str();
-
-                    scenarios.push_back(std::move(sc));
                   }
                 }
               }
             }
           }
         }
-      }
+    }
   }
 
   for (std::size_t idx = 0; idx < explicit_patterns.size(); ++idx) {
