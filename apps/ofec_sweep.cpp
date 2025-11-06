@@ -654,14 +654,6 @@ int main()
     out << std::defaultfloat;
   }
 
-               << res.post_fec.total << ","
-               << std::setprecision(3) << es_mean << ","
-               << "\"" << join_vec(es_vals, '|', 1) << "\"\n";
-      ebn0_csv << std::setprecision(8);
-    }
-
-  }
-
   out << "[RESULT] Best ALPHA_LIST: ";
   for (size_t i = 0; i < best_scenario.alpha_list.size(); ++i) {
     out << best_scenario.alpha_list[i]
@@ -672,5 +664,6 @@ int main()
   for (size_t i = 0; i < best_scenario.beta_list.size(); ++i) {
     out << best_scenario.beta_list[i]
         << (i + 1 < best_scenario.beta_list.size() ? ", " : "\n");
+  }
   return 0;
 }
