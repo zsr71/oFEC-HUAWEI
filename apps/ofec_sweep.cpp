@@ -654,99 +654,6 @@ int main()
     out << std::defaultfloat;
   }
 
-  // ========== 5) 使用最佳参数进行 EbN0 扫描 ==========
-  std::vector<float> ebn0_values = sweep_ebn0_values;
-  if (ebn0_values.empty()) {
-    ebn0_values.push_back(best_ebn0_db);
-  }
-
-  if (!ebn0_values.empty()) {
-    const std::string ebn0_log_path = (data_dir / ("run_" + run_id + "_ebn0.log")).string();
-    DualOut ebn0_out(std::cout, ebn0_log_path);
-
-    const std::string ebn0_csv_path = (data_dir / ("ofec_ebn0_results_" + run_id + ".csv")).string();
-    ensure_ebn0_csv_header(ebn0_csv_path);
-    std::ofstream ebn0_csv(ebn0_csv_path, std::ios::out | std::ios::app);
-    ebn0_csv.setf(std::ios::fixed);
-    ebn0_csv << std::setprecision(8);
-
-    Params best_params = base_params;
-    best_params.ALPHA_LIST = best_scenario.alpha_list;
-    best_params.beta_list  = best_scenario.beta_list;
-    if (!best_params.ALPHA_LIST.empty()) best_params.ALPHA = best_params.ALPHA_LIST.front();
-    if (!best_params.beta_list.empty())  best_params.beta  = best_params.beta_list.front();
-    best_params.CHASE_L     = best_chase_L;
-    best_params.CHASE_NTEST = best_chase_n_test;
-    best_params.BITGEN_SEED = best_bitgen_seed;
-    best_params.CHANNEL_SEED = best_channel_seed;
-
-    Semaphore ebn0_sem(max_workers);
-    std::vector<std::future<EbN0Output>> ebn0_futures;
-    ebn0_futures.reserve(ebn0_values.size());
-
-    for (float ebn0_db : ebn0_values) {
-      ebn0_sem.acquire();
-      ebn0_futures.emplace_back(std::async(std::launch::async,
-                                           [best_params, ebn0_db, base_label = best_scenario.name, &ebn0_sem]() mutable -> EbN0Output {
-                                             struct Releaser {
-                                               Semaphore& s;
-                                               ~Releaser() { s.release(); }
-                                             } _r{ebn0_sem};
-                                             Params params = best_params;
-                                             std::ostringstream oss;
-                                             oss << base_label << "_EbN0_" << std::fixed << std::setprecision(2) << ebn0_db;
-                                             std::string label = oss.str();
-                                             PipelineConfig cfg = make_pipeline_config();
-                                             PipelineResult result = run_pipeline(params, cfg, label, ebn0_db);
-                                             return EbN0Output{ebn0_db, std::move(result)};
-                                           }));
-    }
-
-    std::vector<EbN0Output> ebn0_results;
-    ebn0_results.reserve(ebn0_futures.size());
-    for (auto& fut : ebn0_futures) {
-      try {
-        ebn0_results.emplace_back(fut.get());
-      } catch (const std::exception& ex) {
-        ebn0_out << "[EbN0][ERROR] worker threw: " << ex.what() << "\n";
-      } catch (...) {
-        ebn0_out << "[EbN0][ERROR] worker threw unknown exception\n";
-      }
-    }
-
-    std::sort(ebn0_results.begin(), ebn0_results.end(),
-              [](const EbN0Output& a, const EbN0Output& b) { return a.ebn0_db < b.ebn0_db; });
-
-    if (!ebn0_results.empty()) {
-      ebn0_out << "\n[EbN0] Sweep results for best scenario (" << best_scenario.name << ")\n";
-    }
-
-    for (const auto& entry : ebn0_results) {
-      const auto& res = entry.result;
-      std::vector<double> es_vals(res.tile_early_stop_pct.begin(), res.tile_early_stop_pct.end());
-      const double es_mean = mean(es_vals);
-
-      ebn0_out << std::fixed << std::setprecision(2)
-               << "[EbN0] " << entry.ebn0_db << " dB | Pre-BER="
-               << std::setprecision(8) << res.pre_fec.ber
-               << " | Post-BER=" << res.post_fec.ber << "\n";
-      if (!es_vals.empty()) {
-        ebn0_out << "        EarlyStop%: "
-                 << std::fixed << std::setprecision(1) << join_vec(es_vals, ',', 1) << "\n";
-      }
-      ebn0_out << std::defaultfloat;
-
-      ebn0_csv << now_stamp() << ","
-               << run_id << ","
-               << best_scenario.name << ","
-               << best_bitgen_seed << ","
-               << best_channel_seed << ","
-               << entry.ebn0_db << ","
-               << res.pre_fec.ber    << ","
-               << res.pre_fec.errors << ","
-               << res.pre_fec.total  << ","
-               << res.post_fec.ber   << ","
-               << res.post_fec.errors<< ","
                << res.post_fec.total << ","
                << std::setprecision(3) << es_mean << ","
                << "\"" << join_vec(es_vals, '|', 1) << "\"\n";
@@ -765,7 +672,5 @@ int main()
   for (size_t i = 0; i < best_scenario.beta_list.size(); ++i) {
     out << best_scenario.beta_list[i]
         << (i + 1 < best_scenario.beta_list.size() ? ", " : "\n");
-  }
-
   return 0;
 }
