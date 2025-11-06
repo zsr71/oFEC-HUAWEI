@@ -31,7 +31,7 @@ static PipelineConfig make_pipeline_config() {
   PipelineConfig cfg;
   cfg.interleaver_name = kInterleaverName;
   cfg.decoder_name = kDecoderName;
-  cfg.normalize_extrinsic = false;
+  cfg.normalize_extrinsic = true;
   cfg.bits_per_symbol = kBitsPerSymbol;
   return cfg;
 }
@@ -395,14 +395,14 @@ int main()
   // const std::vector<float> beta_start_candidates  = {0.1f,0.2f,0.25f,0.3f,0.35f,0.4f,0.5f,0.6f,0.7f,0.9f,1.2f,1.5f,1.7f};
   // const std::vector<float> beta_step_candidates   = {0.0f,0.025f,0.05f,0.1f,0.15f,0.2f};
   const std::vector<int>   chase_l_candidates     = {6};
-  static constexpr int bitgen_seed_count   = 4; // 修改此值可调整 bitgen 随机种子数量
-  static constexpr int channel_seed_count  = 4;  // 修改此值可调整信道噪声随机种子数量
+  static constexpr int bitgen_seed_count   = 6; // 修改此值可调整 bitgen 随机种子数量
+  static constexpr int channel_seed_count  = 6;  // 修改此值可调整信道噪声随机种子数量
   const std::vector<int>   bitgen_seed_candidates   = generate_random_seeds(bitgen_seed_count);
   const std::vector<int>   channel_seed_candidates  = generate_random_seeds(channel_seed_count);
 
   // EbN0 扫描范围配置：起点、终点以及取样点数（均匀分布）
-  const float ebn0_start = 3.07f;
-  const float ebn0_end   = 3.07f;
+  const float ebn0_start = 3.27f;
+  const float ebn0_end   = 3.27f;
   const int   ebn0_points = 1;
 
   std::vector<float> sweep_ebn0_values;
@@ -418,7 +418,7 @@ int main()
   }
 
   const std::vector<ExplicitAlphaBetaPattern> explicit_alpha_beta_sets = {
-    // {"custom_label", {/* alpha list */}, {/* beta list */}},
+    {"custom_label", {0.4,0.5,0.5}, {0.8,0.8,0.8}},
   };
 
   auto scenarios = build_scenarios(base_params,
