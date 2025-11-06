@@ -17,11 +17,11 @@ namespace fs = std::filesystem;
 // ======== 用户可改区域 ========
 // 只需要改这里的常量/列表即可完成一次“单次调试运行”的配置
 static constexpr const char* kLabel         = "debug_L6";
-static constexpr float       kEbN0_db       =3.57f;
+static constexpr float       kEbN0_db       =3.07f;
 static constexpr int         kChaseL_override = 6;   // 设为 -1 则沿用 Params 默认
 static constexpr bool        kNormalizeExtrinsic = true;
 static constexpr unsigned    kBitsPerSymbol = 2;     // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
-static constexpr int         kBitgenSeed    = 2048344578; //2048344578
+static constexpr int         kBitgenSeed    = 2048344658; //2048344578
 static constexpr int         kChannelSeed   = 1618986606;
 
 // 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
@@ -30,10 +30,10 @@ static constexpr float kBeta_fill  = 0.40f;
 
 //方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
 static const std::vector<float> kAlpha_explicit = {
-  //0.3f,0.35f,0.40f,0.45f,1.0f
+  0.3f,0.45f,0.60f,0.9f,0.5f
 };
 static const std::vector<float> kBeta_explicit = {
-  //0.40f,0.5f,0.60f,0.7f,0.0f
+  0.2f,0.225f,0.250f,0.275f,0.0f
 };
 
 // static const std::vector<float> kAlpha_explicit = {

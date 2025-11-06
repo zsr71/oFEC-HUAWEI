@@ -386,17 +386,17 @@ int main()
   Params base_params;
 
   // 示例候选集（起点与步进，可按需调整）
-  const std::vector<float> alpha_start_candidates = {0.3f};
-  const std::vector<float> alpha_step_candidates  = {0.05f};
-  const std::vector<float> beta_start_candidates  = {0.4f};
-  const std::vector<float> beta_step_candidates   = {0.1f};
-  // const std::vector<float> alpha_start_candidates = {0.01f,0.05f,0.1f,0.15f,0.2f,0.25f,0.3f,0.35f,0.4f,0.5f,0.6f,0.7f};
-  // const std::vector<float> alpha_step_candidates  = {0.0f,0.025f,0.05f,0.1f,0.15f,0.2f};
-  // const std::vector<float> beta_start_candidates  = {0.1f,0.2f,0.25f,0.3f,0.35f,0.4f,0.5f,0.6f,0.7f,0.9f,1.2f,1.5f,1.7f};
-  // const std::vector<float> beta_step_candidates   = {0.0f,0.025f,0.05f,0.1f,0.15f,0.2f};
+  // const std::vector<float> alpha_start_candidates = {0.3f};
+  // const std::vector<float> alpha_step_candidates  = {0.05f};
+  // const std::vector<float> beta_start_candidates  = {0.4f};
+  // const std::vector<float> beta_step_candidates   = {0.1f};
+  const std::vector<float> alpha_start_candidates = {0.01f,0.1f,0.15f,0.3f,0.5f,0.7f};
+  const std::vector<float> alpha_step_candidates  = {0.0f,0.025f,0.05f,0.1f,0.15f,0.2f};
+  const std::vector<float> beta_start_candidates  = {0.1f,0.2f,0.3f,0.4f,0.5f,0.7f,0.9f,1.2f,1.7f};
+  const std::vector<float> beta_step_candidates   = {0.0f,0.025f,0.05f,0.1f,0.2f};
   const std::vector<int>   chase_l_candidates     = {6};
-  static constexpr int bitgen_seed_count   = 6; // 修改此值可调整 bitgen 随机种子数量
-  static constexpr int channel_seed_count  = 6;  // 修改此值可调整信道噪声随机种子数量
+  static constexpr int bitgen_seed_count   = 8; // 修改此值可调整 bitgen 随机种子数量
+  static constexpr int channel_seed_count  = 8;  // 修改此值可调整信道噪声随机种子数量
   const std::vector<int>   bitgen_seed_candidates   = generate_random_seeds(bitgen_seed_count);
   const std::vector<int>   channel_seed_candidates  = generate_random_seeds(channel_seed_count);
 
@@ -418,7 +418,7 @@ int main()
   }
 
   const std::vector<ExplicitAlphaBetaPattern> explicit_alpha_beta_sets = {
-    {"custom_label", {0.4,0.5,0.5}, {0.8,0.8,0.8}},
+    {"custom_label", {0.3,0.45,0.60,0.9,0.5}, {0.2,0.225,0.250,0.275,0.8}},
   };
 
   auto scenarios = build_scenarios(base_params,
