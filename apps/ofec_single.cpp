@@ -17,23 +17,23 @@ namespace fs = std::filesystem;
 // ======== 用户可改区域 ========
 // 只需要改这里的常量/列表即可完成一次“单次调试运行”的配置
 static constexpr const char* kLabel         = "debug_L6";
-static constexpr float       kEbN0_db       =3.07f;
+static constexpr float       kEbN0_db       =3.57f;
 static constexpr int         kChaseL_override = 6;   // 设为 -1 则沿用 Params 默认
-static constexpr bool        kNormalizeExtrinsic = false;
+static constexpr bool        kNormalizeExtrinsic = true;
 static constexpr unsigned    kBitsPerSymbol = 2;     // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
-static constexpr int         kBitgenSeed    = 1712;
-static constexpr int         kChannelSeed   = 1812;
+static constexpr int         kBitgenSeed    = 2048344578; //2048344578
+static constexpr int         kChannelSeed   = 1618986606;
 
 // 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
-static constexpr float kAlpha_fill = 0.8f;
-static constexpr float kBeta_fill  = 0.90f;
+static constexpr float kAlpha_fill = 1.0f;
+static constexpr float kBeta_fill  = 0.40f;
 
 //方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
 static const std::vector<float> kAlpha_explicit = {
-  0.3f,0.35f,0.40f,0.45f,1.0f
+  //0.3f,0.35f,0.40f,0.45f,1.0f
 };
 static const std::vector<float> kBeta_explicit = {
-  0.40f,0.5f,0.60f,0.7f,0.0f
+  //0.40f,0.5f,0.60f,0.7f,0.0f
 };
 
 // static const std::vector<float> kAlpha_explicit = {
@@ -67,12 +67,22 @@ static void ensure_dir(const fs::path& p) {
   fs::create_directories(p, ec);
 }
 
-static std::string format_positions(const std::vector<std::size_t>& positions) {
+static constexpr std::size_t kDefaultPositionsToPrint = 10;
+
+static std::string format_positions(const std::vector<std::size_t>& positions,
+                                    std::size_t max_count = kDefaultPositionsToPrint) {
   std::ostringstream oss;
+  const std::size_t count = (max_count == 0)
+                              ? positions.size()
+                              : std::min(max_count, positions.size());
   oss << "[";
-  for (size_t i = 0; i < positions.size(); ++i) {
+  for (std::size_t i = 0; i < count; ++i) {
     if (i) oss << ", ";
     oss << positions[i];
+  }
+  if (count < positions.size()) {
+    if (count > 0) oss << ", ";
+    oss << "... (+" << (positions.size() - count) << " more)";
   }
   oss << "]";
   return oss.str();
@@ -140,13 +150,13 @@ int main() {
   both(" | Post-FEC BER="); both(r.post_fec.ber);
   both(" (errs="); both(r.post_fec.errors); both("/"); both(r.post_fec.total); both(")\n");
 
-  // both("[DETAIL] Pre-FEC error positions: ");
-  // both(format_positions(r.pre_fec_error_positions));
-  // both("\n");
+  both("[DETAIL] Pre-FEC error positions: ");
+  both(format_positions(r.pre_fec_error_positions));
+  both("\n");
 
-  // both("[DETAIL] Post-FEC error positions: ");
-  // both(format_positions(r.post_fec_error_positions));
-  // both("\n");
+  both("[DETAIL] Post-FEC error positions: ");
+  both(format_positions(r.post_fec_error_positions));
+  both("\n");
 
   if (!r.tile_early_stop_pct.empty()) {
     both("[RESULT] EarlyStop hit rates (%): ");

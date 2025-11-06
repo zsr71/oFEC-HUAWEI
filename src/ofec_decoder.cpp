@@ -228,7 +228,7 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
           }
       }
   }
-
+  if(!use_hard_decode)
   {
       // Apply global α scaling on extrinsic outputs (moved from Chase decoder).
       const std::size_t Rcnt = decoder_res.lout.rows();
