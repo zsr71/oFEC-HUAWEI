@@ -7,6 +7,8 @@ static constexpr const char* kInterleaverName = "identity";
 static constexpr const char* kDecoderName = "plain";
 static constexpr unsigned    kBitsPerSymbol = 2; // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
 static constexpr bool        kNormalizeExtrinsic = true;
+static constexpr bool kGenerateRandomBits        = true;
+static constexpr bool kNormalizeKnownPrefixTail  = true;
 
 // Alpha/Beta 扫描候选
 static const std::vector<float> kAlphaStartCandidates = {0.01f, 0.1f, 0.15f, 0.3f, 0.5f, 0.7f};
@@ -36,8 +38,7 @@ static constexpr long kDecoderTraceCol           = -1;
 static constexpr bool kDecoderTraceLogRead       = false;
 static constexpr bool kDecoderTraceLogWrite      = false;
 static constexpr bool kDecoderTraceLogMismatch   = false;
-static constexpr bool kGenerateRandomBits        = true;
-static constexpr bool kNormalizeKnownPrefixTail  = true;
+
 // ==================================
 
 int main() {

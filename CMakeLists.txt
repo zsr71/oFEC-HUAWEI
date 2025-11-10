@@ -146,6 +146,16 @@ add_executable(ofec_sweep
 target_include_directories(ofec_sweep PRIVATE src)
 target_link_libraries(ofec_sweep  PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
 
+add_executable(ofec_sweep2
+  apps/ofec_sweep2.cpp
+  src/ofec_sweep_io.cpp
+  src/ofec_sweep_scenarios.cpp
+  src/ofec_sweep_runner.cpp
+  ${PIPELINE_RUNNER_SRC}
+)
+target_include_directories(ofec_sweep2 PRIVATE src)
+target_link_libraries(ofec_sweep2 PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
+
 add_executable(bch_bpsk_demo
   apps/bch_bpsk_demo.cpp
 )

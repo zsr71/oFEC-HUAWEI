@@ -5,12 +5,12 @@
 // ======== 用户可改区域 ========
 // 只需要改这里的常量/列表即可完成一次“单次调试运行”的配置
 static constexpr const char* kLabel             = "debug_L6";
-static constexpr float       kEbN0_db           = 4.32f;
+static constexpr float       kEbN0_db           = 3.52f;
 static constexpr int         kChaseL_override   = 6;    // 设为 -1 则沿用 Params 默认
 static constexpr bool        kNormalizeExtrinsic = false;
 static constexpr unsigned    kBitsPerSymbol     = 1;    // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
-static constexpr int         kBitgenSeed        = 2048344658;
-static constexpr int         kChannelSeed       = 1619956606;
+static constexpr int         kBitgenSeed        = 885968131;
+static constexpr int         kChannelSeed       = 1278801575;
 
 // 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
 static constexpr float kAlpha_fill = 1.0f;
@@ -20,12 +20,12 @@ static constexpr float kBeta_fill  = 0.40f;
 static const std::vector<float> kAlpha_explicit = {
   //0.3f,0.45f,0.60f,0.9f,0.5f
   //0.3f,0.45f
-  0.6f
+  0.4f,0.5f
 };
 static const std::vector<float> kBeta_explicit = {
   //0.2f,0.225f,0.30f,0.4f,0.0f
   //0.2f,0.225f
-  1.4f
+  1.3f,2.3f
 };
 
 // static const std::vector<float> kAlpha_explicit = {
@@ -38,7 +38,7 @@ static const std::vector<float> kBeta_explicit = {
 static constexpr const char* kInterleaverName = "identity";
 static constexpr const char* kDecoderName     = "plain";
 static constexpr bool        kGenerateRandomBits = true;
-static constexpr bool        kNormalizeKnownPrefixTail = true;
+static constexpr bool        kNormalizeKnownPrefixTail = false;
 
 // Decoder 调试跟踪配置
 static constexpr bool kDecoderTraceEnable        = false;
