@@ -26,7 +26,7 @@ void apply_known_zero_prefix(Matrix<float>& llr_mat, const Params& p)
 
     // 2) 对 “known_rows 之外的区域” 做整体均值归一化：
     //    llrMean = mean(abs(llrMat(:)))；仅统计/缩放 [known_rows..R-1, 0..C-1]
-    if (known_rows < R)
+    if (known_rows < R && p.NORMALIZE_KNOWN_PREFIX_TAIL)
     {
         double acc_abs = 0.0;
         const size_t n_elems = (R - known_rows) * C;

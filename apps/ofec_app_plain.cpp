@@ -17,6 +17,7 @@ static void print_usage(const char* prog) {
     << "  --no-norm    Disable extrinsic normalization (default: on)\n";
 }
 
+
 static std::vector<float> parse_ebn0_list(const std::string& s) {
   std::vector<float> out;
   std::stringstream ss(s);

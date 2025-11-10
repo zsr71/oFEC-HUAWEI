@@ -126,10 +126,24 @@ target_link_libraries(ofec_app_interleaved
 )
 
 # 保留现有两个入口，默认走 plain 变体
-add_executable(ofec_single apps/ofec_single.cpp ${PIPELINE_RUNNER_SRC})
+add_executable(ofec_single
+  apps/ofec_single.cpp
+  src/ofec_single_logging.cpp
+  src/ofec_single_params.cpp
+  src/ofec_single_summary.cpp
+  src/ofec_single_runner.cpp
+  ${PIPELINE_RUNNER_SRC}
+)
 target_link_libraries(ofec_single PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
 
-add_executable(ofec_sweep  apps/ofec_sweep.cpp  ${PIPELINE_RUNNER_SRC})
+add_executable(ofec_sweep
+  apps/ofec_sweep.cpp
+  src/ofec_sweep_io.cpp
+  src/ofec_sweep_scenarios.cpp
+  src/ofec_sweep_runner.cpp
+  ${PIPELINE_RUNNER_SRC}
+)
+target_include_directories(ofec_sweep PRIVATE src)
 target_link_libraries(ofec_sweep  PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
 
 add_executable(bch_bpsk_demo

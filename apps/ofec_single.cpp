@@ -1,39 +1,31 @@
-#include <algorithm>
-#include <chrono>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
-#include <sstream>
-#include <string>
 #include <vector>
 
-#include "newcode/params.hpp"
-#include "newcode/pipeline_runner.hpp"  // run_pipeline()
-
-using namespace newcode;
-namespace fs = std::filesystem;
+#include "newcode/ofec_single_runner.hpp"
 
 // ======== 用户可改区域 ========
 // 只需要改这里的常量/列表即可完成一次“单次调试运行”的配置
-static constexpr const char* kLabel         = "debug_L6";
-static constexpr float       kEbN0_db       =3.07f;
-static constexpr int         kChaseL_override = 6;   // 设为 -1 则沿用 Params 默认
-static constexpr bool        kNormalizeExtrinsic = true;
-static constexpr unsigned    kBitsPerSymbol = 2;     // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
-static constexpr int         kBitgenSeed    = 2048344658; //2048344578
-static constexpr int         kChannelSeed   = 1618986606;
+static constexpr const char* kLabel             = "debug_L6";
+static constexpr float       kEbN0_db           = 4.32f;
+static constexpr int         kChaseL_override   = 6;    // 设为 -1 则沿用 Params 默认
+static constexpr bool        kNormalizeExtrinsic = false;
+static constexpr unsigned    kBitsPerSymbol     = 1;    // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
+static constexpr int         kBitgenSeed        = 2048344658;
+static constexpr int         kChannelSeed       = 1619956606;
 
 // 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
 static constexpr float kAlpha_fill = 1.0f;
 static constexpr float kBeta_fill  = 0.40f;
 
-//方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
+// 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
 static const std::vector<float> kAlpha_explicit = {
-  0.3f,0.45f,0.60f,0.9f,0.5f
+  //0.3f,0.45f,0.60f,0.9f,0.5f
+  //0.3f,0.45f
+  0.6f
 };
 static const std::vector<float> kBeta_explicit = {
-  0.2f,0.225f,0.250f,0.275f,0.0f
+  //0.2f,0.225f,0.30f,0.4f,0.0f
+  //0.2f,0.225f
+  1.4f
 };
 
 // static const std::vector<float> kAlpha_explicit = {
@@ -43,131 +35,45 @@ static const std::vector<float> kBeta_explicit = {
 //   0.0f
 // };
 
-
 static constexpr const char* kInterleaverName = "identity";
-static constexpr const char* kDecoderName = "plain";
+static constexpr const char* kDecoderName     = "plain";
+static constexpr bool        kGenerateRandomBits = true;
+static constexpr bool        kNormalizeKnownPrefixTail = true;
+
+// Decoder 调试跟踪配置
+static constexpr bool kDecoderTraceEnable        = false;
+static constexpr long kDecoderTraceRow           = -1;
+static constexpr long kDecoderTraceCol           = -1;
+static constexpr bool kDecoderTraceLogRead       = false;
+static constexpr bool kDecoderTraceLogWrite      = false;
+static constexpr bool kDecoderTraceLogMismatch   = false;
 // =============================
 
-static std::string now_stamp() {
-  using clock = std::chrono::system_clock;
-  auto t = clock::to_time_t(clock::now());
-  std::tm tm{};
-#ifdef _WIN32
-  localtime_s(&tm, &t);
-#else
-  localtime_r(&t, &tm);
-#endif
-  std::ostringstream oss;
-  oss << std::put_time(&tm, "%Y%m%d-%H%M%S");
-  return oss.str();
-}
-
-static void ensure_dir(const fs::path& p) {
-  std::error_code ec;
-  fs::create_directories(p, ec);
-}
-
-static constexpr std::size_t kDefaultPositionsToPrint = 10;
-
-static std::string format_positions(const std::vector<std::size_t>& positions,
-                                    std::size_t max_count = kDefaultPositionsToPrint) {
-  std::ostringstream oss;
-  const std::size_t count = (max_count == 0)
-                              ? positions.size()
-                              : std::min(max_count, positions.size());
-  oss << "[";
-  for (std::size_t i = 0; i < count; ++i) {
-    if (i) oss << ", ";
-    oss << positions[i];
-  }
-  if (count < positions.size()) {
-    if (count > 0) oss << ", ";
-    oss << "... (+" << (positions.size() - count) << " more)";
-  }
-  oss << "]";
-  return oss.str();
-}
-
 int main() {
-  // 1) IO
-  const fs::path data_dir = "data";
-  ensure_dir(data_dir);
-  const std::string log_path = (data_dir / ("run_" + now_stamp() + "_single.log")).string();
-  std::ofstream flog(log_path, std::ios::out | std::ios::app);
-  auto both = [&](const auto& x) -> void { std::cout << x; if (flog) flog << x; };
-
-  // 2) 组装 Params
-  Params p; // 用默认初始化
-  p.BITGEN_SEED = kBitgenSeed;
-  p.CHANNEL_SEED = kChannelSeed;
-  if (kChaseL_override >= 0) {
-    p.CHASE_L = kChaseL_override;
-    p.CHASE_NTEST = 1 << p.CHASE_L;
-  }
-
-  const std::size_t T = p.TILES_PER_WIN;
-
-  if (!kAlpha_explicit.empty()) {
-    if (kAlpha_explicit.size() != T) {
-      both("[ERROR] kAlpha_explicit 长度必须等于 TILES_PER_WIN\n");
-      return 2;
-    }
-    p.ALPHA_LIST = kAlpha_explicit;
-  } else {
-    p.ALPHA_LIST.assign(T, kAlpha_fill);
-  }
-  if (!p.ALPHA_LIST.empty()) p.ALPHA = p.ALPHA_LIST.front();
-
-  if (!kBeta_explicit.empty()) {
-    if (kBeta_explicit.size() != T) {
-      both("[ERROR] kBeta_explicit 长度必须等于 TILES_PER_WIN\n");
-      return 2;
-    }
-    p.beta_list = kBeta_explicit;
-  } else {
-    p.beta_list.assign(T, kBeta_fill);
-  }
-  if (!p.beta_list.empty()) p.beta = p.beta_list.front();
-
-  // 3) 运行（串行、单次）
-  both("[INFO] run_pipeline(label="); both(kLabel);
-  both(", Eb/N0="); both(kEbN0_db);
-  both(" dB, CHASE_L="); both(p.CHASE_L); both(")\n");
-  both("[INFO] RNG seeds (bitgen/channel) = ");
-  both(p.BITGEN_SEED); both("/"); both(p.CHANNEL_SEED); both("\n");
-
-  PipelineConfig cfg;
-  cfg.interleaver_name = kInterleaverName;
-  cfg.decoder_name = kDecoderName;
-  cfg.normalize_extrinsic = kNormalizeExtrinsic;
-  cfg.bits_per_symbol = kBitsPerSymbol;
-
-  PipelineResult r = run_pipeline(p, cfg, kLabel, kEbN0_db);
-
-  // 4) 概要
-  both("[RESULT] Pre-FEC BER="); both(r.pre_fec.ber);
-  both(" (errs="); both(r.pre_fec.errors); both("/"); both(r.pre_fec.total); both(")");
-  both(" | Post-FEC BER="); both(r.post_fec.ber);
-  both(" (errs="); both(r.post_fec.errors); both("/"); both(r.post_fec.total); both(")\n");
-
-  both("[DETAIL] Pre-FEC error positions: ");
-  both(format_positions(r.pre_fec_error_positions));
-  both("\n");
-
-  both("[DETAIL] Post-FEC error positions: ");
-  both(format_positions(r.post_fec_error_positions));
-  both("\n");
-
-  if (!r.tile_early_stop_pct.empty()) {
-    both("[RESULT] EarlyStop hit rates (%): ");
-    std::ostringstream oss;
-    oss.setf(std::ios::fixed); oss << std::setprecision(1);
-    for (size_t i = 0; i < r.tile_early_stop_pct.size(); ++i) {
-      oss << r.tile_early_stop_pct[i] << (i + 1 < r.tile_early_stop_pct.size() ? ", " : "");
-    }
-    both(oss.str()); both("\n");
-  }
-
-  both("[INFO] log saved at "); both(log_path); both("\n");
-  return 0;
+  ofec_single::Config config{
+    .label = kLabel,
+    .ebn0_db = kEbN0_db,
+    .chaseL_override = kChaseL_override,
+    .normalize_extrinsic = kNormalizeExtrinsic,
+    .bits_per_symbol = kBitsPerSymbol,
+    .bitgen_seed = kBitgenSeed,
+    .channel_seed = kChannelSeed,
+    .alpha_fill = kAlpha_fill,
+    .beta_fill = kBeta_fill,
+    .alpha_explicit = kAlpha_explicit,
+    .beta_explicit = kBeta_explicit,
+    .interleaver_name = kInterleaverName,
+    .decoder_name = kDecoderName,
+    .generate_random_bits = kGenerateRandomBits,
+    .normalize_known_prefix_tail = kNormalizeKnownPrefixTail,
+    .debug_trace = newcode::Params::DebugTraceConfig{
+      .enable = kDecoderTraceEnable,
+      .log_read_mapping = kDecoderTraceLogRead,
+      .log_write_mapping = kDecoderTraceLogWrite,
+      .log_mismatch = kDecoderTraceLogMismatch,
+      .row = kDecoderTraceRow,
+      .col = kDecoderTraceCol,
+    },
+  };
+  return ofec_single::run_ofec_single(config);
 }

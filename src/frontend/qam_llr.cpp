@@ -48,7 +48,8 @@ qam_llr_logsumexp(const std::vector<std::complex<float>>& y,
         std::vector<float> LLR(y.size());
         for (size_t i = 0; i < y.size(); ++i)
         {
-            const float llr = 2.0f * y[i].real() * inv_sigma_sq;
+            //const float llr = 2.0f * y[i].real() * inv_sigma_sq;
+            const float llr = y[i].real();
             LLR[i] = llr;
         }
         return LLR;

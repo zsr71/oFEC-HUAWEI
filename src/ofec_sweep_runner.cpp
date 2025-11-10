@@ -1,0 +1,344 @@
+#include "ofec_sweep_detail.hpp"
+
+#include <algorithm>
+#include <cstdlib>
+#include <future>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <sstream>
+#include <thread>
+
+namespace ofec_sweep {
+namespace {
+
+std::vector<int> resolve_seeds(const std::vector<int>& provided,
+                               int count,
+                               int fallback) {
+  if (!provided.empty()) {
+    return provided;
+  }
+  auto generated = detail::generate_random_seeds(count);
+  if (generated.empty()) {
+    generated.push_back(fallback);
+  }
+  return generated;
+}
+
+unsigned resolve_worker_count(const SweepParameterConfig& config) {
+  unsigned hw = std::max(1u, std::thread::hardware_concurrency());
+  unsigned max_workers = std::max(1u, (hw * 3) / 4);
+  if (config.max_workers_override > 0) {
+    max_workers = config.max_workers_override;
+  }
+  if (const char* env = std::getenv("NTHREADS")) {
+    try {
+      int from_env = std::stoi(env);
+      if (from_env > 0) {
+        max_workers = static_cast<unsigned>(from_env);
+      }
+    } catch (...) {
+      // ignore invalid environment variable
+    }
+  }
+  return std::max(1u, max_workers);
+}
+
+}  // namespace
+
+namespace detail {
+
+Semaphore::Semaphore(std::size_t count)
+  : count_(count ? count : 1) {}
+
+void Semaphore::acquire() {
+  std::unique_lock<std::mutex> lk(mutex_);
+  cv_.wait(lk, [&] { return count_ > 0; });
+  --count_;
+}
+
+void Semaphore::release() {
+  std::lock_guard<std::mutex> lk(mutex_);
+  ++count_;
+  cv_.notify_one();
+}
+
+}  // namespace detail
+
+int run_sweep(const SweepParameterConfig& config) {
+  using namespace detail;
+
+  const std::filesystem::path data_dir = "data";
+  ensure_dir(data_dir);
+  const std::string run_id = now_stamp();
+  const std::string log_path = (data_dir / ("run_" + run_id + ".log")).string();
+  DualOut out(std::cout, log_path);
+
+  const std::string csv_path =
+      (data_dir / ("ofec_sweep_results_" + run_id + ".csv")).string();
+  ensure_csv_header(csv_path);
+
+  std::vector<int> bitgen_seeds =
+      resolve_seeds(config.bitgen_seed_candidates,
+                    config.bitgen_seed_count,
+                    config.base_params.BITGEN_SEED);
+  std::vector<int> channel_seeds =
+      resolve_seeds(config.channel_seed_candidates,
+                    config.channel_seed_count,
+                    config.base_params.CHANNEL_SEED);
+  const std::vector<float> ebn0_values = build_ebn0_values(config);
+
+  auto scenarios = build_scenarios(config, ebn0_values, bitgen_seeds, channel_seeds);
+  const std::size_t scenario_count = scenarios.size();
+  out << "[INFO] total scenarios = " << scenario_count << "\n";
+  if (scenario_count == 0) {
+    out << "[ERROR] No scenarios generated.\n";
+    return 1;
+  }
+
+  const unsigned max_workers = resolve_worker_count(config);
+  out << "[INFO] using up to " << max_workers << " workers\n";
+  Semaphore sem(max_workers);
+
+  newcode::Params base_params = config.base_params;
+  base_params.BITGEN_RANDOM_BITS = config.generate_random_bits;
+  base_params.NORMALIZE_KNOWN_PREFIX_TAIL = config.normalize_known_prefix_tail;
+  newcode::PipelineConfig pipeline_cfg = make_pipeline_config(config);
+
+  std::vector<std::future<ScenarioOutput>> futures;
+  futures.reserve(scenario_count);
+
+  for (std::size_t idx = 0; idx < scenario_count; ++idx) {
+    const auto& scenario = scenarios[idx];
+    if (scenario.alpha_list.size() != base_params.TILES_PER_WIN ||
+        scenario.beta_list.size() != base_params.TILES_PER_WIN) {
+      out << "[WARN] Scenario '" << scenario.name
+          << "' skipped due to list size mismatch (expected "
+          << base_params.TILES_PER_WIN << ")\n";
+      continue;
+    }
+
+    newcode::Params params = base_params;
+    params.ALPHA_LIST = scenario.alpha_list;
+    params.beta_list = scenario.beta_list;
+    if (!params.ALPHA_LIST.empty()) {
+      params.ALPHA = params.ALPHA_LIST.front();
+    }
+    if (!params.beta_list.empty()) {
+      params.beta = params.beta_list.front();
+    }
+    params.CHASE_L = scenario.chase_L;
+    params.CHASE_NTEST = scenario.chase_n_test;
+    params.BITGEN_SEED = scenario.bitgen_seed;
+    params.CHANNEL_SEED = scenario.channel_seed;
+
+    sem.acquire();
+    futures.emplace_back(std::async(
+        std::launch::async,
+        [idx, scenario, params, pipeline_cfg, &sem]() -> ScenarioOutput {
+          struct Releaser {
+            detail::Semaphore& sem_ref;
+            ~Releaser() { sem_ref.release(); }
+          } releaser{sem};
+
+          ScenarioOutput output;
+          output.idx = idx;
+          output.name = scenario.name;
+          output.alpha_list = scenario.alpha_list;
+          output.beta_list = scenario.beta_list;
+          output.alpha_start = scenario.alpha_start;
+          output.alpha_step = scenario.alpha_step;
+          output.beta_start = scenario.beta_start;
+          output.beta_step = scenario.beta_step;
+          output.chase_L = scenario.chase_L;
+          output.chase_n_test = scenario.chase_n_test;
+          output.bitgen_seed = scenario.bitgen_seed;
+          output.channel_seed = scenario.channel_seed;
+          output.ebn0_db = scenario.ebn0_db;
+
+          newcode::Params local_params = params;
+          newcode::PipelineConfig local_cfg = pipeline_cfg;
+          output.result =
+              newcode::run_pipeline(local_params, local_cfg, scenario.name, scenario.ebn0_db);
+          output.ebn0_db = output.result.ebn0_db;
+          return output;
+        }));
+  }
+
+  if (futures.empty()) {
+    out << "[ERROR] No scenarios submitted for execution.\n";
+    return 1;
+  }
+
+  std::vector<ScenarioOutput> results;
+  results.reserve(futures.size());
+  for (auto& fut : futures) {
+    try {
+      results.emplace_back(fut.get());
+    } catch (const std::exception& ex) {
+      out << "[ERROR] worker threw: " << ex.what() << "\n";
+    } catch (...) {
+      out << "[ERROR] worker threw unknown exception\n";
+    }
+  }
+
+  if (results.empty()) {
+    out << "[ERROR] No scenario completed successfully.\n";
+    return 1;
+  }
+
+  std::sort(results.begin(), results.end(),
+            [](const auto& a, const auto& b) { return a.idx < b.idx; });
+
+  std::ofstream csv(csv_path, std::ios::out | std::ios::app);
+  csv.setf(std::ios::fixed);
+  csv << std::setprecision(8);
+
+  std::vector<std::string> scenario_summaries;
+  scenario_summaries.reserve(results.size());
+
+  double best_post_ber = std::numeric_limits<double>::infinity();
+  std::size_t best_index = static_cast<std::size_t>(-1);
+  newcode::PipelineResult best_result{};
+  std::vector<double> best_tile_early_stop_pct;
+  float best_alpha_start = 0.0f;
+  float best_alpha_step = 0.0f;
+  float best_beta_start = 0.0f;
+  float best_beta_step = 0.0f;
+  int best_chase_L = config.base_params.CHASE_L;
+  int best_chase_n_test = 1 << config.base_params.CHASE_L;
+  int best_bitgen_seed = config.base_params.BITGEN_SEED;
+  int best_channel_seed = config.base_params.CHANNEL_SEED;
+  float best_ebn0_db = !ebn0_values.empty() ? ebn0_values.front() : newcode::DEFAULT_EBN0_DB;
+
+  for (const auto& pack : results) {
+    const auto& result = pack.result;
+    if (!result.tile_early_stop_pct.empty()) {
+      out << "[INFO] " << pack.name << " tile early-stop hit rates (%): ";
+      out << std::fixed << std::setprecision(1);
+      for (size_t i = 0; i < result.tile_early_stop_pct.size(); ++i) {
+        out << result.tile_early_stop_pct[i]
+            << (i + 1 < result.tile_early_stop_pct.size() ? ", " : "\n");
+      }
+      out << std::defaultfloat;
+    }
+
+    std::ostringstream summary;
+    summary << "[SUMMARY] " << pack.name
+            << " Pre-FEC BER=" << result.pre_fec.ber
+            << " (errs=" << result.pre_fec.errors << "/" << result.pre_fec.total << ")"
+            << " | Post-FEC BER=" << result.post_fec.ber
+            << " (errs=" << result.post_fec.errors << "/" << result.post_fec.total << ")";
+    summary << std::fixed << std::setprecision(3)
+            << " | alpha_start=" << pack.alpha_start
+            << " alpha_step=" << pack.alpha_step
+            << " | beta_start=" << pack.beta_start
+            << " beta_step=" << pack.beta_step
+            << " | Eb/N0=" << pack.ebn0_db
+            << std::defaultfloat
+            << " | CHASE_L=" << pack.chase_L
+            << " CHASE_NTEST=" << pack.chase_n_test
+            << " | Seeds(bit/channel)=" << pack.bitgen_seed << "/" << pack.channel_seed;
+    if (!result.tile_early_stop_pct.empty()) {
+      summary << " | EarlyStop%=["
+              << detail::join_vec(result.tile_early_stop_pct, ',', 1)
+              << "]";
+    }
+    scenario_summaries.push_back(summary.str());
+    out << summary.str() << "\n";
+
+    const double es_mean = mean(result.tile_early_stop_pct);
+    csv << now_stamp() << ","
+        << run_id << ","
+        << pack.name << ","
+        << pack.alpha_start << ","
+        << pack.alpha_step << ","
+        << pack.beta_start << ","
+        << pack.beta_step << ","
+        << pack.chase_L << ","
+        << pack.chase_n_test << ","
+        << pack.bitgen_seed << ","
+        << pack.channel_seed << ","
+        << pack.ebn0_db << ","
+        << '"' << join_vec(pack.alpha_list, '|', 6) << "\","
+        << '"' << join_vec(pack.beta_list, '|', 6) << "\","
+        << result.pre_fec.ber << ","
+        << result.pre_fec.errors << ","
+        << result.pre_fec.total << ","
+        << result.post_fec.ber << ","
+        << result.post_fec.errors << ","
+        << result.post_fec.total << ","
+        << std::setprecision(3) << es_mean << ","
+        << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\"\n";
+    csv << std::setprecision(8);
+    csv.flush();
+
+    if (result.post_fec.total > 0 && result.post_fec.ber < best_post_ber) {
+      best_post_ber = result.post_fec.ber;
+      best_index = pack.idx;
+      best_result = result;
+      best_tile_early_stop_pct = result.tile_early_stop_pct;
+      best_alpha_start = pack.alpha_start;
+      best_alpha_step = pack.alpha_step;
+      best_beta_start = pack.beta_start;
+      best_beta_step = pack.beta_step;
+      best_chase_L = pack.chase_L;
+      best_chase_n_test = pack.chase_n_test;
+      best_bitgen_seed = pack.bitgen_seed;
+      best_channel_seed = pack.channel_seed;
+      best_ebn0_db = pack.ebn0_db;
+    }
+  }
+
+  if (best_index == static_cast<std::size_t>(-1)) {
+    out << "[ERROR] No valid scenarios evaluated.\n";
+    return 1;
+  }
+
+  out << "\n[SUMMARY] All scenarios:\n";
+  for (const auto& line : scenario_summaries) {
+    out << "  " << line << '\n';
+  }
+
+  const auto& best_scenario = scenarios[best_index];
+  out << "\n[RESULT] Best scenario: " << best_scenario.name
+      << " with Post-FEC BER=" << best_result.post_fec.ber
+      << " (errs=" << best_result.post_fec.errors << "/" << best_result.post_fec.total << ")\n";
+  out << std::fixed << std::setprecision(3);
+  out << "[RESULT] Best alpha start/step: start=" << best_alpha_start
+      << " step=" << best_alpha_step << "\n";
+  out << "[RESULT] Best beta start/step: start=" << best_beta_start
+      << " step=" << best_beta_step << "\n";
+  out << "[RESULT] Best sweep Eb/N0: " << best_ebn0_db << " dB\n";
+  out << std::defaultfloat;
+  out << "[RESULT] Best CHASE_L/CHASE_NTEST: " << best_chase_L
+      << " / " << best_chase_n_test << "\n";
+  out << "[RESULT] Best RNG seeds (bit/channel): "
+      << best_bitgen_seed << "/" << best_channel_seed << "\n";
+
+  if (!best_tile_early_stop_pct.empty()) {
+    out << "[RESULT] Best tile early-stop hit rates (%): ";
+    out << std::fixed << std::setprecision(1);
+    for (size_t i = 0; i < best_tile_early_stop_pct.size(); ++i) {
+      out << best_tile_early_stop_pct[i]
+          << (i + 1 < best_tile_early_stop_pct.size() ? ", " : "\n");
+    }
+    out << std::defaultfloat;
+  }
+
+  out << "[RESULT] Best ALPHA_LIST: ";
+  for (size_t i = 0; i < best_scenario.alpha_list.size(); ++i) {
+    out << best_scenario.alpha_list[i]
+        << (i + 1 < best_scenario.alpha_list.size() ? ", " : "\n");
+  }
+
+  out << "[RESULT] Best beta_list: ";
+  for (size_t i = 0; i < best_scenario.beta_list.size(); ++i) {
+    out << best_scenario.beta_list[i]
+        << (i + 1 < best_scenario.beta_list.size() ? ", " : "\n");
+  }
+
+  return 0;
+}
+
+}  // namespace ofec_sweep

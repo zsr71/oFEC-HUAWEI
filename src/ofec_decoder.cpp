@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
@@ -81,6 +82,15 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
 
   Matrix<LLR> tile_out = tile_in;
 
+  const auto& trace_cfg = p.debug_trace;
+  const bool trace_has_coords = (trace_cfg.row >= 0 && trace_cfg.col >= 0);
+  const bool trace_enabled = trace_cfg.enable && trace_has_coords;
+  const long trace_row = trace_has_coords ? trace_cfg.row : -1;
+  const long trace_col = trace_has_coords ? trace_cfg.col : -1;
+  auto should_trace = [&](bool flag, long rr, long cc) -> bool {
+    return trace_enabled && flag && rr == trace_row && cc == trace_col;
+  };
+
   const int SBR = p.CHASE_SBR;
   if (SBR != 1 && SBR != 2)
       throw std::invalid_argument("process_tile: CHASE_SBR must be 1 or 2.");
@@ -122,6 +132,13 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
 
               const long rr_global = br * B + bit_row_in_block;
               const long cc_global = bc * B + bit_col_in_block;
+
+              if (should_trace(trace_cfg.log_read_mapping, rr_global, cc_global)) {
+                  std::cout << " READ Mapping k=" << k
+                            << " to global pos (" << rr_global << "," << cc_global << ")" << '\n';
+              }
+
+
 
               const long rr_local2 = rr_global - static_cast<long>(tile_top_row_global);
               const long cc_local2 = cc_global;
@@ -294,6 +311,13 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
               const long rr_global = br * B + bit_row_in_block;
               const long cc_global = bc * B + bit_col_in_block;
 
+              if (should_trace(trace_cfg.log_write_mapping, rr_global, cc_global)) {
+                  std::cout << " WRITE Mapping k=" << k
+                            << " to global pos (" << rr_global << "," << cc_global << ")" << '\n';
+                  std::cout << "  Value=" << llr_to_float(lout_row[static_cast<size_t>(k)]) << '\n';
+              }
+
+
               const long rr_local2 = rr_global - static_cast<long>(tile_top_row_global);
               const long cc_local2 = cc_global;
 
@@ -322,6 +346,12 @@ void process_window_impl(Matrix<LLR>& work_llr,
                          CoreFn<LLR> core_fn)
 {
   (void)win_start;
+  const auto& trace_cfg = p.debug_trace;
+  const bool trace_has_coords = (trace_cfg.row >= 0 && trace_cfg.col >= 0);
+  const bool trace_mismatch =
+      trace_cfg.enable && trace_cfg.log_mismatch && trace_has_coords;
+  const long trace_row = trace_has_coords ? trace_cfg.row : -1;
+  const long trace_col = trace_has_coords ? trace_cfg.col : -1;
   const size_t N = Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM;
 
   for (size_t t = 0; t < TILES_PER_WIN; ++t)
@@ -367,10 +397,24 @@ void process_window_impl(Matrix<LLR>& work_llr,
       }
     }
 
-    for (size_t r = 0; r < tile_height_rows_actual; ++r)
-      for (size_t c = 0; c < work_llr.cols(); ++c){
-        work_llr[tile_top_row + r][c] = tile_result.tile_out[r][c];
+    for (size_t r = 0; r < tile_height_rows_actual; ++r) {
+      const size_t global_row = tile_top_row + r;
+      for (size_t c = 0; c < work_llr.cols(); ++c) {
+        const auto incoming = tile_result.tile_out[r][c];
+        if (trace_mismatch &&
+            static_cast<long>(global_row) == trace_row &&
+            static_cast<long>(c) == trace_col) {
+          const float existing_val = llr_to_float(work_llr[global_row][c]);
+          const float incoming_val = llr_to_float(incoming);
+          if (existing_val != incoming_val) {
+            std::cout << "Mismatch at work_llr[" << trace_row << "][" << trace_col
+                      << "]: tile index " << t
+                      << " incoming=" << incoming_val << '\n';
+          }
+        }
+        work_llr[global_row][c] = incoming;
       }
+    }
   }
 }
 
