@@ -205,7 +205,7 @@ void chase_decode_256_plain(const LLR* Lin256,
         // no valid codeword: take channel hard decisions (extend parity)
         std::copy(hard_ch, hard_ch + BCH_N_CORE, ML.begin());
         ML[PAR_IDX] = parity256_from255(ML.data());
-        // set ml_S on that sequence so 蠅 can still be derived by correlation gaps
+        
         ml_S = 0.f;
         for (int k = 0; k < BCH_N_TOTAL; ++k)
             ml_S += y[k] * (ML[k] ? -1.f : +1.f);
