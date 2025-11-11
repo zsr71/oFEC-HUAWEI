@@ -220,7 +220,7 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
           for (std::size_t j = 0; j < Ccnt; ++j)
           {
               const float w = llr_to_float(decoder_res.lout[r][j]);
-              if (is_fallback(w)) continue;
+              if (is_fallback(w)) {acc += std::fabs(w/p.beta); ++cnt; continue;};
               acc += std::fabs(w);
               ++cnt;
           }
@@ -238,7 +238,7 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
                   for (std::size_t j = 0; j < Ccnt; ++j)
                   {
                       const float w = llr_to_float(decoder_res.lout[r][j]);
-                      if (is_fallback(w)) continue;
+                      //if (is_fallback(w)) continue;
                       decoder_res.lout[r][j] = llr_from_float<LLR>(w * scale);
                   }
               }

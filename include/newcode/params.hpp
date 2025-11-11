@@ -17,7 +17,7 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     = 32 * 110 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     = 16 * 110 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 1712;                 // 随机种子
   int    CHANNEL_SEED      = BITGEN_SEED + 100;    // 信道噪声随机种子
   bool   BITGEN_RANDOM_BITS = true;             // true=随机比特，false=全 0
