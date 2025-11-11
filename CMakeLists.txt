@@ -173,6 +173,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_matrix PRIVATE newcode_frontend)
   add_test(NAME MatrixTest COMMAND test_matrix)
 
+  add_executable(test_qfloat tests/test_qfloat.cpp)
+  target_link_libraries(test_qfloat PRIVATE newcode_frontend)
+  add_test(NAME QFloatTest COMMAND test_qfloat)
+
   add_executable(test_qam tests/test_qam.cpp)
   target_link_libraries(test_qam PRIVATE newcode_frontend)
   add_test(NAME QAMTest COMMAND test_qam)

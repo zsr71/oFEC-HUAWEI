@@ -6,21 +6,21 @@
 // ======== 用户可调参数区域 ========
 static constexpr const char* kInterleaverName = "identity";
 static constexpr const char* kDecoderName = "plain";
-static constexpr unsigned    kBitsPerSymbol = 2; // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
+static constexpr unsigned    kBitsPerSymbol = 1; // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
 static constexpr bool        kNormalizeExtrinsic = true;
 static constexpr bool kGenerateRandomBits        = true;
 static constexpr bool kNormalizeKnownPrefixTail  = true;
 
 // Alpha/Beta 扫描候选
-static const std::vector<float> kAlphaStartCandidates = newcode::linspace(0.0f, 0.2f, 6);
-static const std::vector<float> kAlphaStepCandidates  = newcode::linspace(0.0f, 0.2f, 6);
-static const std::vector<float> kBetaStartCandidates  = newcode::linspace(0.0f, 0.2f, 6);
-static const std::vector<float> kBetaStepCandidates   = newcode::linspace(0.0f, 0.2f, 5);
+static const std::vector<float> kAlphaStartCandidates = newcode::linspace(0.0f, 0.2f, 2);
+static const std::vector<float> kAlphaStepCandidates  = newcode::linspace(0.0f, 0.2f, 2);
+static const std::vector<float> kBetaStartCandidates  = newcode::linspace(0.0f, 0.2f, 2);
+static const std::vector<float> kBetaStepCandidates   = newcode::linspace(0.0f, 0.2f, 2);
 static const std::vector<int>   kChaseLCandidates     = {6};
 
 // 随机种子（为空则自动生成 bitgen/channel seeds 数量）
-static constexpr int kBitgenSeedCount  = 8;
-static constexpr int kChannelSeedCount = 8;
+static constexpr int kBitgenSeedCount  = 1;
+static constexpr int kChannelSeedCount = 1;
 
 // Eb/N0 设置
 static constexpr float kEbN0Start = 3.27f;

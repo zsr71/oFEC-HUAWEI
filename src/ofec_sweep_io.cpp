@@ -1,5 +1,6 @@
 #include "ofec_sweep_detail.hpp"
 
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -51,6 +52,20 @@ void ensure_csv_header(const std::string& csv_path) {
           "early_stop_mean_pct,early_stop_list\n";
 }
 
+void ensure_csv_header_v2(const std::string& csv_path) {
+  std::ifstream fin(csv_path);
+  if (fin.good() && fin.peek() != std::ifstream::traits_type::eof()) {
+    return;
+  }
+
+  std::ofstream fout(csv_path, std::ios::out | std::ios::app);
+  fout << "timestamp,run_id,stage,num_bits,label,"
+          "alpha_low,alpha_high,gamma_alpha,beta_low,beta_high,gamma_beta,"
+          "chase_L,chase_n_test,bitgen_seed,channel_seed,ebn0_db,"
+          "alpha_list,beta_list,pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
+          "early_stop_list\n";
+}
+
 std::string join_vec(const std::vector<float>& values, char sep, int precision) {
   std::ostringstream oss;
   oss.setf(std::ios::fixed);
@@ -88,6 +103,72 @@ double mean(const std::vector<double>& values) {
   return static_cast<double>(sum / values.size());
 }
 
+void write_csv_row(std::ostream& csv,
+                   const std::string& timestamp,
+                   const std::string& run_id,
+                   const std::string& stage_tag,
+                   std::size_t num_bits,
+                   const SweepScenario& scenario,
+                   const newcode::PipelineResult& result,
+                   CsvFormat format) {
+  if (format == CsvFormat::Basic) {
+    const float alpha_step = infer_step(scenario.alpha_list);
+    const float beta_step = infer_step(scenario.beta_list);
+    const double es_mean = mean(result.tile_early_stop_pct);
+    csv << timestamp << ","
+        << run_id << ","
+        << scenario.name << ","
+        << scenario.alpha_start << ","
+        << alpha_step << ","
+        << scenario.beta_start << ","
+        << beta_step << ","
+        << scenario.chase_L << ","
+        << scenario.chase_n_test << ","
+        << scenario.bitgen_seed << ","
+        << scenario.channel_seed << ","
+        << scenario.ebn0_db << ","
+        << '"' << join_vec(scenario.alpha_list, '|', 6) << "\","
+        << '"' << join_vec(scenario.beta_list, '|', 6) << "\","
+        << result.pre_fec.ber << ","
+        << result.pre_fec.errors << ","
+        << result.pre_fec.total << ","
+        << result.post_fec.ber << ","
+        << result.post_fec.errors << ","
+        << result.post_fec.total << ",";
+    if (std::isnan(es_mean)) {
+      csv << ",";
+    } else {
+      csv << std::setprecision(3) << es_mean << ",";
+    }
+    csv << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\"\n";
+  } else {
+    csv << timestamp << ","
+        << run_id << ","
+        << stage_tag << ","
+        << num_bits << ","
+        << '"' << scenario.name << "\","
+        << scenario.alpha_low << ","
+        << scenario.alpha_high << ","
+        << scenario.gamma_alpha << ","
+        << scenario.beta_low << ","
+        << scenario.beta_high << ","
+        << scenario.gamma_beta << ","
+        << scenario.chase_L << ","
+        << scenario.chase_n_test << ","
+        << scenario.bitgen_seed << ","
+        << scenario.channel_seed << ","
+        << scenario.ebn0_db << ","
+        << '"' << join_vec(scenario.alpha_list, '|', 6) << "\","
+        << '"' << join_vec(scenario.beta_list, '|', 6) << "\","
+        << result.pre_fec.ber << ","
+        << result.pre_fec.errors << ","
+        << result.pre_fec.total << ","
+        << result.post_fec.ber << ","
+        << result.post_fec.errors << ","
+        << result.post_fec.total << ","
+        << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\"\n";
+  }
+}
+
 }  // namespace detail
 }  // namespace ofec_sweep
-

@@ -15,7 +15,7 @@ class qfloat {
                   "qfloat: Store must be a signed integer type of at least 16 bits.");
 public:
     static constexpr float DEFAULT_CLIP = 8.0f;
-    static constexpr int   Q()  { return (1 << (NBITS - 1)) - 1; }
+    static constexpr int   Q()  { return (1 << (NBITS - 1)) - 1; }    //最大正整数编码整个定点数用 1 位符号 + (NBITS-1) 位数值 来表示 小数部分，整数部分则由剩余的 Store 位数决定
     static constexpr int   LO() { return -Q(); }
     static constexpr int   HI() { return +Q(); }
 

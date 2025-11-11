@@ -6,37 +6,36 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
 
-#include "newcode/ofec_sweep_runner.hpp"
 #include "newcode/linspace.hpp"
+#include "newcode/ofec_sweep_runner.hpp"
 #include "ofec_sweep_detail.hpp"
 
 namespace {
 
-constexpr size_t kTilesPerWindow = 4;
-constexpr float kEvalEbN0 = 3.07f;
-constexpr size_t kStage1Bits = 3 * 110 * 16 * 111;   // fast coarse sweep
-constexpr size_t kStage2Bits = 6 * 110 * 16 * 111;   // slow fine sweep
-constexpr float kKeepRatio = 0.20f;      // keep top 20%
+constexpr size_t kTilesPerWindow = 2;
+constexpr float  kEvalEbN0       = 3.47f;
+constexpr size_t kStage1Bits     = 3 * 110 * 16 * 111;
+constexpr size_t kStage2Bits     = 3 * 110 * 16 * 111;
+constexpr float  kKeepRatio      = 0.20f;
 
-static constexpr const char* kInterleaverName = "identity";
-static constexpr const char* kDecoderName = "plain";
-static constexpr unsigned    kBitsPerSymbol = 1;
-static constexpr bool        kNormalizeExtrinsic = false;
-static constexpr bool        kGenerateRandomBits = true;
-static constexpr bool        kNormalizeKnownPrefixTail = false;
+static constexpr const char* kInterleaverName          = "identity";
+static constexpr const char* kDecoderName             = "plain";
+static constexpr unsigned    kBitsPerSymbol           = 1;
+static constexpr bool        kNormalizeExtrinsic      = true;
+static constexpr bool        kGenerateRandomBits      = true;
+static constexpr bool        kNormalizeKnownPrefixTail = true;
 
-
-// Default scan grids (can be tweaked before calling build_round0_shapes).
-const std::vector<float> kAlphaLowGrid      = newcode::linspace(0.30f, 0.50f, 3);
-const std::vector<float> kAlphaHighGrid     = newcode::linspace(0.50f, 0.70f, 3);
-const std::vector<float> kBetaLowGrid       = newcode::linspace(0.60f, 0.80f, 3);
-const std::vector<float> kBetaHighGrid      = newcode::linspace(0.80f, 1.00f, 3);
-const std::vector<float> kGammaAlphaGrid    = newcode::linspace(0.80f, 1.00f, 3);
-const std::vector<float> kGammaBetaGrid     = newcode::linspace(0.80f, 1.00f, 3);
+const std::vector<float> kAlphaLowGrid   = newcode::linspace(0.30f, 0.50f, 2);
+const std::vector<float> kAlphaHighGrid  = newcode::linspace(0.50f, 0.70f, 2);
+const std::vector<float> kBetaLowGrid    = newcode::linspace(0.60f, 0.80f, 2);
+const std::vector<float> kBetaHighGrid   = newcode::linspace(0.80f, 1.00f, 2);
+const std::vector<float> kGammaAlphaGrid = newcode::linspace(1.00f, 1.00f, 1);
+const std::vector<float> kGammaBetaGrid  = newcode::linspace(1.00f, 1.00f, 1);
 
 struct Shape {
   float alpha_low;
@@ -45,7 +44,7 @@ struct Shape {
   float beta_low;
   float beta_high;
   float gamma_beta;
-  std::string tag;
+  std::string tag = "_r0";
 };
 
 std::vector<float> build_sequence(float low, float high, float gamma, size_t count) {
@@ -60,52 +59,6 @@ std::vector<float> build_sequence(float low, float high, float gamma, size_t cou
   return seq;
 }
 
-// neighbor_values was used by a removed refinement stage; no longer needed.
-
-void ensure_sweep2_csv_header(const std::string& csv_path) {
-  std::ifstream fin(csv_path);
-  if (fin.good() && fin.peek() != std::ifstream::traits_type::eof()) {
-    return;
-  }
-  std::ofstream fout(csv_path, std::ios::out | std::ios::app);
-  fout << "timestamp,run_id,stage,num_bits,label,alpha_start,beta_start,alpha_step,beta_step,"
-          "chase_L,chase_n_test,bitgen_seed,channel_seed,ebn0_db,alpha_list,beta_list,"
-          "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total\n";
-}
-
-void write_csv_row(std::ofstream& csv,
-                   const std::string& run_id,
-                   const std::string& stage_tag,
-                   size_t num_bits,
-                   const ofec_sweep::detail::SweepScenario& scenario,
-                   const newcode::PipelineResult& result) {
-  const float alpha_step = ofec_sweep::detail::infer_step(scenario.alpha_list);
-  const float beta_step = ofec_sweep::detail::infer_step(scenario.beta_list);
-  csv << ofec_sweep::detail::now_stamp() << ","
-      << run_id << ","
-      << stage_tag << ","
-      << num_bits << ","
-      << scenario.name << ","
-      << scenario.alpha_start << ","
-      << scenario.beta_start << ","
-      << alpha_step << ","
-      << beta_step << ","
-      << scenario.chase_L << ","
-      << scenario.chase_n_test << ","
-      << scenario.bitgen_seed << ","
-      << scenario.channel_seed << ","
-      << scenario.ebn0_db << ","
-      << '"' << ofec_sweep::detail::join_vec(scenario.alpha_list, '|', 6) << "\","
-      << '"' << ofec_sweep::detail::join_vec(scenario.beta_list, '|', 6) << "\","
-      << result.pre_fec.ber << ","
-      << result.pre_fec.errors << ","
-      << result.pre_fec.total << ","
-      << result.post_fec.ber << ","
-      << result.post_fec.errors << ","
-      << result.post_fec.total << "\n";
-  csv.flush();
-}
-
 ofec_sweep::ExplicitAlphaBetaPattern shape_to_pattern(const Shape& shape,
                                                       const std::string& phase,
                                                       size_t ordinal) {
@@ -117,8 +70,7 @@ ofec_sweep::ExplicitAlphaBetaPattern shape_to_pattern(const Shape& shape,
   std::ostringstream oss;
   oss << "sweep2_" << phase << "_" << ordinal
       << "_a(" << shape.alpha_low << "," << shape.alpha_high << "," << shape.gamma_alpha
-      << ")_b(" << shape.beta_low << "," << shape.beta_high << "," << shape.gamma_beta << ")"
-      << shape.tag;
+      << ")_b(" << shape.beta_low << "," << shape.beta_high << "," << shape.gamma_beta << ")";
 
   ofec_sweep::ExplicitAlphaBetaPattern pattern;
   pattern.label = oss.str();
@@ -127,30 +79,24 @@ ofec_sweep::ExplicitAlphaBetaPattern shape_to_pattern(const Shape& shape,
   return pattern;
 }
 
-std::vector<Shape> build_round0_shapes(const std::vector<float>& alpha_low_grid,
-                                       const std::vector<float>& alpha_high_grid,
-                                       const std::vector<float>& gamma_alpha_grid,
-                                       const std::vector<float>& beta_low_grid,
-                                       const std::vector<float>& beta_high_grid,
-                                       const std::vector<float>& gamma_beta_grid) {
+std::vector<Shape> build_shapes() {
   std::vector<Shape> shapes;
-  for (float aL : alpha_low_grid) {
-    for (float aH : alpha_high_grid) {
-      if (aH - aL < 0.05f) continue;  // ensure meaningful span
-      for (float bL : beta_low_grid) {
-        for (float bH : beta_high_grid) {
+  for (float aL : kAlphaLowGrid) {
+    for (float aH : kAlphaHighGrid) {
+      if (aH - aL < 0.05f) continue;
+      for (float bL : kBetaLowGrid) {
+        for (float bH : kBetaHighGrid) {
           if (bH - bL < 0.05f) continue;
-          for (float gA : gamma_alpha_grid) {
-            for (float gB : gamma_beta_grid) {
-              Shape shape;
-              shape.alpha_low = aL;
-              shape.alpha_high = aH;
-              shape.gamma_alpha = gA;
-              shape.beta_low = bL;
-              shape.beta_high = bH;
-              shape.gamma_beta = gB;
-              shape.tag = "_r0";
-              shapes.push_back(shape);
+          for (float gA : kGammaAlphaGrid) {
+            for (float gB : kGammaBetaGrid) {
+              Shape s;
+              s.alpha_low = aL;
+              s.alpha_high = aH;
+              s.gamma_alpha = gA;
+              s.beta_low = bL;
+              s.beta_high = bH;
+              s.gamma_beta = gB;
+              shapes.push_back(s);
             }
           }
         }
@@ -160,20 +106,11 @@ std::vector<Shape> build_round0_shapes(const std::vector<float>& alpha_low_grid,
   return shapes;
 }
 
-// build_round1_shapes was used to refine endpoints and gammas; removed per request.
-
-// build_micro_patterns removed per request.
-
-std::vector<ofec_sweep::ExplicitAlphaBetaPattern> build_schedule() {
+std::vector<ofec_sweep::ExplicitAlphaBetaPattern> build_schedule(const std::vector<Shape>& shapes) {
   std::vector<ofec_sweep::ExplicitAlphaBetaPattern> patterns;
-  auto round0 = build_round0_shapes(kAlphaLowGrid,
-                                    kAlphaHighGrid,
-                                    kGammaAlphaGrid,
-                                    kBetaLowGrid,
-                                    kBetaHighGrid,
-                                    kGammaBetaGrid);
-  for (size_t i = 0; i < round0.size(); ++i) {
-    patterns.push_back(shape_to_pattern(round0[i], "r0", i));
+  patterns.reserve(shapes.size());
+  for (size_t i = 0; i < shapes.size(); ++i) {
+    patterns.push_back(shape_to_pattern(shapes[i], "r0", i));
   }
   return patterns;
 }
@@ -195,16 +132,12 @@ ofec_sweep::SweepParameterConfig build_base_config() {
   config.normalize_known_prefix_tail = kNormalizeKnownPrefixTail;
 
   config.chase_l_candidates = {config.base_params.CHASE_L};
-  config.alpha_start_candidates.clear();
-  config.alpha_step_candidates.clear();
-  config.beta_start_candidates.clear();
-  config.beta_step_candidates.clear();
   config.bitgen_seed_count = 1;
   config.channel_seed_count = 1;
   config.ebn0_start = kEvalEbN0;
   config.ebn0_end = kEvalEbN0;
   config.ebn0_points = 1;
-  config.explicit_patterns.clear();
+
   config.base_params.debug_trace = {};
   return config;
 }
@@ -212,21 +145,25 @@ ofec_sweep::SweepParameterConfig build_base_config() {
 struct Evaluation {
   ofec_sweep::ExplicitAlphaBetaPattern pattern;
   newcode::PipelineResult result;
+  Shape shape;
 };
 
 ofec_sweep::detail::SweepScenario make_scenario(
     const ofec_sweep::ExplicitAlphaBetaPattern& pattern,
+    const Shape& shape,
     const ofec_sweep::SweepParameterConfig& config) {
   ofec_sweep::detail::SweepScenario sc;
   sc.name = pattern.label;
   sc.alpha_list = pattern.alpha_list;
   sc.beta_list = pattern.beta_list;
-  if (!sc.alpha_list.empty()) {
-    sc.alpha_start = sc.alpha_list.front();
-  }
-  if (!sc.beta_list.empty()) {
-    sc.beta_start = sc.beta_list.front();
-  }
+  if (!sc.alpha_list.empty()) sc.alpha_start = sc.alpha_list.front();
+  if (!sc.beta_list.empty()) sc.beta_start = sc.beta_list.front();
+  sc.alpha_low = shape.alpha_low;
+  sc.alpha_high = shape.alpha_high;
+  sc.gamma_alpha = shape.gamma_alpha;
+  sc.beta_low = shape.beta_low;
+  sc.beta_high = shape.beta_high;
+  sc.gamma_beta = shape.gamma_beta;
   sc.chase_L = config.base_params.CHASE_L;
   sc.chase_n_test = 1 << sc.chase_L;
   sc.bitgen_seed = config.base_params.BITGEN_SEED;
@@ -236,11 +173,12 @@ ofec_sweep::detail::SweepScenario make_scenario(
 }
 
 std::vector<Evaluation> run_stage(const std::vector<ofec_sweep::ExplicitAlphaBetaPattern>& patterns,
+                                  const std::vector<Shape>& shapes,
                                   const ofec_sweep::SweepParameterConfig& config_template,
                                   size_t num_bits,
                                   const std::string& stage_tag,
                                   const std::string& run_id,
-                                  ofec_sweep::detail::DualOut& out,
+                                  ofec_sweep::detail::DualOut& log,
                                   std::ofstream& csv) {
   if (patterns.empty()) return {};
   ofec_sweep::SweepParameterConfig config = config_template;
@@ -248,14 +186,14 @@ std::vector<Evaluation> run_stage(const std::vector<ofec_sweep::ExplicitAlphaBet
   base_params.NUM_INFO_BITS = num_bits;
   newcode::PipelineConfig pipeline_cfg = ofec_sweep::detail::make_pipeline_config(config);
 
-  out << "[INFO] Stage " << stage_tag << " evaluating " << patterns.size()
+  log << "[INFO] Stage " << stage_tag << " evaluating " << patterns.size()
       << " patterns with NUM_INFO_BITS=" << num_bits << "\n";
 
   std::vector<Evaluation> evaluations;
   evaluations.reserve(patterns.size());
 
-  for (const auto& pattern : patterns) {
-    auto scenario = make_scenario(pattern, config);
+  for (size_t idx = 0; idx < patterns.size(); ++idx) {
+    auto scenario = make_scenario(patterns[idx], shapes[idx], config);
     newcode::Params params = base_params;
     params.ALPHA_LIST = scenario.alpha_list;
     params.beta_list = scenario.beta_list;
@@ -270,47 +208,61 @@ std::vector<Evaluation> run_stage(const std::vector<ofec_sweep::ExplicitAlphaBet
                                         scenario.name + "_" + stage_tag,
                                         scenario.ebn0_db);
 
-    out << "[RESULT-" << stage_tag << "] " << scenario.name
+    log << "[RESULT-" << stage_tag << "] " << scenario.name
         << " Post-BER=" << result.post_fec.ber
         << " (errs=" << result.post_fec.errors << "/" << result.post_fec.total << ")\n";
 
-    write_csv_row(csv, run_id, stage_tag, num_bits, scenario, result);
+    ofec_sweep::detail::write_csv_row(csv,
+                                      ofec_sweep::detail::now_stamp(),
+                                      run_id,
+                                      stage_tag,
+                                      num_bits,
+                                      scenario,
+                                      result,
+                                      ofec_sweep::detail::CsvFormat::Extended);
 
-    evaluations.push_back(Evaluation{pattern, result});
+    evaluations.push_back(Evaluation{patterns[idx], result, shapes[idx]});
   }
   return evaluations;
 }
 
 std::vector<ofec_sweep::ExplicitAlphaBetaPattern> select_top_patterns(
-    std::vector<Evaluation>& evals) {
+    std::vector<Evaluation>& evals,
+    std::vector<Shape>& shapes) {
   if (evals.empty()) return {};
-  std::sort(evals.begin(), evals.end(),
-            [](const Evaluation& a, const Evaluation& b) {
-              return a.result.post_fec.ber < b.result.post_fec.ber;
+  std::vector<size_t> indices(evals.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::sort(indices.begin(), indices.end(),
+            [&](size_t a, size_t b) {
+              return evals[a].result.post_fec.ber < evals[b].result.post_fec.ber;
             });
   const size_t keep = std::max<size_t>(1, static_cast<size_t>(std::ceil(evals.size() * kKeepRatio)));
-  std::vector<ofec_sweep::ExplicitAlphaBetaPattern> top;
-  top.reserve(keep);
-  for (size_t i = 0; i < keep && i < evals.size(); ++i) {
-    top.push_back(evals[i].pattern);
+  std::vector<ofec_sweep::ExplicitAlphaBetaPattern> top_patterns;
+  std::vector<Shape> top_shapes;
+  top_patterns.reserve(keep);
+  top_shapes.reserve(keep);
+  for (size_t i = 0; i < keep && i < indices.size(); ++i) {
+    top_patterns.push_back(evals[indices[i]].pattern);
+    top_shapes.push_back(evals[indices[i]].shape);
   }
-  return top;
+  shapes.swap(top_shapes);
+  return top_patterns;
 }
 
 void print_final_summary(const Evaluation& best,
-                         ofec_sweep::detail::DualOut& out) {
-  out << "\n[SUMMARY] Best pattern: " << best.pattern.label
+                         ofec_sweep::detail::DualOut& log) {
+  log << "\n[SUMMARY] Best pattern: " << best.pattern.label
       << " | Post-BER=" << best.result.post_fec.ber
       << " (errs=" << best.result.post_fec.errors << "/"
       << best.result.post_fec.total << ")\n";
-  out << "  Alphas: ";
+  log << "  Alphas: ";
   for (size_t i = 0; i < best.pattern.alpha_list.size(); ++i) {
-    out << best.pattern.alpha_list[i]
+    log << best.pattern.alpha_list[i]
         << (i + 1 < best.pattern.alpha_list.size() ? ", " : "\n");
   }
-  out << "  Betas : ";
+  log << "  Betas : ";
   for (size_t i = 0; i < best.pattern.beta_list.size(); ++i) {
-    out << best.pattern.beta_list[i]
+    log << best.pattern.beta_list[i]
         << (i + 1 < best.pattern.beta_list.size() ? ", " : "\n");
   }
 }
@@ -325,26 +277,27 @@ int main() {
   ofec_sweep::detail::DualOut log(std::cout, log_path);
   const std::string csv_path =
       (data_dir / ("ofec_sweep2_results_" + run_id + ".csv")).string();
-  ensure_sweep2_csv_header(csv_path);
+  ofec_sweep::detail::ensure_csv_header_v2(csv_path);
   std::ofstream csv(csv_path, std::ios::out | std::ios::app);
   csv.setf(std::ios::fixed);
   csv << std::setprecision(8);
 
-  auto full_patterns = build_schedule();
-  log << "[INFO] Stage 1 candidate count: " << full_patterns.size() << "\n";
+  auto shapes = build_shapes();
+  auto patterns = build_schedule(shapes);
+  log << "[INFO] Stage 1 candidate count: " << patterns.size() << "\n";
   auto config = build_base_config();
 
-  auto stage1_results = run_stage(full_patterns, config, kStage1Bits, "stage1",
-                                  run_id, log, csv);
+  auto stage1_results = run_stage(patterns, shapes, config, kStage1Bits,
+                                  "stage1", run_id, log, csv);
   if (stage1_results.empty()) {
     log << "[ERROR] Stage 1 produced no results\n";
     return 1;
   }
 
-  auto top_patterns = select_top_patterns(stage1_results);
+  auto top_patterns = select_top_patterns(stage1_results, shapes);
   log << "[INFO] Stage 2 candidate count: " << top_patterns.size() << "\n";
-  auto stage2_results = run_stage(top_patterns, config, kStage2Bits, "stage2",
-                                  run_id, log, csv);
+  auto stage2_results = run_stage(top_patterns, shapes, config, kStage2Bits,
+                                  "stage2", run_id, log, csv);
   if (stage2_results.empty()) {
     log << "[ERROR] Stage 2 produced no results\n";
     return 1;

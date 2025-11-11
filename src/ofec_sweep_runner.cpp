@@ -247,31 +247,14 @@ int run_sweep(const SweepParameterConfig& config) {
     scenario_summaries.push_back(summary.str());
     out << summary.str() << "\n";
 
-    const double es_mean = mean(result.tile_early_stop_pct);
-    csv << now_stamp() << ","
-        << run_id << ","
-        << pack.name << ","
-        << pack.alpha_start << ","
-        << pack.alpha_step << ","
-        << pack.beta_start << ","
-        << pack.beta_step << ","
-        << pack.chase_L << ","
-        << pack.chase_n_test << ","
-        << pack.bitgen_seed << ","
-        << pack.channel_seed << ","
-        << pack.ebn0_db << ","
-        << '"' << join_vec(pack.alpha_list, '|', 6) << "\","
-        << '"' << join_vec(pack.beta_list, '|', 6) << "\","
-        << result.pre_fec.ber << ","
-        << result.pre_fec.errors << ","
-        << result.pre_fec.total << ","
-        << result.post_fec.ber << ","
-        << result.post_fec.errors << ","
-        << result.post_fec.total << ","
-        << std::setprecision(3) << es_mean << ","
-        << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\"\n";
-    csv << std::setprecision(8);
-    csv.flush();
+    write_csv_row(csv,
+                  now_stamp(),
+                  run_id,
+                  "" /*stage*/,
+                  0 /*num_bits*/,
+                  scenarios[pack.idx],
+                  result,
+                  CsvFormat::Basic);
 
     if (result.post_fec.total > 0 && result.post_fec.ber < best_post_ber) {
       best_post_ber = result.post_fec.ber;

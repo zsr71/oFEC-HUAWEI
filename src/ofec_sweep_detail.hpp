@@ -22,6 +22,12 @@ struct SweepScenario {
   float alpha_step = 0.0f;
   float beta_start = 0.0f;
   float beta_step = 0.0f;
+  float alpha_low = 0.0f;
+  float alpha_high = 0.0f;
+  float gamma_alpha = 1.0f;
+  float beta_low = 0.0f;
+  float beta_high = 0.0f;
+  float gamma_beta = 1.0f;
   int chase_L = 0;
   int chase_n_test = 0;
   int bitgen_seed = 0;
@@ -82,6 +88,7 @@ class Semaphore {
 std::string now_stamp();
 void ensure_dir(const std::filesystem::path& path);
 void ensure_csv_header(const std::string& csv_path);
+void ensure_csv_header_v2(const std::string& csv_path);
 
 std::vector<float> generate_sequence(float start, float step, std::size_t length);
 float infer_step(const std::vector<float>& values);
@@ -99,7 +106,19 @@ std::vector<float> build_ebn0_values(const SweepParameterConfig& config);
 std::string join_vec(const std::vector<float>& values, char sep, int precision);
 std::string join_vec(const std::vector<double>& values, char sep, int precision);
 double mean(const std::vector<double>& values);
+enum class CsvFormat {
+  Basic,
+  Extended
+};
+
+void write_csv_row(std::ostream& csv,
+                   const std::string& timestamp,
+                   const std::string& run_id,
+                   const std::string& stage_tag,
+                   std::size_t num_bits,
+                   const SweepScenario& scenario,
+                   const newcode::PipelineResult& result,
+                   CsvFormat format);
 
 }  // namespace detail
 }  // namespace ofec_sweep
-
