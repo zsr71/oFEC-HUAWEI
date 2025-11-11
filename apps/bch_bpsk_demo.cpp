@@ -2,6 +2,7 @@
 #include "newcode/bch_255_239.hpp"
 #include "newcode/chase255.hpp"
 #include "newcode/params.hpp"
+#include "newcode/linspace.hpp"
 
 #include <algorithm>
 #include <array>
@@ -71,27 +72,11 @@ static std::string timestamp_stamp()
   return oss.str();
 }
 
-static std::vector<float> linspace(float start, float end, std::size_t points)
-{
-  std::vector<float> values;
-  if (points == 0) return values;
-  if (points == 1) {
-    values.push_back(start);
-    return values;
-  }
-  values.reserve(points);
-  const float step = (end - start) / static_cast<float>(points - 1);
-  for (std::size_t i = 0; i < points; ++i) {
-    values.push_back(start + step * static_cast<float>(i));
-  }
-  return values;
-}
-
 } // namespace
 
 int main() {
   const DemoConfig cfg{};
-  const std::vector<float> ebn0_R_list = linspace(cfg.ebn0_R_start, cfg.ebn0_R_end, cfg.ebn0_R_points);
+  const std::vector<float> ebn0_R_list = newcode::linspace(cfg.ebn0_R_start, cfg.ebn0_R_end, cfg.ebn0_R_points);
   std::vector<float> ebn0_list;
   ebn0_list.reserve(ebn0_R_list.size());
   for (float val : ebn0_R_list) {

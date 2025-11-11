@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "newcode/ofec_sweep_runner.hpp"
+#include "newcode/linspace.hpp"
 #include "ofec_sweep_detail.hpp"
 
 namespace {
@@ -30,12 +31,12 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;
 
 
 // Default scan grids (can be tweaked before calling build_round0_shapes).
-const std::vector<float> kAlphaLowGrid      = {0.30f, 0.40f, 0.50f};
-const std::vector<float> kAlphaHighGrid     = {0.50f, 0.60f, 0.70f};
-const std::vector<float> kBetaLowGrid       = {0.60f, 0.70f, 0.80f};
-const std::vector<float> kBetaHighGrid      = {0.80f, 0.90f, 1.00f};
-const std::vector<float> kGammaAlphaGrid    = {0.7f, 1.0f, 1.5f};
-const std::vector<float> kGammaBetaGrid     = {0.7f, 1.0f, 1.5f};
+const std::vector<float> kAlphaLowGrid      = newcode::linspace(0.30f, 0.50f, 3);
+const std::vector<float> kAlphaHighGrid     = newcode::linspace(0.50f, 0.70f, 3);
+const std::vector<float> kBetaLowGrid       = newcode::linspace(0.60f, 0.80f, 3);
+const std::vector<float> kBetaHighGrid      = newcode::linspace(0.80f, 1.00f, 3);
+const std::vector<float> kGammaAlphaGrid    = newcode::linspace(0.80f, 1.00f, 3);
+const std::vector<float> kGammaBetaGrid     = newcode::linspace(0.80f, 1.00f, 3);
 
 struct Shape {
   float alpha_low;

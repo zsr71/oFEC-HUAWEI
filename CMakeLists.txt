@@ -58,6 +58,7 @@ target_sources(newcode_frontend PRIVATE
   src/decoder_registry.cpp
   src/ber.cpp
   src/chase255.cpp
+  src/linspace.cpp
 )
 
 # ==============================

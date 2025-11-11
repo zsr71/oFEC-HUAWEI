@@ -1,5 +1,6 @@
 #include <vector>
 
+#include "newcode/linspace.hpp"
 #include "newcode/ofec_sweep_runner.hpp"
 
 // ======== 用户可调参数区域 ========
@@ -11,10 +12,10 @@ static constexpr bool kGenerateRandomBits        = true;
 static constexpr bool kNormalizeKnownPrefixTail  = true;
 
 // Alpha/Beta 扫描候选
-static const std::vector<float> kAlphaStartCandidates = {0.01f, 0.1f, 0.15f, 0.3f, 0.5f, 0.7f};
-static const std::vector<float> kAlphaStepCandidates  = {0.0f, 0.025f, 0.05f, 0.1f, 0.15f, 0.2f};
-static const std::vector<float> kBetaStartCandidates  = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.7f, 0.9f, 1.2f, 1.7f};
-static const std::vector<float> kBetaStepCandidates   = {0.0f, 0.025f, 0.05f, 0.1f, 0.2f};
+static const std::vector<float> kAlphaStartCandidates = newcode::linspace(0.0f, 0.2f, 6);
+static const std::vector<float> kAlphaStepCandidates  = newcode::linspace(0.0f, 0.2f, 6);
+static const std::vector<float> kBetaStartCandidates  = newcode::linspace(0.0f, 0.2f, 6);
+static const std::vector<float> kBetaStepCandidates   = newcode::linspace(0.0f, 0.2f, 5);
 static const std::vector<int>   kChaseLCandidates     = {6};
 
 // 随机种子（为空则自动生成 bitgen/channel seeds 数量）
@@ -28,7 +29,7 @@ static constexpr int   kEbN0Points = 1;
 
 // 显式 alpha/beta 模式（可选）
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
-  {"custom_label", {0.3f, 0.45f, 0.60f, 0.9f, 0.5f}, {0.2f, 0.225f, 0.250f, 0.275f, 0.8f}},
+  //{"custom_label", {0.3f, 0.45f, 0.60f, 0.9f, 0.5f}, {0.2f, 0.225f, 0.250f, 0.275f, 0.8f}},
 };
 
 // Decoder 调试跟踪配置
