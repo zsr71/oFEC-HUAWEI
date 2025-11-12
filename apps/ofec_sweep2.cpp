@@ -19,8 +19,8 @@ namespace {
 
 constexpr size_t kTilesPerWindow = 2;
 constexpr float  kEvalEbN0       = 3.47f;
-constexpr size_t kStage1Bits     = 3 * 110 * 16 * 111;
-constexpr size_t kStage2Bits     = 3 * 110 * 16 * 111;
+constexpr size_t kStage1Bits     = 4 * 110 * 16 * 111;
+constexpr size_t kStage2Bits     = 16 * 110 * 16 * 111;
 constexpr float  kKeepRatio      = 0.20f;
 
 static constexpr const char* kInterleaverName          = "identity";
@@ -30,12 +30,12 @@ static constexpr bool        kNormalizeExtrinsic      = true;
 static constexpr bool        kGenerateRandomBits      = true;
 static constexpr bool        kNormalizeKnownPrefixTail = true;
 
-const std::vector<float> kAlphaLowGrid   = newcode::linspace(0.30f, 0.50f, 2);
-const std::vector<float> kAlphaHighGrid  = newcode::linspace(0.50f, 0.70f, 2);
-const std::vector<float> kBetaLowGrid    = newcode::linspace(0.60f, 0.80f, 2);
-const std::vector<float> kBetaHighGrid   = newcode::linspace(0.80f, 1.00f, 2);
-const std::vector<float> kGammaAlphaGrid = newcode::linspace(1.00f, 1.00f, 1);
-const std::vector<float> kGammaBetaGrid  = newcode::linspace(1.00f, 1.00f, 1);
+const std::vector<float> kAlphaLowGrid   = newcode::linspace(0.00f, 1.50f, 10);
+const std::vector<float> kAlphaHighGrid  = newcode::linspace(0.00f, 1.50f, 10);
+const std::vector<float> kBetaLowGrid    = newcode::linspace(0.00f, 1.50f, 10);
+const std::vector<float> kBetaHighGrid   = newcode::linspace(0.00f, 1.50f, 10);
+const std::vector<float> kGammaAlphaGrid = newcode::linspace(0.70f, 1.30f, 3);
+const std::vector<float> kGammaBetaGrid  = newcode::linspace(0.70f, 1.30f, 3);
 
 struct Shape {
   float alpha_low;
