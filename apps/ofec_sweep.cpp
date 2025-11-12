@@ -10,6 +10,8 @@ static constexpr unsigned    kBitsPerSymbol = 1; // 设为 1 使用 BPSK，>=2 �
 static constexpr bool        kNormalizeExtrinsic = true;
 static constexpr bool kGenerateRandomBits        = true;
 static constexpr bool kNormalizeKnownPrefixTail  = true;
+static constexpr float kQuantClipRatio           = 0.0f; // 0 表示禁用动态 clip
+static constexpr std::size_t kLlrBits            = 16;
 
 // Alpha/Beta 扫描候选
 static const std::vector<float> kAlphaStartCandidates = newcode::linspace(0.0f, 0.2f, 2);
@@ -65,6 +67,7 @@ int main() {
   config.explicit_patterns = kExplicitAlphaBetaSets;
   config.generate_random_bits = kGenerateRandomBits;
   config.normalize_known_prefix_tail = kNormalizeKnownPrefixTail;
+  config.quant_clip_ratio = kQuantClipRatio;
 
   config.base_params.debug_trace = newcode::Params::DebugTraceConfig{
     .enable = kDecoderTraceEnable,
@@ -76,6 +79,8 @@ int main() {
   };
   config.base_params.BITGEN_RANDOM_BITS = kGenerateRandomBits;
   config.base_params.NORMALIZE_KNOWN_PREFIX_TAIL = kNormalizeKnownPrefixTail;
+  config.base_params.LLR_CLIP_RATIO = kQuantClipRatio;
+  config.base_params.LLR_BITS = kLlrBits;
 
   return ofec_sweep::run_sweep(config);
 }

@@ -22,13 +22,29 @@ extern template bool perform_hard_decode<int8_t>(const std::array<int8_t, 256>&,
                                                  const std::array<int8_t, 256>&,
                                                  std::array<int8_t, 256>&,
                                                  const Params&);
-extern template bool perform_hard_decode<qfloat<4>>(const std::array<qfloat<4>, 256>&,
-                                                    const std::array<qfloat<4>, 256>&,
-                                                    std::array<qfloat<4>, 256>&,
-                                                    const Params&);
-extern template bool perform_hard_decode<qfloat<5>>(const std::array<qfloat<5>, 256>&,
-                                                    const std::array<qfloat<5>, 256>&,
-                                                    std::array<qfloat<5>, 256>&,
-                                                    const Params&);
+
+#define DECLARE_HARD_DECODE_QFLOAT(N) \
+extern template bool perform_hard_decode<qfloat<N>>( \
+    const std::array<qfloat<N>, 256>&, \
+    const std::array<qfloat<N>, 256>&, \
+    std::array<qfloat<N>, 256>&, \
+    const Params&);
+
+DECLARE_HARD_DECODE_QFLOAT(2)
+DECLARE_HARD_DECODE_QFLOAT(3)
+DECLARE_HARD_DECODE_QFLOAT(4)
+DECLARE_HARD_DECODE_QFLOAT(5)
+DECLARE_HARD_DECODE_QFLOAT(6)
+DECLARE_HARD_DECODE_QFLOAT(7)
+DECLARE_HARD_DECODE_QFLOAT(8)
+DECLARE_HARD_DECODE_QFLOAT(9)
+DECLARE_HARD_DECODE_QFLOAT(10)
+DECLARE_HARD_DECODE_QFLOAT(11)
+DECLARE_HARD_DECODE_QFLOAT(12)
+DECLARE_HARD_DECODE_QFLOAT(13)
+DECLARE_HARD_DECODE_QFLOAT(14)
+DECLARE_HARD_DECODE_QFLOAT(15)
+
+#undef DECLARE_HARD_DECODE_QFLOAT
 
 } // namespace newcode

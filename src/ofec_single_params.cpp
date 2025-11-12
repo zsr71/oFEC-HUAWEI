@@ -1,5 +1,7 @@
 #include "newcode/ofec_single_runner.hpp"
 
+#include <algorithm>
+
 namespace ofec_single {
 namespace detail {
 
@@ -11,6 +13,12 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.BITGEN_RANDOM_BITS = cfg.generate_random_bits;
   params.NORMALIZE_KNOWN_PREFIX_TAIL = cfg.normalize_known_prefix_tail;
   params.debug_trace = cfg.debug_trace;
+  params.LLR_BITS = cfg.llr_bits;
+  if (cfg.llr_bits < 2 || cfg.llr_bits > 16) {
+    log << "[ERROR] LLR_BITS 必须在 [2,16]，16 表示浮点，其余使用 qfloat<N>\n";
+    return std::nullopt;
+  }
+  params.LLR_CLIP_RATIO = std::clamp(cfg.quant_clip_ratio, 0.0f, 1.0f);
   if (cfg.chaseL_override >= 0) {
     params.CHASE_L = cfg.chaseL_override;
     params.CHASE_NTEST = 1 << params.CHASE_L;

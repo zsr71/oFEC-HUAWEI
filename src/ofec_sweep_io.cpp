@@ -111,6 +111,7 @@ void write_csv_row(std::ostream& csv,
                    const SweepScenario& scenario,
                    const newcode::PipelineResult& result,
                    CsvFormat format) {
+  const auto prev_prec = csv.precision();
   if (format == CsvFormat::Basic) {
     const float alpha_step = infer_step(scenario.alpha_list);
     const float beta_step = infer_step(scenario.beta_list);
@@ -132,13 +133,15 @@ void write_csv_row(std::ostream& csv,
         << result.pre_fec.ber << ","
         << result.pre_fec.errors << ","
         << result.pre_fec.total << ","
-        << result.post_fec.ber << ","
+        << std::setprecision(10) << result.post_fec.ber << ","
         << result.post_fec.errors << ","
         << result.post_fec.total << ",";
+    csv.precision(prev_prec);
     if (std::isnan(es_mean)) {
       csv << ",";
     } else {
       csv << std::setprecision(3) << es_mean << ",";
+      csv.precision(prev_prec);
     }
     csv << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\"\n";
   } else {
@@ -163,10 +166,11 @@ void write_csv_row(std::ostream& csv,
         << result.pre_fec.ber << ","
         << result.pre_fec.errors << ","
         << result.pre_fec.total << ","
-        << result.post_fec.ber << ","
+        << std::setprecision(10) << result.post_fec.ber << ","
         << result.post_fec.errors << ","
         << result.post_fec.total << ","
         << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\"\n";
+    csv.precision(prev_prec);
   }
 }
 

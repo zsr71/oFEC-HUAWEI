@@ -5,7 +5,7 @@
 // ======== 用户可改区域 ========
 // 只需要改这里的常量/列表即可完成一次“单次调试运行”的配置
 static constexpr const char* kLabel             = "debug_L6";
-static constexpr float       kEbN0_db           = 5.25f;
+static constexpr float       kEbN0_db           = 3.07f;
 static constexpr int         kChaseL_override   = 6;    // 设为 -1 则沿用 Params 默认
 static constexpr bool        kNormalizeExtrinsic = false;
 static constexpr unsigned    kBitsPerSymbol     = 1;    // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
@@ -39,6 +39,8 @@ static constexpr const char* kInterleaverName = "identity";
 static constexpr const char* kDecoderName     = "plain";
 static constexpr bool        kGenerateRandomBits = false;
 static constexpr bool        kNormalizeKnownPrefixTail = false;
+static constexpr std::size_t kLlrBits = 4;
+static constexpr float       kQuantClipRatio = 0.1f;  // 0 表示禁用动态 clip
 
 // Decoder 调试跟踪配置
 static constexpr bool kDecoderTraceEnable        = true;
@@ -66,6 +68,8 @@ int main() {
     .decoder_name = kDecoderName,
     .generate_random_bits = kGenerateRandomBits,
     .normalize_known_prefix_tail = kNormalizeKnownPrefixTail,
+    .quant_clip_ratio = kQuantClipRatio,
+    .llr_bits = kLlrBits,
     .debug_trace = newcode::Params::DebugTraceConfig{
       .enable = kDecoderTraceEnable,
       .log_read_mapping = kDecoderTraceLogRead,

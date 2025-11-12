@@ -28,6 +28,8 @@ struct Config {
   std::string decoder_name;
   bool generate_random_bits = true;
   bool normalize_known_prefix_tail = true;
+  float quant_clip_ratio = 0.0f;
+  std::size_t llr_bits = 16;
   newcode::Params::DebugTraceConfig debug_trace;
 };
 

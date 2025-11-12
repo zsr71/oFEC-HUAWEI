@@ -15,8 +15,7 @@ namespace newcode {
 
 enum class LlrFormat {
   Float,
-  QFloat5,
-  QFloat4
+  Quantized
 };
 
 struct DecodeStats {
@@ -29,6 +28,8 @@ struct DecodeRequest {
   const Matrix<float>& channel_llr;
   const Params& params;
   LlrFormat format = LlrFormat::Float;
+  std::size_t quant_bits = 16;
+  float quant_clip = 0.0f;
   bool normalize_extrinsic = true;
 };
 

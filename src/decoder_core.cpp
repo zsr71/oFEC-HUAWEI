@@ -91,14 +91,6 @@ template DecoderCoreResult<int8_t> Decoder_Core_plain<int8_t>(const Matrix<int8_
                                                               const Matrix<int8_t>&,
                                                               bool,
                                                               const Params&);
-template DecoderCoreResult<qfloat<4>> Decoder_Core_plain<qfloat<4>>(const Matrix<qfloat<4>>&,
-                                                                    const Matrix<qfloat<4>>&,
-                                                                    bool,
-                                                                    const Params&);
-template DecoderCoreResult<qfloat<5>> Decoder_Core_plain<qfloat<5>>(const Matrix<qfloat<5>>&,
-                                                                    const Matrix<qfloat<5>>&,
-                                                                    bool,
-                                                                    const Params&);
 
 template DecoderCoreResult<float> Decoder_Core_ebchPF<float>(const Matrix<float>&,
                                                              const Matrix<float>&,
@@ -108,13 +100,28 @@ template DecoderCoreResult<int8_t> Decoder_Core_ebchPF<int8_t>(const Matrix<int8
                                                                const Matrix<int8_t>&,
                                                                bool,
                                                                const Params&);
-template DecoderCoreResult<qfloat<4>> Decoder_Core_ebchPF<qfloat<4>>(const Matrix<qfloat<4>>&,
-                                                                     const Matrix<qfloat<4>>&,
-                                                                     bool,
-                                                                     const Params&);
-template DecoderCoreResult<qfloat<5>> Decoder_Core_ebchPF<qfloat<5>>(const Matrix<qfloat<5>>&,
-                                                                     const Matrix<qfloat<5>>&,
-                                                                     bool,
-                                                                     const Params&);
+
+#define INSTANTIATE_DECODER_CORE_QFLOAT(N) \
+template DecoderCoreResult<qfloat<N>> Decoder_Core_plain<qfloat<N>>( \
+    const Matrix<qfloat<N>>&, const Matrix<qfloat<N>>&, bool, const Params&); \
+template DecoderCoreResult<qfloat<N>> Decoder_Core_ebchPF<qfloat<N>>( \
+    const Matrix<qfloat<N>>&, const Matrix<qfloat<N>>&, bool, const Params&);
+
+INSTANTIATE_DECODER_CORE_QFLOAT(2)
+INSTANTIATE_DECODER_CORE_QFLOAT(3)
+INSTANTIATE_DECODER_CORE_QFLOAT(4)
+INSTANTIATE_DECODER_CORE_QFLOAT(5)
+INSTANTIATE_DECODER_CORE_QFLOAT(6)
+INSTANTIATE_DECODER_CORE_QFLOAT(7)
+INSTANTIATE_DECODER_CORE_QFLOAT(8)
+INSTANTIATE_DECODER_CORE_QFLOAT(9)
+INSTANTIATE_DECODER_CORE_QFLOAT(10)
+INSTANTIATE_DECODER_CORE_QFLOAT(11)
+INSTANTIATE_DECODER_CORE_QFLOAT(12)
+INSTANTIATE_DECODER_CORE_QFLOAT(13)
+INSTANTIATE_DECODER_CORE_QFLOAT(14)
+INSTANTIATE_DECODER_CORE_QFLOAT(15)
+
+#undef INSTANTIATE_DECODER_CORE_QFLOAT
 
 } // namespace newcode

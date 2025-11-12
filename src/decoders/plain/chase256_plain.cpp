@@ -278,22 +278,30 @@ void chase_decode_256_plain(const LLR* Y256, LLR* Y2_256, const Params& p)
 // ======================== explicit instantiations ========================
 template void chase_decode_256_plain<float >(const float*,  const float*,  float*,  const Params&);
 template void chase_decode_256_plain<int8_t>(const int8_t*, const int8_t*, int8_t*, const Params&);
-template void chase_decode_256_plain<newcode::qfloat<4>>(const newcode::qfloat<4>*,
-                                                         const newcode::qfloat<4>*,
-                                                         newcode::qfloat<4>*,
-                                                         const Params&);
-template void chase_decode_256_plain<newcode::qfloat<5>>(const newcode::qfloat<5>*,
-                                                         const newcode::qfloat<5>*,
-                                                         newcode::qfloat<5>*,
-                                                         const Params&);
-
 template void chase_decode_256_plain<float >(const float*,  float*,  const Params&);
 template void chase_decode_256_plain<int8_t>(const int8_t*, int8_t*, const Params&);
-template void chase_decode_256_plain<newcode::qfloat<4>>(const newcode::qfloat<4>*,
-                                                         newcode::qfloat<4>*,
-                                                         const Params&);
-template void chase_decode_256_plain<newcode::qfloat<5>>(const newcode::qfloat<5>*,
-                                                         newcode::qfloat<5>*,
-                                                         const Params&);
+
+#define INSTANTIATE_CHASE256_PLAIN_QFLOAT(N) \
+template void chase_decode_256_plain<newcode::qfloat<N>>( \
+    const newcode::qfloat<N>*, const newcode::qfloat<N>*, newcode::qfloat<N>*, const Params&); \
+template void chase_decode_256_plain<newcode::qfloat<N>>( \
+    const newcode::qfloat<N>*, newcode::qfloat<N>*, const Params&);
+
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(2)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(3)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(4)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(5)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(6)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(7)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(8)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(9)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(10)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(11)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(12)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(13)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(14)
+INSTANTIATE_CHASE256_PLAIN_QFLOAT(15)
+
+#undef INSTANTIATE_CHASE256_PLAIN_QFLOAT
 
 } // namespace newcode

@@ -42,6 +42,7 @@ struct SweepParameterConfig {
   unsigned max_workers_override = 0;
   bool generate_random_bits = true;
   bool normalize_known_prefix_tail = true;
+  float quant_clip_ratio = 0.0f;
 };
 
 int run_sweep(const SweepParameterConfig& config);

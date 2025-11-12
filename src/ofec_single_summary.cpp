@@ -47,6 +47,8 @@ void log_run_overview(const Config& cfg,
   log << "[INFO] RNG seeds (bitgen/channel) = "
       << params.BITGEN_SEED << "/"
       << params.CHANNEL_SEED << "\n";
+  log << "[INFO] LLR bits = " << params.LLR_BITS
+      << " (" << (params.LLR_BITS == 16 ? "float" : "qfloat") << ")\n";
 }
 
 void log_pipeline_results(const newcode::PipelineResult& result,

@@ -56,13 +56,29 @@ template bool perform_hard_decode<int8_t>(const std::array<int8_t, 256>&,
                                           const std::array<int8_t, 256>&,
                                           std::array<int8_t, 256>&,
                                           const Params&);
-template bool perform_hard_decode<qfloat<4>>(const std::array<qfloat<4>, 256>&,
-                                             const std::array<qfloat<4>, 256>&,
-                                             std::array<qfloat<4>, 256>&,
-                                             const Params&);
-template bool perform_hard_decode<qfloat<5>>(const std::array<qfloat<5>, 256>&,
-                                             const std::array<qfloat<5>, 256>&,
-                                             std::array<qfloat<5>, 256>&,
-                                             const Params&);
+
+#define INSTANTIATE_HARD_DECODE_QFLOAT(N) \
+template bool perform_hard_decode<qfloat<N>>( \
+    const std::array<qfloat<N>, 256>&, \
+    const std::array<qfloat<N>, 256>&, \
+    std::array<qfloat<N>, 256>&, \
+    const Params&);
+
+INSTANTIATE_HARD_DECODE_QFLOAT(2)
+INSTANTIATE_HARD_DECODE_QFLOAT(3)
+INSTANTIATE_HARD_DECODE_QFLOAT(4)
+INSTANTIATE_HARD_DECODE_QFLOAT(5)
+INSTANTIATE_HARD_DECODE_QFLOAT(6)
+INSTANTIATE_HARD_DECODE_QFLOAT(7)
+INSTANTIATE_HARD_DECODE_QFLOAT(8)
+INSTANTIATE_HARD_DECODE_QFLOAT(9)
+INSTANTIATE_HARD_DECODE_QFLOAT(10)
+INSTANTIATE_HARD_DECODE_QFLOAT(11)
+INSTANTIATE_HARD_DECODE_QFLOAT(12)
+INSTANTIATE_HARD_DECODE_QFLOAT(13)
+INSTANTIATE_HARD_DECODE_QFLOAT(14)
+INSTANTIATE_HARD_DECODE_QFLOAT(15)
+
+#undef INSTANTIATE_HARD_DECODE_QFLOAT
 
 } // namespace newcode

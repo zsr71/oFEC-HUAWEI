@@ -584,48 +584,51 @@ template Matrix<int8_t> ofec_decode_llr_plain<int8_t>(const Matrix<int8_t>&, con
 template Matrix<float>  ofec_decode_llr_ebchPF<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool);
 template Matrix<int8_t> ofec_decode_llr_ebchPF<int8_t>(const Matrix<int8_t>&, const Params&, std::vector<TileEarlyStopCounter>*, bool);
 
-template TileProcessResult<newcode::qfloat<4>> process_tile_plain<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
-                                                                                       const Matrix<newcode::qfloat<4>>&,
-                                                                                       const Params&, size_t, bool, bool);
-template TileProcessResult<newcode::qfloat<5>> process_tile_plain<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
-                                                                                       const Matrix<newcode::qfloat<5>>&,
-                                                                                       const Params&, size_t, bool, bool);
-template TileProcessResult<newcode::qfloat<4>> process_tile_ebchPF<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
-                                                                                       const Matrix<newcode::qfloat<4>>&,
-                                                                                       const Params&, size_t, bool, bool);
-template TileProcessResult<newcode::qfloat<5>> process_tile_ebchPF<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
-                                                                                       const Matrix<newcode::qfloat<5>>&,
-                                                                                       const Params&, size_t, bool, bool);
+#define INSTANTIATE_QFLOAT(N) \
+template TileProcessResult<newcode::qfloat<N>> process_tile_plain<newcode::qfloat<N>>( \
+    const Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
+    const Params&, size_t, bool, bool); \
+template TileProcessResult<newcode::qfloat<N>> process_tile_ebchPF<newcode::qfloat<N>>( \
+    const Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
+    const Params&, size_t, bool, bool); \
+template void process_window_plain<newcode::qfloat<N>>( \
+    Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
+    size_t, size_t, const Params&, \
+    size_t, size_t, size_t, \
+    std::vector<TileEarlyStopCounter>*, bool); \
+template void process_window_ebchPF<newcode::qfloat<N>>( \
+    Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
+    size_t, size_t, const Params&, \
+    size_t, size_t, size_t, \
+    std::vector<TileEarlyStopCounter>*, bool); \
+template Matrix<newcode::qfloat<N>> ofec_decode_llr_plain<newcode::qfloat<N>>( \
+    const Matrix<newcode::qfloat<N>>&, const Params&, \
+    std::vector<TileEarlyStopCounter>*, bool); \
+template Matrix<newcode::qfloat<N>> ofec_decode_llr_ebchPF<newcode::qfloat<N>>( \
+    const Matrix<newcode::qfloat<N>>&, const Params&, \
+    std::vector<TileEarlyStopCounter>*, bool); \
+template void process_window<newcode::qfloat<N>>( \
+    Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
+    std::size_t, std::size_t, const Params&, \
+    std::size_t, std::size_t, std::size_t, \
+    std::vector<TileEarlyStopCounter>*, bool);
 
-template void process_window_plain<newcode::qfloat<4>>(Matrix<newcode::qfloat<4>>&,
-                                                       const Matrix<newcode::qfloat<4>>&,
-                                                       size_t, size_t, const Params&,
-                                                       size_t, size_t, size_t,
-                                                       std::vector<TileEarlyStopCounter>*, bool);
-template void process_window_plain<newcode::qfloat<5>>(Matrix<newcode::qfloat<5>>&,
-                                                       const Matrix<newcode::qfloat<5>>&,
-                                                       size_t, size_t, const Params&,
-                                                       size_t, size_t, size_t,
-                                                       std::vector<TileEarlyStopCounter>*, bool);
-template void process_window_ebchPF<newcode::qfloat<4>>(Matrix<newcode::qfloat<4>>&,
-                                                       const Matrix<newcode::qfloat<4>>&,
-                                                       size_t, size_t, const Params&,
-                                                       size_t, size_t, size_t,
-                                                       std::vector<TileEarlyStopCounter>*, bool);
-template void process_window_ebchPF<newcode::qfloat<5>>(Matrix<newcode::qfloat<5>>&,
-                                                       const Matrix<newcode::qfloat<5>>&,
-                                                       size_t, size_t, const Params&,
-                                                       size_t, size_t, size_t,
-                                                       std::vector<TileEarlyStopCounter>*, bool);
+INSTANTIATE_QFLOAT(2)
+INSTANTIATE_QFLOAT(3)
+INSTANTIATE_QFLOAT(4)
+INSTANTIATE_QFLOAT(5)
+INSTANTIATE_QFLOAT(6)
+INSTANTIATE_QFLOAT(7)
+INSTANTIATE_QFLOAT(8)
+INSTANTIATE_QFLOAT(9)
+INSTANTIATE_QFLOAT(10)
+INSTANTIATE_QFLOAT(11)
+INSTANTIATE_QFLOAT(12)
+INSTANTIATE_QFLOAT(13)
+INSTANTIATE_QFLOAT(14)
+INSTANTIATE_QFLOAT(15)
 
-template Matrix<newcode::qfloat<4>> ofec_decode_llr_plain<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
-                                                                             const Params&, std::vector<TileEarlyStopCounter>*, bool);
-template Matrix<newcode::qfloat<5>> ofec_decode_llr_plain<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
-                                                                             const Params&, std::vector<TileEarlyStopCounter>*, bool);
-template Matrix<newcode::qfloat<4>> ofec_decode_llr_ebchPF<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,
-                                                                             const Params&, std::vector<TileEarlyStopCounter>*, bool);
-template Matrix<newcode::qfloat<5>> ofec_decode_llr_ebchPF<newcode::qfloat<5>>(const Matrix<newcode::qfloat<5>>&,
-                                                                             const Params&, std::vector<TileEarlyStopCounter>*, bool);
+#undef INSTANTIATE_QFLOAT
 
 template void process_window<float >(Matrix<float>&,  const Matrix<float>&,
                                      std::size_t, std::size_t, const Params&,
@@ -635,15 +638,5 @@ template void process_window<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&,
                                      std::size_t, std::size_t, const Params&,
                                      std::size_t, std::size_t, std::size_t,
                                      std::vector<TileEarlyStopCounter>*, bool);
-template void process_window<newcode::qfloat<4>>(Matrix<newcode::qfloat<4>>&,
-                                                 const Matrix<newcode::qfloat<4>>&,
-                                                 std::size_t, std::size_t, const Params&,
-                                                 std::size_t, std::size_t, std::size_t,
-                                                 std::vector<TileEarlyStopCounter>*, bool);
-template void process_window<newcode::qfloat<5>>(Matrix<newcode::qfloat<5>>&,
-                                                 const Matrix<newcode::qfloat<5>>&,
-                                                 std::size_t, std::size_t, const Params&,
-                                                 std::size_t, std::size_t, std::size_t,
-                                                 std::vector<TileEarlyStopCounter>*, bool);
 
 } // namespace newcode

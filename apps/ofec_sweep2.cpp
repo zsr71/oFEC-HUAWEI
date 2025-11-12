@@ -29,6 +29,8 @@ static constexpr unsigned    kBitsPerSymbol           = 1;
 static constexpr bool        kNormalizeExtrinsic      = true;
 static constexpr bool        kGenerateRandomBits      = true;
 static constexpr bool        kNormalizeKnownPrefixTail = true;
+static constexpr std::size_t kLlrBits                 = 16;
+static constexpr float       kQuantClipRatio          = 0.0f;
 
 const std::vector<float> kAlphaLowGrid   = newcode::linspace(0.00f, 1.50f, 10);
 const std::vector<float> kAlphaHighGrid  = newcode::linspace(0.00f, 1.50f, 10);
@@ -123,6 +125,8 @@ ofec_sweep::SweepParameterConfig build_base_config() {
   config.base_params.HARD_TILE_LIST.assign(kTilesPerWindow, 0);
   config.base_params.BITGEN_RANDOM_BITS = kGenerateRandomBits;
   config.base_params.NORMALIZE_KNOWN_PREFIX_TAIL = kNormalizeKnownPrefixTail;
+  config.base_params.LLR_CLIP_RATIO = kQuantClipRatio;
+  config.base_params.LLR_BITS = kLlrBits;
 
   config.interleaver_name = kInterleaverName;
   config.decoder_name = kDecoderName;
@@ -130,6 +134,7 @@ ofec_sweep::SweepParameterConfig build_base_config() {
   config.normalize_extrinsic = kNormalizeExtrinsic;
   config.generate_random_bits = kGenerateRandomBits;
   config.normalize_known_prefix_tail = kNormalizeKnownPrefixTail;
+  config.quant_clip_ratio = kQuantClipRatio;
 
   config.chase_l_candidates = {config.base_params.CHASE_L};
   config.bitgen_seed_count = 1;

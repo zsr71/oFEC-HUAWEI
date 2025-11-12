@@ -20,6 +20,7 @@
 #include "newcode/ofec_llr_matrix.hpp"
 #include "newcode/qam.hpp"
 #include "newcode/qam_llr.hpp"
+#include "newcode/qfloat.hpp"
 #include "newcode/interleaver.hpp"
 
 namespace newcode {
@@ -69,11 +70,19 @@ static Matrix<float> hard_bits_to_llr_matrix(const Matrix<uint8_t>& bits_mat, fl
   return m;
 }
 
-LlrFormat pick_llr_format(const Params& params) {
-  if (params.LLR_BITS == 16) return LlrFormat::Float;
-  if (params.LLR_BITS == 5)  return LlrFormat::QFloat5;
-  if (params.LLR_BITS == 4)  return LlrFormat::QFloat4;
-  throw std::runtime_error("[ERROR] Unsupported Params::LLR_BITS value");
+struct LlrMode {
+  LlrFormat format;
+  std::size_t quant_bits;
+};
+
+LlrMode pick_llr_mode(const Params& params) {
+  if (params.LLR_BITS == 16) {
+    return {LlrFormat::Float, 16};
+  }
+  if (params.LLR_BITS >= 2 && params.LLR_BITS <= 15) {
+    return {LlrFormat::Quantized, params.LLR_BITS};
+  }
+  throw std::runtime_error("[ERROR] Params::LLR_BITS must be 2..16");
 }
 
 } // namespace
@@ -166,11 +175,30 @@ PipelineResult run_pipeline(const Params& params,
     throw std::runtime_error("[ERROR] make_decoder: unknown decoder '" + config.decoder_name + "'");
   }
 
+  const auto llr_mode = pick_llr_mode(params);
+  float quant_clip = 0.0f;
+  if (llr_mode.format == LlrFormat::Quantized) {
+    if (params.LLR_CLIP_RATIO > 0.0f) {
+      std::vector<float> llr_values;
+      llr_values.reserve(llr_mat.rows() * llr_mat.cols());
+      for (size_t r = 0; r < llr_mat.rows(); ++r)
+        for (size_t c = 0; c < llr_mat.cols(); ++c)
+          llr_values.push_back(llr_mat[r][c]);
+      quant_clip = compute_clip_from_ratio(llr_values.begin(), llr_values.end(),
+                                           params.LLR_CLIP_RATIO);
+    }
+    if (quant_clip <= 0.0f) {
+      quant_clip = qfloat<2>::DEFAULT_CLIP;
+    }
+  }
+
   DecodeRequest request{
       .label = label,
       .channel_llr = llr_mat,
       .params = params,
-      .format = pick_llr_format(params),
+      .format = llr_mode.format,
+      .quant_bits = llr_mode.quant_bits,
+      .quant_clip = quant_clip,
       .normalize_extrinsic = config.normalize_extrinsic
   };
 

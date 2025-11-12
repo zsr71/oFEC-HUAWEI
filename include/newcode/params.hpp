@@ -31,8 +31,9 @@ struct Params {
   size_t WINDOW_POP_PUSH = 2;  // window 每次滑动的 sub-block-row 数量（pop/push）
 
   // ===== LLR 量化参数 =====
-  size_t LLR_BITS = 16;   // 量化位宽（常用 4/5，也可设为 3~10 以支持 qfloat<N>）
+  size_t LLR_BITS = 16;   // 量化位宽（2~15 使用 qfloat<N>，16=浮点）
   float  LLR_CLIP = 8.0f; // LLR 裁剪幅度（对应 qfloat<int>::DEFAULT_CLIP）
+  float  LLR_CLIP_RATIO = 0.0f; // 若 >0，则按比例动态计算 clip
 
   // ===== Chase-Pyndiah 控制参数 =====
   int CHASE_L     = 6;  // 选取“最不可靠”位置的数量
