@@ -120,5 +120,14 @@ void write_csv_row(std::ostream& csv,
                    const newcode::PipelineResult& result,
                    CsvFormat format);
 
+std::vector<ScenarioOutput> run_scenarios_parallel(
+    const std::vector<SweepScenario>& scenarios,
+    const SweepParameterConfig& config,
+    unsigned max_workers_hint = 0,
+    const std::string& stage_tag = std::string{},
+    DualOut* log = nullptr);
+
+unsigned resolve_worker_count(const SweepParameterConfig& config);
+
 }  // namespace detail
 }  // namespace ofec_sweep

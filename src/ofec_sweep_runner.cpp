@@ -25,6 +25,10 @@ std::vector<int> resolve_seeds(const std::vector<int>& provided,
   return generated;
 }
 
+}  // namespace
+
+namespace detail {
+
 unsigned resolve_worker_count(const SweepParameterConfig& config) {
   unsigned hw = std::max(1u, std::thread::hardware_concurrency());
   unsigned max_workers = std::max(1u, (hw * 3) / 4);
@@ -44,10 +48,6 @@ unsigned resolve_worker_count(const SweepParameterConfig& config) {
   return std::max(1u, max_workers);
 }
 
-}  // namespace
-
-namespace detail {
-
 Semaphore::Semaphore(std::size_t count)
   : count_(count ? count : 1) {}
 
@@ -61,6 +61,127 @@ void Semaphore::release() {
   std::lock_guard<std::mutex> lk(mutex_);
   ++count_;
   cv_.notify_one();
+}
+
+std::vector<ScenarioOutput> run_scenarios_parallel(
+    const std::vector<SweepScenario>& scenarios,
+    const SweepParameterConfig& config,
+    unsigned max_workers_hint,
+    const std::string& stage_tag,
+    DualOut* log) {
+  std::vector<ScenarioOutput> outputs;
+  if (scenarios.empty()) {
+    return outputs;
+  }
+
+  const unsigned max_workers =
+      max_workers_hint > 0 ? max_workers_hint : resolve_worker_count(config);
+  Semaphore sem(max_workers);
+
+  newcode::Params base_params = config.base_params;
+  base_params.BITGEN_RANDOM_BITS = config.generate_random_bits;
+  base_params.NORMALIZE_KNOWN_PREFIX_TAIL = config.normalize_known_prefix_tail;
+  newcode::PipelineConfig pipeline_cfg = make_pipeline_config(config);
+
+  std::vector<std::future<ScenarioOutput>> futures;
+  futures.reserve(scenarios.size());
+
+  bool submitted = false;
+  for (std::size_t idx = 0; idx < scenarios.size(); ++idx) {
+    const auto& scenario = scenarios[idx];
+    if (scenario.alpha_list.size() != base_params.TILES_PER_WIN ||
+        scenario.beta_list.size() != base_params.TILES_PER_WIN) {
+      if (log) {
+        *log << "[WARN] Scenario '" << scenario.name
+             << "' skipped due to list size mismatch (expected "
+             << base_params.TILES_PER_WIN << ")\n";
+      }
+      continue;
+    }
+
+    submitted = true;
+    newcode::Params params = base_params;
+    params.ALPHA_LIST = scenario.alpha_list;
+    params.beta_list = scenario.beta_list;
+    if (!params.ALPHA_LIST.empty()) {
+      params.ALPHA = params.ALPHA_LIST.front();
+    }
+    if (!params.beta_list.empty()) {
+      params.beta = params.beta_list.front();
+    }
+    params.CHASE_L = scenario.chase_L;
+    params.CHASE_NTEST = scenario.chase_n_test;
+    params.BITGEN_SEED = scenario.bitgen_seed;
+    params.CHANNEL_SEED = scenario.channel_seed;
+
+    sem.acquire();
+    futures.emplace_back(std::async(
+        std::launch::async,
+        [idx, scenario, params, pipeline_cfg, &sem, stage_tag]() -> ScenarioOutput {
+          struct Releaser {
+            detail::Semaphore& sem_ref;
+            ~Releaser() { sem_ref.release(); }
+          } releaser{sem};
+
+          ScenarioOutput output;
+          output.idx = idx;
+          output.name = scenario.name;
+          output.alpha_list = scenario.alpha_list;
+          output.beta_list = scenario.beta_list;
+          output.alpha_start = scenario.alpha_start;
+          output.alpha_step = scenario.alpha_step;
+          output.beta_start = scenario.beta_start;
+          output.beta_step = scenario.beta_step;
+          output.chase_L = scenario.chase_L;
+          output.chase_n_test = scenario.chase_n_test;
+          output.bitgen_seed = scenario.bitgen_seed;
+          output.channel_seed = scenario.channel_seed;
+          output.ebn0_db = scenario.ebn0_db;
+
+          newcode::Params local_params = params;
+          newcode::PipelineConfig local_cfg = pipeline_cfg;
+          const std::string label =
+              stage_tag.empty() ? scenario.name : (scenario.name + "_" + stage_tag);
+          output.result =
+              newcode::run_pipeline(local_params, local_cfg, label, scenario.ebn0_db);
+          output.ebn0_db = output.result.ebn0_db;
+          return output;
+        }));
+  }
+
+  if (!submitted || futures.empty()) {
+    if (log) {
+      *log << "[ERROR] No scenarios submitted for execution.\n";
+    }
+    return outputs;
+  }
+
+  outputs.reserve(futures.size());
+  for (auto& fut : futures) {
+    try {
+      outputs.emplace_back(fut.get());
+    } catch (const std::exception& ex) {
+      if (log) {
+        *log << "[ERROR] worker threw: " << ex.what() << "\n";
+      }
+    } catch (...) {
+      if (log) {
+        *log << "[ERROR] worker threw unknown exception\n";
+      }
+    }
+  }
+
+  if (outputs.empty()) {
+    if (log) {
+      *log << "[ERROR] No scenario completed successfully.\n";
+    }
+    return outputs;
+  }
+
+  std::sort(outputs.begin(), outputs.end(),
+            [](const auto& a, const auto& b) { return a.idx < b.idx; });
+
+  return outputs;
 }
 
 }  // namespace detail
@@ -98,97 +219,10 @@ int run_sweep(const SweepParameterConfig& config) {
 
   const unsigned max_workers = resolve_worker_count(config);
   out << "[INFO] using up to " << max_workers << " workers\n";
-  Semaphore sem(max_workers);
-
-  newcode::Params base_params = config.base_params;
-  base_params.BITGEN_RANDOM_BITS = config.generate_random_bits;
-  base_params.NORMALIZE_KNOWN_PREFIX_TAIL = config.normalize_known_prefix_tail;
-  newcode::PipelineConfig pipeline_cfg = make_pipeline_config(config);
-
-  std::vector<std::future<ScenarioOutput>> futures;
-  futures.reserve(scenario_count);
-
-  for (std::size_t idx = 0; idx < scenario_count; ++idx) {
-    const auto& scenario = scenarios[idx];
-    if (scenario.alpha_list.size() != base_params.TILES_PER_WIN ||
-        scenario.beta_list.size() != base_params.TILES_PER_WIN) {
-      out << "[WARN] Scenario '" << scenario.name
-          << "' skipped due to list size mismatch (expected "
-          << base_params.TILES_PER_WIN << ")\n";
-      continue;
-    }
-
-    newcode::Params params = base_params;
-    params.ALPHA_LIST = scenario.alpha_list;
-    params.beta_list = scenario.beta_list;
-    if (!params.ALPHA_LIST.empty()) {
-      params.ALPHA = params.ALPHA_LIST.front();
-    }
-    if (!params.beta_list.empty()) {
-      params.beta = params.beta_list.front();
-    }
-    params.CHASE_L = scenario.chase_L;
-    params.CHASE_NTEST = scenario.chase_n_test;
-    params.BITGEN_SEED = scenario.bitgen_seed;
-    params.CHANNEL_SEED = scenario.channel_seed;
-
-    sem.acquire();
-    futures.emplace_back(std::async(
-        std::launch::async,
-        [idx, scenario, params, pipeline_cfg, &sem]() -> ScenarioOutput {
-          struct Releaser {
-            detail::Semaphore& sem_ref;
-            ~Releaser() { sem_ref.release(); }
-          } releaser{sem};
-
-          ScenarioOutput output;
-          output.idx = idx;
-          output.name = scenario.name;
-          output.alpha_list = scenario.alpha_list;
-          output.beta_list = scenario.beta_list;
-          output.alpha_start = scenario.alpha_start;
-          output.alpha_step = scenario.alpha_step;
-          output.beta_start = scenario.beta_start;
-          output.beta_step = scenario.beta_step;
-          output.chase_L = scenario.chase_L;
-          output.chase_n_test = scenario.chase_n_test;
-          output.bitgen_seed = scenario.bitgen_seed;
-          output.channel_seed = scenario.channel_seed;
-          output.ebn0_db = scenario.ebn0_db;
-
-          newcode::Params local_params = params;
-          newcode::PipelineConfig local_cfg = pipeline_cfg;
-          output.result =
-              newcode::run_pipeline(local_params, local_cfg, scenario.name, scenario.ebn0_db);
-          output.ebn0_db = output.result.ebn0_db;
-          return output;
-        }));
-  }
-
-  if (futures.empty()) {
-    out << "[ERROR] No scenarios submitted for execution.\n";
-    return 1;
-  }
-
-  std::vector<ScenarioOutput> results;
-  results.reserve(futures.size());
-  for (auto& fut : futures) {
-    try {
-      results.emplace_back(fut.get());
-    } catch (const std::exception& ex) {
-      out << "[ERROR] worker threw: " << ex.what() << "\n";
-    } catch (...) {
-      out << "[ERROR] worker threw unknown exception\n";
-    }
-  }
-
+  auto results = run_scenarios_parallel(scenarios, config, max_workers, "", &out);
   if (results.empty()) {
-    out << "[ERROR] No scenario completed successfully.\n";
     return 1;
   }
-
-  std::sort(results.begin(), results.end(),
-            [](const auto& a, const auto& b) { return a.idx < b.idx; });
 
   std::ofstream csv(csv_path, std::ios::out | std::ios::app);
   csv.setf(std::ios::fixed);

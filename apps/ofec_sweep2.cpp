@@ -184,29 +184,30 @@ std::vector<Evaluation> run_stage(const std::vector<ofec_sweep::ExplicitAlphaBet
   ofec_sweep::SweepParameterConfig config = config_template;
   newcode::Params base_params = config.base_params;
   base_params.NUM_INFO_BITS = num_bits;
-  newcode::PipelineConfig pipeline_cfg = ofec_sweep::detail::make_pipeline_config(config);
+  config.base_params = base_params;
 
   log << "[INFO] Stage " << stage_tag << " evaluating " << patterns.size()
       << " patterns with NUM_INFO_BITS=" << num_bits << "\n";
 
-  std::vector<Evaluation> evaluations;
-  evaluations.reserve(patterns.size());
-
+  std::vector<ofec_sweep::detail::SweepScenario> scenarios;
+  scenarios.reserve(patterns.size());
   for (size_t idx = 0; idx < patterns.size(); ++idx) {
-    auto scenario = make_scenario(patterns[idx], shapes[idx], config);
-    newcode::Params params = base_params;
-    params.ALPHA_LIST = scenario.alpha_list;
-    params.beta_list = scenario.beta_list;
-    if (!params.ALPHA_LIST.empty()) params.ALPHA = params.ALPHA_LIST.front();
-    if (!params.beta_list.empty()) params.beta = params.beta_list.front();
-    params.CHASE_L = scenario.chase_L;
-    params.CHASE_NTEST = scenario.chase_n_test;
-    params.BITGEN_SEED = scenario.bitgen_seed;
-    params.CHANNEL_SEED = scenario.channel_seed;
+    scenarios.push_back(make_scenario(patterns[idx], shapes[idx], config));
+  }
 
-    auto result = newcode::run_pipeline(params, pipeline_cfg,
-                                        scenario.name + "_" + stage_tag,
-                                        scenario.ebn0_db);
+  auto scenario_outputs = ofec_sweep::detail::run_scenarios_parallel(
+      scenarios, config, /*max_workers_hint=*/0, stage_tag, &log);
+  if (scenario_outputs.empty()) {
+    return {};
+  }
+
+  std::vector<Evaluation> evaluations;
+  evaluations.reserve(scenario_outputs.size());
+
+  for (const auto& output : scenario_outputs) {
+    const size_t idx = output.idx;
+    const auto& scenario = scenarios[idx];
+    const auto& result = output.result;
 
     log << "[RESULT-" << stage_tag << "] " << scenario.name
         << " Post-BER=" << result.post_fec.ber
@@ -286,6 +287,8 @@ int main() {
   auto patterns = build_schedule(shapes);
   log << "[INFO] Stage 1 candidate count: " << patterns.size() << "\n";
   auto config = build_base_config();
+  log << "[INFO] Stage 1 workers: "
+      << ofec_sweep::detail::resolve_worker_count(config) << "\n";
 
   auto stage1_results = run_stage(patterns, shapes, config, kStage1Bits,
                                   "stage1", run_id, log, csv);
