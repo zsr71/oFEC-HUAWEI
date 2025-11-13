@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <mutex>
+#include <streambuf>
 
 #include "newcode/awgn.hpp"
 #include "newcode/bitgen.hpp"
@@ -25,6 +26,17 @@
 
 namespace newcode {
 namespace {
+
+class NullStreamBuf : public std::streambuf {
+ public:
+  int overflow(int ch) override { return traits_type::not_eof(ch); }
+};
+
+std::ostream& null_stream() {
+  static NullStreamBuf buf;
+  static std::ostream stream(&buf);
+  return stream;
+}
 
 void ensure_decoders_registered() {
   static std::once_flag once;
@@ -92,33 +104,47 @@ PipelineResult run_pipeline(const Params& params,
                             const std::string& label,
                             float ebn0_dB)
 {
-  std::cout << "\n[RUN] Scenario: " << label << "\n";
+  std::ostream& log = config.quiet ? null_stream() : std::cout;
+  const bool verbose = !config.quiet;
+  if (verbose) {
+    log << "\n[RUN] Scenario: " << label << "\n";
+  }
 
   auto info_bits = generate_bits(params);
-  std::cout << "[INFO] (" << label << ") Generated bits: " << info_bits.size() << "\n";
+  if (verbose) {
+    log << "[INFO] (" << label << ") Generated bits: " << info_bits.size() << "\n";
+  }
 
   // 编码
   auto code_matrix = ofec_encode(info_bits, params);
-  std::cout << "[INFO] (" << label << ") oFEC matrix: " << code_matrix.rows()
-            << " x " << code_matrix.cols() << "\n";
+  if (verbose) {
+    log << "[INFO] (" << label << ") oFEC matrix: " << code_matrix.rows()
+        << " x " << code_matrix.cols() << "\n";
+  }
 
   // === 新增：从编码矩阵得到“理想”LLR，再用同一提取器抽取 TX 参考信息 ===
   const float TX_REF_LLR = 50.0f; // 任意足够大的幅度即可
   Matrix<float> tx_llr_mat = hard_bits_to_llr_matrix(code_matrix, TX_REF_LLR);
   auto tx_info_bits_ref = rx_info_from_bit_llr(tx_llr_mat, params);
-  std::cout << "[INFO] (" << label << ") tx_info_bits_ref (by extractor): "
-            << tx_info_bits_ref.size() << "\n";
+  if (verbose) {
+    log << "[INFO] (" << label << ") tx_info_bits_ref (by extractor): "
+        << tx_info_bits_ref.size() << "\n";
+  }
 
   // 展平比特 -> 调制
   auto coded_bits = flatten_row_major(code_matrix);
-  std::cout << "[INFO] (" << label << ") Coded bits (flattened): " << coded_bits.size() << "\n";
+  if (verbose) {
+    log << "[INFO] (" << label << ") Coded bits (flattened): " << coded_bits.size() << "\n";
+  }
 
   const std::size_t block_dim = static_cast<std::size_t>(Params::BITS_PER_SUBBLOCK_DIM);
   auto interleaver = newcode::Interleaver::build_from_shape(
       code_matrix.rows(), code_matrix.cols(), block_dim, block_dim, config.interleaver_name);
 
   auto coded_bits_itlv = interleaver.interleave_chunks(coded_bits);
-  std::cout << "[INFO] (" << label << ") Interleaved bits: " << coded_bits_itlv.size() << "\n";
+  if (verbose) {
+    log << "[INFO] (" << label << ") Interleaved bits: " << coded_bits_itlv.size() << "\n";
+  }
 
   unsigned n_bps = config.bits_per_symbol;
   if (n_bps == 0) n_bps = 2;
@@ -135,9 +161,11 @@ PipelineResult run_pipeline(const Params& params,
   }
 
   auto tx_syms = qam_modulate(coded_bits_itlv, n_bps);
-  std::cout << "[INFO] (" << label << ") Modulation: " << modulation_name
-            << " (n_bps=" << n_bps << ")\n";
-  std::cout << "[INFO] (" << label << ") Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
+  if (verbose) {
+    log << "[INFO] (" << label << ") Modulation: " << modulation_name
+        << " (n_bps=" << n_bps << ")\n";
+    log << "[INFO] (" << label << ") Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
+  }
 
   const int   N        = static_cast<int>(params.NUM_SUBBLOCK_COLS * params.BITS_PER_SUBBLOCK_DIM);
   const int   K        = 239;
@@ -146,21 +174,25 @@ PipelineResult run_pipeline(const Params& params,
   const uint32_t awgn_seed = static_cast<uint32_t>(params.CHANNEL_SEED);
   auto rx_syms = add_awgn(tx_syms, ebn0_dB, n_bps, awgn_seed);
 
-  std::cout << "[INFO] (" << label << ") Eb/N0 set to " << ebn0_dB << " dB\n";
+  if (verbose) {
+    log << "[INFO] (" << label << ") Eb/N0 set to " << ebn0_dB << " dB\n";
 
-  std::cout << "[INFO] (" << label << ") Example symbols (TX -> RX):\n";
-  for (size_t i = 0; i < std::min<size_t>(3, tx_syms.size()); ++i) {
-    std::cout << "  " << i
-              << ": (" << tx_syms[i].real() << ", " << tx_syms[i].imag() << ")"
-              << " -> (" << rx_syms[i].real() << ", " << rx_syms[i].imag() << ")\n";
+    log << "[INFO] (" << label << ") Example symbols (TX -> RX):\n";
+    for (size_t i = 0; i < std::min<size_t>(3, tx_syms.size()); ++i) {
+      log << "  " << i
+          << ": (" << tx_syms[i].real() << ", " << tx_syms[i].imag() << ")"
+          << " -> (" << rx_syms[i].real() << ", " << rx_syms[i].imag() << ")\n";
+    }
   }
 
   auto llr = qam_llr_from_ebn0(rx_syms, n_bps, ebn0_dB, code_rate);
-  std::cout << "[INFO] (" << label << ") LLR count: " << llr.size()
-            << " (should be tx_syms.size()*n_bps)\n";
-  std::cout << "[INFO] (" << label << ") First few LLRs: ";
-  for (size_t i = 0; i < std::min<size_t>(8, llr.size()); ++i)
-    std::cout << llr[i] << (i + 1 < std::min<size_t>(8, llr.size()) ? ", " : "\n");
+  if (verbose) {
+    log << "[INFO] (" << label << ") LLR count: " << llr.size()
+        << " (should be tx_syms.size()*n_bps)\n";
+    log << "[INFO] (" << label << ") First few LLRs: ";
+    for (size_t i = 0; i < std::min<size_t>(8, llr.size()); ++i)
+      log << llr[i] << (i + 1 < std::min<size_t>(8, llr.size()) ? ", " : "\n");
+  }
 
   auto llr_deint = interleaver.deinterleave_chunks(llr);
 
@@ -199,7 +231,8 @@ PipelineResult run_pipeline(const Params& params,
       .format = llr_mode.format,
       .quant_bits = llr_mode.quant_bits,
       .quant_clip = quant_clip,
-      .normalize_extrinsic = config.normalize_extrinsic
+      .normalize_extrinsic = config.normalize_extrinsic,
+      .quiet = config.quiet
   };
 
   auto decode_result = decoder->decode(request);
@@ -207,8 +240,10 @@ PipelineResult run_pipeline(const Params& params,
   auto rx_info_bits_pre  = rx_info_from_bit_llr(decode_result.pre_decoder_llr,  params);
   auto rx_info_bits_post = rx_info_from_bit_llr(decode_result.post_decoder_llr, params);
 
-  std::cout << "[INFO] (" << label << ") rx_info_bits: " << rx_info_bits_pre.size()
-            << " (flattened, warmup skipped)\n";
+  if (verbose) {
+    log << "[INFO] (" << label << ") rx_info_bits: " << rx_info_bits_pre.size()
+        << " (flattened, warmup skipped)\n";
+  }
 
   const std::string pre_label  = label + " Pre-FEC";
   const std::string post_label = label + " Post-FEC";
@@ -217,12 +252,16 @@ PipelineResult run_pipeline(const Params& params,
   result.ebn0_db  = ebn0_dB;
   result.pre_fec_error_positions.clear();
   result.post_fec_error_positions.clear();
-  result.pre_fec  = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_pre,  pre_label.c_str(),  params, &result.pre_fec_error_positions);
-  result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(), params, &result.post_fec_error_positions);
+  result.pre_fec  = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_pre,  pre_label.c_str(),
+                                          params, &result.pre_fec_error_positions, config.quiet);
+  result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(),
+                                          params, &result.post_fec_error_positions, config.quiet);
   result.tile_early_stop_pct = compute_early_stop_percentages(decode_result.tile_stats);
 
-  std::cout << "[DONE] (" << label << ") Pipeline bits -> channel -> decoder(" << config.decoder_name
-            << ") using interleaver '" << config.interleaver_name << "' completed\n";
+  if (verbose) {
+    log << "[DONE] (" << label << ") Pipeline bits -> channel -> decoder(" << config.decoder_name
+        << ") using interleaver '" << config.interleaver_name << "' completed\n";
+  }
   return result;
 }
 

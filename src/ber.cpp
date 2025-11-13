@@ -53,7 +53,8 @@ BerStats compute_and_print_ber(const std::vector<uint8_t>& ref_bits,
                                const std::vector<uint8_t>& rx_bits,
                                const char* label,
                                const Params& p,
-                               std::vector<std::size_t>* error_positions)
+                               std::vector<std::size_t>* error_positions,
+                               bool quiet)
 {
     BerStats s = compute_ber(ref_bits, rx_bits, p, error_positions);
 
@@ -63,10 +64,12 @@ BerStats compute_and_print_ber(const std::vector<uint8_t>& ref_bits,
     const std::size_t win_bits = std::min(L, p.win_height_rows() * row_bits);
     const std::size_t cut_total = std::min(L, win_bits) + std::min(L > win_bits ? (L - win_bits) : 0, win_bits);
 
-    std::cout << "[RESULT] " << (label ? label : "BER")
-              << " BER=" << s.ber
-              << "  (errs=" << s.errors << " / " << s.total << " compared"
-              << ", cut=" << cut_total << " of " << L << ")\n";
+    if (!quiet) {
+        std::cout << "[RESULT] " << (label ? label : "BER")
+                  << " BER=" << s.ber
+                  << "  (errs=" << s.errors << " / " << s.total << " compared"
+                  << ", cut=" << cut_total << " of " << L << ")\n";
+    }
     return s;
 }
 

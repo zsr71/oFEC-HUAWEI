@@ -14,11 +14,15 @@ template <int NBITS>
 void decode_plain_qfloat(const DecodeRequest& request, DecodeResult& result) {
   using Q = qfloat<NBITS>;
   const float clip = (request.quant_clip > 0.0f) ? request.quant_clip : Q::DEFAULT_CLIP;
-  std::cout << "[INFO] (" << request.label << ") Plain decoder running in qfloat<"
-            << NBITS << ">\n";
+  if (!request.quiet) {
+    std::cout << "[INFO] (" << request.label << ") Plain decoder running in qfloat<"
+              << NBITS << ">\n";
+  }
   auto quantized = quantize_matrix_to_qfloat<NBITS>(request.channel_llr, clip);
-  std::cout << "[INFO] (" << request.label << ") Quant clip=" << clip
-            << " levels ±" << Q::Q() << "\n";
+  if (!request.quiet) {
+    std::cout << "[INFO] (" << request.label << ") Quant clip=" << clip
+              << " levels ±" << Q::Q() << "\n";
+  }
   result.pre_decoder_llr = dequantize_matrix_from_qfloat(quantized, clip);
   auto decoded = ofec_decode_llr_plain(quantized, request.params, &result.tile_stats,
                                        request.normalize_extrinsic);
@@ -55,7 +59,9 @@ public:
 
     switch (request.format) {
       case LlrFormat::Float:
-        std::cout << "[INFO] (" << request.label << ") Plain decoder running in FLOAT\n";
+        if (!request.quiet) {
+          std::cout << "[INFO] (" << request.label << ") Plain decoder running in FLOAT\n";
+        }
         result.pre_decoder_llr = request.channel_llr;
         result.post_decoder_llr =
             ofec_decode_llr_plain(result.pre_decoder_llr, request.params, &result.tile_stats,

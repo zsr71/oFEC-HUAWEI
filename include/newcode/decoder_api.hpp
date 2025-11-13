@@ -31,6 +31,7 @@ struct DecodeRequest {
   std::size_t quant_bits = 16;
   float quant_clip = 0.0f;
   bool normalize_extrinsic = true;
+  bool quiet = false;
 };
 
 struct DecodeResult {

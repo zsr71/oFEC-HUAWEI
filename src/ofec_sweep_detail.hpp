@@ -54,11 +54,13 @@ struct ScenarioOutput {
 
 class DualOut {
  public:
-  DualOut(std::ostream& console, const std::string& filepath);
+  DualOut(std::ostream& console, const std::string& filepath, bool mirror_console = true);
 
   template <typename T>
   DualOut& operator<<(const T& value) {
-    console_ << value;
+    if (console_) {
+      *console_ << value;
+    }
     if (file_) {
       file_ << value;
     }
@@ -68,7 +70,7 @@ class DualOut {
   DualOut& operator<<(std::ostream& (*pf)(std::ostream&));
 
  private:
-  std::ostream& console_;
+  std::ostream* console_;
   std::ofstream file_;
 };
 

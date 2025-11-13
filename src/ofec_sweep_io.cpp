@@ -9,11 +9,14 @@
 namespace ofec_sweep {
 namespace detail {
 
-DualOut::DualOut(std::ostream& console, const std::string& filepath)
-    : console_(console), file_(filepath, std::ios::out | std::ios::app) {}
+DualOut::DualOut(std::ostream& console, const std::string& filepath, bool mirror_console)
+    : console_(mirror_console ? &console : nullptr),
+      file_(filepath, std::ios::out | std::ios::app) {}
 
 DualOut& DualOut::operator<<(std::ostream& (*pf)(std::ostream&)) {
-  pf(console_);
+  if (console_) {
+    pf(*console_);
+  }
   if (file_) {
     pf(file_);
   }

@@ -33,6 +33,7 @@ BerStats compute_and_print_ber(const std::vector<uint8_t>& ref_bits,
                                const std::vector<uint8_t>& rx_bits,
                                const char* label,
                                const Params& p,
-                               std::vector<std::size_t>* error_positions = nullptr);
+                               std::vector<std::size_t>* error_positions = nullptr,
+                               bool quiet = false);
 
 } // namespace newcode

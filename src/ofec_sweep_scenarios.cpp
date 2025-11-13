@@ -73,6 +73,7 @@ newcode::PipelineConfig make_pipeline_config(const SweepParameterConfig& config)
   cfg.interleaver_name = config.interleaver_name;
   cfg.normalize_extrinsic = config.normalize_extrinsic;
   cfg.bits_per_symbol = config.bits_per_symbol;
+  cfg.quiet = config.quiet_pipeline;
   return cfg;
 }
 
@@ -215,4 +216,3 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
 
 }  // namespace detail
 }  // namespace ofec_sweep
-

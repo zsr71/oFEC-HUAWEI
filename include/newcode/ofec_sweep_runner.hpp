@@ -43,6 +43,8 @@ struct SweepParameterConfig {
   bool generate_random_bits = true;
   bool normalize_known_prefix_tail = true;
   float quant_clip_ratio = 0.0f;
+  bool quiet_pipeline = true;
+  bool quiet_logs = false;
 };
 
 int run_sweep(const SweepParameterConfig& config);

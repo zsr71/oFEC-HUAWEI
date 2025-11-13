@@ -1,16 +1,39 @@
 #include "ofec_sweep_detail.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <future>
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <mutex>
 #include <sstream>
 #include <thread>
 
 namespace ofec_sweep {
 namespace {
+
+std::string format_duration(std::chrono::duration<double> duration) {
+  if (duration.count() < 0.0) {
+    duration = std::chrono::duration<double>(0.0);
+  }
+  using Seconds = std::chrono::seconds;
+  const auto total_seconds = std::chrono::duration_cast<Seconds>(duration).count();
+  const auto hours = total_seconds / 3600;
+  const auto minutes = (total_seconds % 3600) / 60;
+  const auto seconds = total_seconds % 60;
+
+  std::ostringstream oss;
+  oss << std::setfill('0');
+  if (hours > 0) {
+    oss << hours << ':' << std::setw(2) << minutes << ':' << std::setw(2) << seconds;
+  } else {
+    oss << minutes << ':' << std::setw(2) << seconds;
+  }
+  return oss.str();
+}
 
 std::vector<int> resolve_seeds(const std::vector<int>& provided,
                                int count,
@@ -74,6 +97,7 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
     return outputs;
   }
 
+  const bool quiet_logs = config.quiet_logs;
   const unsigned max_workers =
       max_workers_hint > 0 ? max_workers_hint : resolve_worker_count(config);
   Semaphore sem(max_workers);
@@ -83,10 +107,8 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
   base_params.NORMALIZE_KNOWN_PREFIX_TAIL = config.normalize_known_prefix_tail;
   newcode::PipelineConfig pipeline_cfg = make_pipeline_config(config);
 
-  std::vector<std::future<ScenarioOutput>> futures;
-  futures.reserve(scenarios.size());
-
-  bool submitted = false;
+  std::vector<std::size_t> runnable_indices;
+  runnable_indices.reserve(scenarios.size());
   for (std::size_t idx = 0; idx < scenarios.size(); ++idx) {
     const auto& scenario = scenarios[idx];
     if (scenario.alpha_list.size() != base_params.TILES_PER_WIN ||
@@ -98,8 +120,29 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
       }
       continue;
     }
+    runnable_indices.push_back(idx);
+  }
 
-    submitted = true;
+  if (runnable_indices.empty()) {
+    if (log) {
+      *log << "[ERROR] No scenarios submitted for execution.\n";
+    }
+    return outputs;
+  }
+
+  const auto start_time = std::chrono::steady_clock::now();
+  const std::size_t total_jobs = runnable_indices.size();
+  std::atomic<std::size_t> finished{0};
+  std::mutex progress_mutex;
+
+  const std::string progress_prefix =
+      stage_tag.empty() ? "[PROGRESS]" : ("[PROGRESS][" + stage_tag + "]");
+
+  std::vector<std::future<ScenarioOutput>> futures;
+  futures.reserve(runnable_indices.size());
+
+  for (std::size_t idx : runnable_indices) {
+    const auto& scenario = scenarios[idx];
     newcode::Params params = base_params;
     params.ALPHA_LIST = scenario.alpha_list;
     params.beta_list = scenario.beta_list;
@@ -117,7 +160,19 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
     sem.acquire();
     futures.emplace_back(std::async(
         std::launch::async,
-        [idx, scenario, params, pipeline_cfg, &sem, stage_tag]() -> ScenarioOutput {
+        [idx,
+         scenario,
+         params,
+         pipeline_cfg,
+         &sem,
+         stage_tag,
+         log,
+         start_time,
+         &finished,
+         total_jobs,
+         &progress_mutex,
+         quiet_logs,
+         progress_prefix]() -> ScenarioOutput {
           struct Releaser {
             detail::Semaphore& sem_ref;
             ~Releaser() { sem_ref.release(); }
@@ -145,15 +200,36 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
           output.result =
               newcode::run_pipeline(local_params, local_cfg, label, scenario.ebn0_db);
           output.ebn0_db = output.result.ebn0_db;
+          const auto done = finished.fetch_add(1) + 1;
+          const bool need_console_line = quiet_logs;
+          const bool need_log_line = (log != nullptr);
+          if (need_console_line || need_log_line) {
+            const auto now = std::chrono::steady_clock::now();
+            const auto elapsed = std::chrono::duration<double>(now - start_time);
+            std::chrono::duration<double> eta(0.0);
+            if (done < total_jobs && done > 0) {
+              const double remaining_ratio =
+                  static_cast<double>(total_jobs - done) / static_cast<double>(done);
+              eta = elapsed * remaining_ratio;
+            }
+            const double pct =
+                static_cast<double>(done) * 100.0 / static_cast<double>(total_jobs);
+            std::ostringstream oss;
+            oss << progress_prefix << " " << done << "/" << total_jobs
+                << " (" << std::fixed << std::setprecision(1) << pct << "%)"
+                << " elapsed=" << format_duration(elapsed)
+                << " ETA≈" << format_duration(eta);
+            const std::string line = oss.str();
+            std::lock_guard<std::mutex> lk(progress_mutex);
+            if (log) {
+              *log << line << "\n";
+            }
+            if (quiet_logs) {
+              std::cout << line << "\n";
+            }
+          }
           return output;
         }));
-  }
-
-  if (!submitted || futures.empty()) {
-    if (log) {
-      *log << "[ERROR] No scenarios submitted for execution.\n";
-    }
-    return outputs;
   }
 
   outputs.reserve(futures.size());
@@ -193,7 +269,8 @@ int run_sweep(const SweepParameterConfig& config) {
   ensure_dir(data_dir);
   const std::string run_id = now_stamp();
   const std::string log_path = (data_dir / ("run_" + run_id + ".log")).string();
-  DualOut out(std::cout, log_path);
+  const bool mirror_console = !config.quiet_logs;
+  DualOut out(std::cout, log_path, mirror_console);
 
   const std::string csv_path =
       (data_dir / ("ofec_sweep_results_" + run_id + ".csv")).string();
@@ -211,14 +288,14 @@ int run_sweep(const SweepParameterConfig& config) {
 
   auto scenarios = build_scenarios(config, ebn0_values, bitgen_seeds, channel_seeds);
   const std::size_t scenario_count = scenarios.size();
-  out << "[INFO] total scenarios = " << scenario_count << "\n";
+  std::cout << "[INFO] total scenarios = " << scenario_count << "\n";
   if (scenario_count == 0) {
     out << "[ERROR] No scenarios generated.\n";
     return 1;
   }
 
   const unsigned max_workers = resolve_worker_count(config);
-  out << "[INFO] using up to " << max_workers << " workers\n";
+  std::cout << "[INFO] using up to " << max_workers << " workers\n";
   auto results = run_scenarios_parallel(scenarios, config, max_workers, "", &out);
   if (results.empty()) {
     return 1;

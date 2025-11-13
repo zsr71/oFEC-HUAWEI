@@ -12,6 +12,7 @@ static constexpr bool kGenerateRandomBits        = true;
 static constexpr bool kNormalizeKnownPrefixTail  = true;
 static constexpr float kQuantClipRatio           = 0.0f; // 0 表示禁用动态 clip
 static constexpr std::size_t kLlrBits            = 16;
+static constexpr bool kQuietConsole              = false;
 
 // Alpha/Beta 扫描候选
 static const std::vector<float> kAlphaStartCandidates = newcode::linspace(0.0f, 0.2f, 2);
@@ -50,6 +51,8 @@ int main() {
   config.decoder_name = kDecoderName;
   config.bits_per_symbol = kBitsPerSymbol;
   config.normalize_extrinsic = kNormalizeExtrinsic;
+  config.quiet_pipeline = kQuietConsole;
+  config.quiet_logs = kQuietConsole;
 
   config.alpha_start_candidates = kAlphaStartCandidates;
   config.alpha_step_candidates = kAlphaStepCandidates;

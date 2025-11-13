@@ -15,6 +15,7 @@ struct PipelineConfig {
   std::string interleaver_name = "ofec";
   bool normalize_extrinsic = true;
   unsigned bits_per_symbol = 2;
+  bool quiet = false;
 };
 
 struct PipelineResult {
