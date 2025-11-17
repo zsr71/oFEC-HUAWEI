@@ -14,6 +14,8 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.NORMALIZE_KNOWN_PREFIX_TAIL = cfg.normalize_known_prefix_tail;
   params.debug_trace = cfg.debug_trace;
   params.LLR_BITS = cfg.llr_bits;
+  params.DUMP_WORK_LLR = cfg.dump_work_llr;
+  params.WORK_LLR_OUTPUT_PATH = cfg.work_llr_output_path;
   if (cfg.llr_bits < 2 || cfg.llr_bits > 16) {
     log << "[ERROR] LLR_BITS 必须在 [2,16]，16 表示浮点，其余使用 qfloat<N>\n";
     return std::nullopt;
@@ -61,6 +63,16 @@ newcode::PipelineConfig build_pipeline_config(const Config& cfg) {
   pipeline_cfg.interleaver_name = cfg.interleaver_name;
   pipeline_cfg.normalize_extrinsic = cfg.normalize_extrinsic;
   pipeline_cfg.bits_per_symbol = cfg.bits_per_symbol;
+  pipeline_cfg.dump_quantized_llr = cfg.dump_quantized_llr;
+  pipeline_cfg.quantized_llr_output_path = cfg.quantized_llr_output_path;
+  pipeline_cfg.dump_work_llr = cfg.dump_work_llr;
+  pipeline_cfg.work_llr_output_path = cfg.work_llr_output_path;
+  if (pipeline_cfg.dump_quantized_llr && pipeline_cfg.quantized_llr_output_path.empty()) {
+    pipeline_cfg.quantized_llr_output_path = "data/llr/" + cfg.label + "_quantized_llr.txt";
+  }
+  if (pipeline_cfg.dump_work_llr && pipeline_cfg.work_llr_output_path.empty()) {
+    pipeline_cfg.work_llr_output_path = "data/llr/" + cfg.label + "_work_llr.txt";
+  }
   return pipeline_cfg;
 }
 

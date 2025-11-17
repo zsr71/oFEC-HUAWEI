@@ -232,7 +232,15 @@ PipelineResult run_pipeline(const Params& params,
       .quant_bits = llr_mode.quant_bits,
       .quant_clip = quant_clip,
       .normalize_extrinsic = config.normalize_extrinsic,
-      .quiet = config.quiet
+      .quiet = config.quiet,
+      .dump_quantized_llr = config.dump_quantized_llr,
+      .quantized_llr_output_path = config.quantized_llr_output_path,
+      .dump_float_llr = config.dump_quantized_llr,
+      .float_llr_output_path = {},
+      .dump_quantized_codes = config.dump_quantized_llr,
+      .quantized_codes_output_path = {},
+      .dump_work_llr = config.dump_work_llr,
+      .work_llr_output_path = config.work_llr_output_path
   };
 
   auto decode_result = decoder->decode(request);
@@ -257,6 +265,9 @@ PipelineResult run_pipeline(const Params& params,
   result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(),
                                           params, &result.post_fec_error_positions, config.quiet);
   result.tile_early_stop_pct = compute_early_stop_percentages(decode_result.tile_stats);
+  result.dequantized_llr_path = decode_result.dequantized_llr_path;
+  result.float_llr_path = decode_result.float_llr_path;
+  result.quantized_codes_path = decode_result.quantized_codes_path;
 
   if (verbose) {
     log << "[DONE] (" << label << ") Pipeline bits -> channel -> decoder(" << config.decoder_name

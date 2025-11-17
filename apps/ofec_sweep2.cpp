@@ -32,12 +32,12 @@ static constexpr bool        kNormalizeKnownPrefixTail = true;
 static constexpr std::size_t kLlrBits                 = 16;
 static constexpr float       kQuantClipRatio          = 0.0f;
 
-const std::vector<float> kAlphaLowGrid   = newcode::linspace(0.00f, 1.50f, 10);
-const std::vector<float> kAlphaHighGrid  = newcode::linspace(0.00f, 1.50f, 10);
-const std::vector<float> kBetaLowGrid    = newcode::linspace(0.00f, 1.50f, 10);
-const std::vector<float> kBetaHighGrid   = newcode::linspace(0.00f, 1.50f, 10);
-const std::vector<float> kGammaAlphaGrid = newcode::linspace(0.70f, 1.30f, 3);
-const std::vector<float> kGammaBetaGrid  = newcode::linspace(0.70f, 1.30f, 3);
+const std::vector<float> kAlphaLowGrid   = newcode::linspace(0.00f, 1.50f, 3);
+const std::vector<float> kAlphaHighGrid  = newcode::linspace(0.00f, 1.50f, 3);
+const std::vector<float> kBetaLowGrid    = newcode::linspace(0.00f, 1.50f, 3);
+const std::vector<float> kBetaHighGrid   = newcode::linspace(0.00f, 1.50f, 3);
+const std::vector<float> kGammaAlphaGrid = newcode::linspace(0.70f, 1.30f, 1);
+const std::vector<float> kGammaBetaGrid  = newcode::linspace(0.70f, 1.30f, 1);
 
 struct Shape {
   float alpha_low;

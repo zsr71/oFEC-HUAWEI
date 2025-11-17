@@ -32,6 +32,14 @@ struct DecodeRequest {
   float quant_clip = 0.0f;
   bool normalize_extrinsic = true;
   bool quiet = false;
+  bool dump_quantized_llr = false;
+  std::string quantized_llr_output_path;
+  bool dump_float_llr = false;
+  std::string float_llr_output_path;
+  bool dump_quantized_codes = false;
+  std::string quantized_codes_output_path;
+  bool dump_work_llr = false;
+  std::string work_llr_output_path;
 };
 
 struct DecodeResult {
@@ -39,6 +47,10 @@ struct DecodeResult {
   Matrix<float> post_decoder_llr;
   std::vector<TileEarlyStopCounter> tile_stats;
   DecodeStats stats;
+  std::string dequantized_llr_path;
+  std::string float_llr_path;
+  std::string quantized_codes_path;
+  std::string work_llr_path;
 };
 
 struct IDecoder {

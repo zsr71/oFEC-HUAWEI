@@ -49,6 +49,12 @@ void log_run_overview(const Config& cfg,
       << params.CHANNEL_SEED << "\n";
   log << "[INFO] LLR bits = " << params.LLR_BITS
       << " (" << (params.LLR_BITS == 16 ? "float" : "qfloat") << ")\n";
+  log << "[INFO] Dump quantized LLR = "
+      << (cfg.dump_quantized_llr ? "ON" : "OFF");
+  if (cfg.dump_quantized_llr) {
+    log << " -> " << cfg.quantized_llr_output_path;
+  }
+  log << "\n";
 }
 
 void log_pipeline_results(const newcode::PipelineResult& result,
@@ -77,6 +83,16 @@ void log_pipeline_results(const newcode::PipelineResult& result,
     }
     log << "[RESULT] EarlyStop hit rates (%): "
         << oss.str() << "\n";
+  }
+
+  if (!result.dequantized_llr_path.empty()) {
+    log << "[INFO] Dequantized LLR saved to " << result.dequantized_llr_path << "\n";
+  }
+  if (!result.float_llr_path.empty()) {
+    log << "[INFO] Float (pre-quant) LLR saved to " << result.float_llr_path << "\n";
+  }
+  if (!result.quantized_codes_path.empty()) {
+    log << "[INFO] Quantized codes saved to " << result.quantized_codes_path << "\n";
   }
 }
 

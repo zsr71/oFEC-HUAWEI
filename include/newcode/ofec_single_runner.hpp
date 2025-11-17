@@ -30,6 +30,10 @@ struct Config {
   bool normalize_known_prefix_tail = true;
   float quant_clip_ratio = 0.0f;
   std::size_t llr_bits = 16;
+  bool dump_quantized_llr = false;
+  std::string quantized_llr_output_path;
+  bool dump_work_llr = false;
+  std::string work_llr_output_path;
   newcode::Params::DebugTraceConfig debug_trace;
 };
 

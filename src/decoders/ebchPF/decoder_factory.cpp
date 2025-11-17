@@ -6,6 +6,7 @@
 
 #include "newcode/llr_qpack.hpp"
 #include "newcode/qfloat.hpp"
+#include "newcode/quantized_llr_dump.hpp"
 
 namespace newcode {
 namespace {
@@ -18,12 +19,24 @@ void decode_ebchpf_qfloat(const DecodeRequest& request, DecodeResult& result) {
     std::cout << "[INFO] (" << request.label << ") ebchPF decoder running in qfloat<"
               << NBITS << ">\n";
   }
+  result.float_llr_path = dump_quantized_llr(
+      request.channel_llr, request, request.dump_float_llr,
+      request.float_llr_output_path, "_float");
   auto quantized = quantize_matrix_to_qfloat<NBITS>(request.channel_llr, clip);
   if (!request.quiet) {
     std::cout << "[INFO] (" << request.label << ") Quant clip=" << clip
               << " levels ±" << Q::Q() << "\n";
   }
   result.pre_decoder_llr = dequantize_matrix_from_qfloat(quantized, clip);
+  if (request.dump_quantized_codes) {
+    auto codes_mat = cast_matrix_from_qfloat(quantized);
+    result.quantized_codes_path = dump_quantized_llr(
+        codes_mat, request, request.dump_quantized_codes,
+        request.quantized_codes_output_path, "_quantized_codes");
+  }
+  result.dequantized_llr_path = dump_quantized_llr(
+      result.pre_decoder_llr, request, request.dump_quantized_llr,
+      request.quantized_llr_output_path, "_dequantized");
   auto decoded = ofec_decode_llr_ebchPF(quantized, request.params, &result.tile_stats,
                                         request.normalize_extrinsic);
   result.post_decoder_llr = dequantize_matrix_from_qfloat(decoded, clip);
@@ -61,6 +74,17 @@ public:
       case LlrFormat::Float:
         if (!request.quiet) {
           std::cout << "[INFO] (" << request.label << ") ebchPF decoder running in FLOAT\n";
+        }
+        if (!request.quiet) {
+          if (request.dump_quantized_llr) {
+            std::cout << "[WARN] (" << request.label << ") dump_quantized_llr ignored in FLOAT mode\n";
+          }
+          if (request.dump_quantized_codes) {
+            std::cout << "[WARN] (" << request.label << ") dump_quantized_codes ignored in FLOAT mode\n";
+          }
+          if (request.dump_float_llr) {
+            std::cout << "[WARN] (" << request.label << ") dump_float_llr ignored in FLOAT mode (already float)\n";
+          }
         }
         result.pre_decoder_llr = request.channel_llr;
         result.post_decoder_llr =

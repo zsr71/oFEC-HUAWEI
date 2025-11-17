@@ -4,6 +4,8 @@
 #include "newcode/ofec_decoder_hard.hpp"
 #include "newcode/decoder_core.hpp"
 #include "newcode/llr_utils.hpp"
+#include "newcode/decoder_api.hpp"
+#include "newcode/quantized_llr_dump.hpp"
 
 #include <algorithm>
 #include <array>
@@ -487,6 +489,38 @@ Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
       out[r][c] = llr_from_float<LLR>(sum);
     }
   }
+
+  // 可选：保存窗口累积后的 work_llr（解码前）
+  if (p.DUMP_WORK_LLR) {
+    Matrix<float> work_float(RROWS, N);
+    for (size_t r = 0; r < RROWS; ++r)
+      for (size_t c = 0; c < N; ++c)
+        work_float[r][c] = llr_to_float(work_llr[r][c]);
+
+    DecodeRequest dump_req{
+        .label = "work_llr",
+        .channel_llr = work_float,
+        .params = p,
+        .format = LlrFormat::Float,
+        .quant_bits = 16,
+        .quant_clip = 0.0f,
+        .normalize_extrinsic = true,
+        .quiet = false,
+        .dump_quantized_llr = true,
+        .quantized_llr_output_path = p.WORK_LLR_OUTPUT_PATH.empty()
+            ? std::string("data/llr/quantized_llr_work.txt")
+            : p.WORK_LLR_OUTPUT_PATH,
+        .dump_float_llr = false,
+        .float_llr_output_path = {},
+        .dump_quantized_codes = false,
+        .quantized_codes_output_path = {},
+        .dump_work_llr = true,
+        .work_llr_output_path = {}
+    };
+    (void)dump_quantized_llr(work_float, dump_req, true,
+                             dump_req.quantized_llr_output_path, "_work");
+  }
+
   return out;
 }
 
