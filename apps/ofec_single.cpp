@@ -18,7 +18,7 @@ static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比�
 
 //量化相关参数
 static constexpr std::size_t kLlrBits = 6;                           // LLR 位宽：16=浮点，2~15=qfloat
-static constexpr float       kQuantClipRatio = 0.1f;                 // 动态裁剪比例，0=禁用
+static constexpr float       kQuantClipRatio = 0.001f;                 // 动态裁剪比例，0=禁用
 
 //解码相关参数
 static constexpr const char* kInterleaverName = "identity";          // 交织器名称

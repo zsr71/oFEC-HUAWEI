@@ -19,10 +19,11 @@ int saturate_code(int value) {
 template <int NBITS>
 void check_round_trip(float clip, float value) {
   using Q = newcode::qfloat<NBITS>;
+  Q::set_clip(clip);
   Q q = Q::from_float(value, clip);
   const float clamped = std::clamp(value, -clip, clip);
   const float step = clip / static_cast<float>(Q::Q());
-  const float restored = q.to_float(clip);
+  const float restored = q.to_float();
   std::cout << "[round-trip qfloat<" << NBITS << ">] input=" << value
             << " clamped=" << clamped
             << " code=" << q.code()
@@ -32,7 +33,8 @@ void check_round_trip(float clip, float value) {
 }
 
 void test_scalar_quantization() {
-  constexpr float clip = newcode::qfloat<5>::DEFAULT_CLIP;
+  constexpr float clip = 8.0f;
+  newcode::qfloat<5>::set_clip(clip);
   check_round_trip<5>(clip, 0.0f);
   check_round_trip<5>(clip, 2.5f);
   check_round_trip<5>(clip, -3.75f);
@@ -48,6 +50,7 @@ void test_scalar_quantization() {
 
 void test_unary_and_sign() {
   using Q = newcode::qfloat<5>;
+  Q::set_clip(8.0f);
   auto pos = Q::from_float(3.2f);
   auto neg = -pos;
   auto zero = Q::from_float(0.0f);
@@ -61,6 +64,8 @@ void test_unary_and_sign() {
 
 void test_add_sub_ops() {
   using Q = newcode::qfloat<4>;
+  constexpr float clip = 8.0f;
+  Q::set_clip(clip);
   auto a = Q::from_float(2.0f);
   auto b = Q::from_float(-0.5f);
   auto sum = a + b;
@@ -72,7 +77,7 @@ void test_add_sub_ops() {
   assert(sum.code() == saturate_code<Q>(a.code() + b.code()));
   assert(diff.code() == saturate_code<Q>(a.code() - b.code()));
 
-  auto sat = Q::from_float(Q::DEFAULT_CLIP);
+  auto sat = Q::from_float(clip);
   auto sat_sum = sat + sat;
   std::cout << "[add/sub saturation] sat=" << sat.code()
             << " sat+sat=" << sat_sum.code() << "\n";
@@ -81,6 +86,7 @@ void test_add_sub_ops() {
 
 void test_float_scale_mul_div() {
   using Q = newcode::qfloat<6>;
+  Q::set_clip(8.0f);
   auto base = Q::from_float(1.5f);
   auto scaled = base * 2.5f;
   int expected = saturate_code<Q>(
@@ -93,7 +99,7 @@ void test_float_scale_mul_div() {
   auto rhs = Q::from_float(0.75f);
   auto prod = base * rhs;
   auto quot = base / rhs;
-  const float tolerance = Q::DEFAULT_CLIP / static_cast<float>(Q::Q());
+  const float tolerance = Q::current_clip() / static_cast<float>(Q::Q());
   const float prod_expected = base.to_float() * rhs.to_float();
   const float quot_expected = base.to_float() / rhs.to_float();
   std::cout << std::fixed << std::setprecision(6);

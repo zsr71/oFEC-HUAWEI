@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <type_traits>
 #include <vector>
+#include <limits>
 #include "newcode/matrix.hpp"
 namespace newcode {
 
@@ -15,19 +16,22 @@ class qfloat {
     static_assert(std::is_signed<Store>::value && sizeof(Store) >= 2,
                   "qfloat: Store must be a signed integer type of at least 16 bits.");
 public:
-    static constexpr float DEFAULT_CLIP = 8.0f;
     static constexpr int   Q()  { return (1 << (NBITS - 1)) - 1; }    //最大正整数编码整个定点数用 1 位符号 + (NBITS-1) 位数值 来表示 小数部分，整数部分则由剩余的 Store 位数决定
     static constexpr int   LO() { return -Q(); }
     static constexpr int   HI() { return +Q(); }
+    static float  current_clip() { return current_clip_ref(); }
+    static void   set_clip(float clip) { current_clip_ref() = clip; }
 
-    qfloat() = default;
-    explicit qfloat(int code) : code_(sat(code)) {}
-    explicit qfloat(float x, float clip = DEFAULT_CLIP) { code_ = quantize(x, clip); }
+    qfloat() : code_(0) {}
+    explicit qfloat(int code, float clip = current_clip()) : code_(sat(code)) { (void)clip; }
+    explicit qfloat(float x, float clip = current_clip()) : code_(0) { code_ = quantize(x, clip); }
 
-    static qfloat from_float(float x, float clip = DEFAULT_CLIP) { return qfloat(x, clip); }
-    float to_float(float clip = DEFAULT_CLIP) const {
+    static qfloat from_float(float x, float clip = current_clip()) { return qfloat(x, clip); }
+    float to_float() const {
+        const float clip = current_clip();
         return static_cast<float>(code_) * (clip / static_cast<float>(Q()));
     }
+    static float clip() { return current_clip(); }
 
     // 算术（码值域饱和）
     qfloat  operator-() const { return qfloat(sat(-code_)); }
@@ -78,6 +82,11 @@ public:
 private:
     Store code_ = 0;
 
+    static float& current_clip_ref() {
+        thread_local float clip = 0.0f;
+        return clip;
+    }
+
     static int   sat(int x) {
         if (x > HI()) return HI();
         if (x < LO()) return LO();
@@ -106,7 +115,7 @@ template<typename T> class Matrix;
 
 template<int NBITS>
 Matrix< qfloat<NBITS> > quantize_matrix_to_qfloat(const Matrix<float>& in,
-                                                  float clip = qfloat<NBITS>::DEFAULT_CLIP)
+                                                  float clip = qfloat<NBITS>::current_clip())
 {
     Matrix< qfloat<NBITS> > out(in.rows(), in.cols());
     for (size_t r=0; r<in.rows(); ++r)
@@ -117,12 +126,13 @@ Matrix< qfloat<NBITS> > quantize_matrix_to_qfloat(const Matrix<float>& in,
 
 template<int NBITS>
 Matrix<float> dequantize_matrix_from_qfloat(const Matrix< qfloat<NBITS> >& in,
-                                            float clip = qfloat<NBITS>::DEFAULT_CLIP)
+                                            float clip_unused = qfloat<NBITS>::current_clip())
 {
+    (void)clip_unused;
     Matrix<float> out(in.rows(), in.cols());
     for (size_t r=0; r<in.rows(); ++r)
         for (size_t c=0; c<in.cols(); ++c)
-            out[r][c] = in[r][c].to_float(clip);
+            out[r][c] = in[r][c].to_float();
     return out;
 }
 

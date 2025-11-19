@@ -228,7 +228,7 @@ PipelineResult run_pipeline(const Params& params,
                                            params.LLR_CLIP_RATIO);
     }
     if (quant_clip <= 0.0f) {
-      quant_clip = qfloat<2>::DEFAULT_CLIP;
+      quant_clip = params.LLR_CLIP;
     }
   }
 

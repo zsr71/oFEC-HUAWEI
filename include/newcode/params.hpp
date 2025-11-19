@@ -35,7 +35,7 @@ struct Params {
 
   // ===== LLR 量化参数 =====
   size_t LLR_BITS = 16;   // 量化位宽（2~15 使用 qfloat<N>，16=浮点）
-  float  LLR_CLIP = 8.0f; // LLR 裁剪幅度（对应 qfloat<int>::DEFAULT_CLIP）
+  float  LLR_CLIP = 8.0f; // LLR 裁剪幅度（外部计算/配置后写入 qfloat clip）
   float  LLR_CLIP_RATIO = 0.0f; // 若 >0，则按比例动态计算 clip
 
   // ===== Chase-Pyndiah 控制参数 =====

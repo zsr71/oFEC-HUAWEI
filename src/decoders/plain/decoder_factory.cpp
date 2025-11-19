@@ -15,7 +15,8 @@ template <int NBITS>
 void decode_plain_qfloat(const DecodeRequest& request, DecodeResult& result) {
   using Q = qfloat<NBITS>;
 
-  const float clip = (request.quant_clip > 0.0f) ? request.quant_clip : Q::DEFAULT_CLIP;
+  const float clip = (request.quant_clip > 0.0f) ? request.quant_clip : request.params.LLR_CLIP;
+  Q::set_clip(clip);
 
   if (!request.quiet) {
     std::cout << "[INFO] (" << request.label << ") Plain decoder running in qfloat<"
