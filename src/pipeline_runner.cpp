@@ -109,20 +109,21 @@ PipelineResult run_pipeline(const Params& params,
   if (verbose) {
     log << "\n[RUN] Scenario: " << label << "\n";
   }
-
+  
+  // 生成信息比特
   auto info_bits = generate_bits(params);
   if (verbose) {
     log << "[INFO] (" << label << ") Generated bits: " << info_bits.size() << "\n";
   }
 
-  // 编码
+  // oFEC 编码
   auto code_matrix = ofec_encode(info_bits, params);
   if (verbose) {
     log << "[INFO] (" << label << ") oFEC matrix: " << code_matrix.rows()
         << " x " << code_matrix.cols() << "\n";
   }
 
-  // === 新增：从编码矩阵得到“理想”LLR，再用同一提取器抽取 TX 参考信息 ===
+  //抽取Tx发射参考信息
   const float TX_REF_LLR = 50.0f; // 任意足够大的幅度即可
   Matrix<float> tx_llr_mat = hard_bits_to_llr_matrix(code_matrix, TX_REF_LLR);
   auto tx_info_bits_ref = rx_info_from_bit_llr(tx_llr_mat, params);
@@ -131,12 +132,13 @@ PipelineResult run_pipeline(const Params& params,
         << tx_info_bits_ref.size() << "\n";
   }
 
-  // 展平比特 -> 调制
+  // oFEC矩阵比特展平
   auto coded_bits = flatten_row_major(code_matrix);
   if (verbose) {
     log << "[INFO] (" << label << ") Coded bits (flattened): " << coded_bits.size() << "\n";
   }
 
+  // 交织
   const std::size_t block_dim = static_cast<std::size_t>(Params::BITS_PER_SUBBLOCK_DIM);
   auto interleaver = newcode::Interleaver::build_from_shape(
       code_matrix.rows(), code_matrix.cols(), block_dim, block_dim, config.interleaver_name);
@@ -146,9 +148,9 @@ PipelineResult run_pipeline(const Params& params,
     log << "[INFO] (" << label << ") Interleaved bits: " << coded_bits_itlv.size() << "\n";
   }
 
+  //调制
   unsigned n_bps = config.bits_per_symbol;
   if (n_bps == 0) n_bps = 2;
-
   std::string modulation_name;
   if (n_bps == 1) {
     modulation_name = "BPSK";
@@ -167,6 +169,7 @@ PipelineResult run_pipeline(const Params& params,
     log << "[INFO] (" << label << ") Modulated symbols: " << tx_syms.size() << " (Es≈1)\n";
   }
 
+  // 信道：加性高斯白噪声（AWGN）
   const int   N        = static_cast<int>(params.NUM_SUBBLOCK_COLS * params.BITS_PER_SUBBLOCK_DIM);
   const int   K        = 239;
   const int   TAKEBITS = K - N;
@@ -185,6 +188,7 @@ PipelineResult run_pipeline(const Params& params,
     }
   }
 
+  // qam解调计算信道 LLR
   auto llr = qam_llr_from_ebn0(rx_syms, n_bps, ebn0_dB, code_rate);
   if (verbose) {
     log << "[INFO] (" << label << ") LLR count: " << llr.size()
@@ -194,19 +198,23 @@ PipelineResult run_pipeline(const Params& params,
       log << llr[i] << (i + 1 < std::min<size_t>(8, llr.size()) ? ", " : "\n");
   }
 
+  // 反交织
   auto llr_deint = interleaver.deinterleave_chunks(llr);
 
+  // 转换为矩阵形式
   Matrix<float> llr_mat = llr_to_matrix_row_major(llr_deint, code_matrix.rows(), code_matrix.cols());
 
-  // 已知前缀的先验处理（如果使用）
+  // 已知前缀置零处理以及信道llr归一化
   apply_known_zero_prefix(llr_mat, params);
 
+  // 构造解码器
   ensure_decoders_registered();
   auto decoder = make_decoder(config.decoder_name);
   if (!decoder) {
     throw std::runtime_error("[ERROR] make_decoder: unknown decoder '" + config.decoder_name + "'");
   }
 
+  //确定量化所用的clip
   const auto llr_mode = pick_llr_mode(params);
   float quant_clip = 0.0f;
   if (llr_mode.format == LlrFormat::Quantized) {
@@ -224,6 +232,7 @@ PipelineResult run_pipeline(const Params& params,
     }
   }
 
+  // 构造解码请求
   DecodeRequest request{
       .label = label,
       .channel_llr = llr_mat,
@@ -243,8 +252,10 @@ PipelineResult run_pipeline(const Params& params,
       .work_llr_output_path = config.work_llr_output_path
   };
 
+  // 执行解码
   auto decode_result = decoder->decode(request);
 
+  // 提取解码后信息比特
   auto rx_info_bits_pre  = rx_info_from_bit_llr(decode_result.pre_decoder_llr,  params);
   auto rx_info_bits_post = rx_info_from_bit_llr(decode_result.post_decoder_llr, params);
 

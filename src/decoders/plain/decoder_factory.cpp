@@ -14,32 +14,29 @@ namespace {
 template <int NBITS>
 void decode_plain_qfloat(const DecodeRequest& request, DecodeResult& result) {
   using Q = qfloat<NBITS>;
+
   const float clip = (request.quant_clip > 0.0f) ? request.quant_clip : Q::DEFAULT_CLIP;
+
   if (!request.quiet) {
     std::cout << "[INFO] (" << request.label << ") Plain decoder running in qfloat<"
               << NBITS << ">\n";
   }
-  result.float_llr_path = dump_quantized_llr(
-      request.channel_llr, request, request.dump_float_llr,
-      request.float_llr_output_path, "_float");
-  auto quantized = quantize_matrix_to_qfloat<NBITS>(request.channel_llr, clip);
+  auto quantized = quantize_matrix_to_qfloat<NBITS>(request.channel_llr, clip); //对channel_llr量化
   if (!request.quiet) {
     std::cout << "[INFO] (" << request.label << ") Quant clip=" << clip
               << " levels ±" << Q::Q() << "\n";
   }
-  result.pre_decoder_llr = dequantize_matrix_from_qfloat(quantized, clip);
+  
+  result.pre_decoder_llr = dequantize_matrix_from_qfloat(quantized, clip); //量化后的channel LLR反量化作为pre_decoder_llr
+  auto decoded = ofec_decode_llr_plain(quantized, request.params, &result.tile_stats,request.normalize_extrinsic);//对量化后的LLR进行解码，得到解码后的量化LLR矩阵
+  result.post_decoder_llr = dequantize_matrix_from_qfloat(decoded, clip); //对解码后的量化LLR矩阵反量化，得到post_decoder_llr
+
   if (request.dump_quantized_codes) {
     auto codes_mat = cast_matrix_from_qfloat(quantized);
-    result.quantized_codes_path = dump_quantized_llr(
-        codes_mat, request, request.dump_quantized_codes,
-        request.quantized_codes_output_path, "_quantized_codes");
+    result.quantized_codes_path = dump_quantized_llr(codes_mat, request, request.dump_quantized_codes,request.quantized_codes_output_path, "_quantized_codes");
+    result.dequantized_llr_path = dump_quantized_llr(result.pre_decoder_llr, request, request.dump_quantized_llr,request.quantized_llr_output_path, "_dequantized");
+    result.float_llr_path = dump_quantized_llr(request.channel_llr, request, request.dump_float_llr,request.float_llr_output_path, "_float");
   }
-  result.dequantized_llr_path = dump_quantized_llr(
-      result.pre_decoder_llr, request, request.dump_quantized_llr,
-      request.quantized_llr_output_path, "_dequantized");
-  auto decoded = ofec_decode_llr_plain(quantized, request.params, &result.tile_stats,
-                                       request.normalize_extrinsic);
-  result.post_decoder_llr = dequantize_matrix_from_qfloat(decoded, clip);
 }
 
 void decode_plain_quantized(const DecodeRequest& request, DecodeResult& result) {

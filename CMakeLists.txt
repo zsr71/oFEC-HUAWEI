@@ -129,6 +129,7 @@ target_link_libraries(ofec_app_interleaved
 # 保留现有两个入口，默认走 plain 变体
 add_executable(ofec_single
   apps/ofec_single.cpp
+  src/ofec_single_dual_writer.cpp
   src/ofec_single_logging.cpp
   src/ofec_single_params.cpp
   src/ofec_single_summary.cpp
