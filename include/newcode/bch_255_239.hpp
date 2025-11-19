@@ -19,13 +19,17 @@ std::array<uint8_t,256> bch_255_239_encode (const std::vector<uint8_t>& info239)
 
 // ========== 新增：硬判决译码（255 in / 255 out） ==========
 // 适配 chase256：输入 255 位硬判决，输出 255 位纠正码字（不含整体奇偶）
-// 返回 true=成功（合法或可纠错），false=失败
-bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255, uint8_t* out255);
+// 返回 true=成功（合法或可纠错），false=失败；若 corrected_errors 非空则写入纠错位数
+bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255,
+                                    uint8_t* out255,
+                                    int* corrected_errors = nullptr);
 
 // 便捷封装：若你传 256 位（丢弃第 256 位整体奇偶），对前 255 位译码
-inline bool bch_255_239_decode_hiho_cw_256(const uint8_t* in256, uint8_t* out255)
+inline bool bch_255_239_decode_hiho_cw_256(const uint8_t* in256,
+                                           uint8_t* out255,
+                                           int* corrected_errors = nullptr)
 {
-    return bch_255_239_decode_hiho_cw_255(in256, out255);
+    return bch_255_239_decode_hiho_cw_255(in256, out255, corrected_errors);
 }
 
 } // namespace newcode

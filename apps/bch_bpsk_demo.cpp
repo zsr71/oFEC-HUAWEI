@@ -1,6 +1,6 @@
 #include "newcode/awgn.hpp"
 #include "newcode/bch_255_239.hpp"
-#include "newcode/chase255.hpp"
+#include "newcode/chase256.hpp"
 #include "newcode/params.hpp"
 #include "newcode/linspace.hpp"
 
@@ -21,12 +21,18 @@
 
 namespace {
 
+enum class SoftDecoderKind {
+  Plain,
+  EbchPF
+};
+
 struct DemoConfig {
-  std::size_t frames = 5000000;
+  std::size_t frames = 500000;
   float ebn0_R_start = 5.5f;
   float ebn0_R_end   = 8.5f;
   std::size_t ebn0_R_points = 7;
   bool run_soft = true;
+  SoftDecoderKind soft_decoder = SoftDecoderKind::Plain;
   std::string csv_prefix = "bch_bpsk_demo";
 };
 
@@ -120,7 +126,7 @@ int main() {
 
         const auto codeword = newcode::bch_255_239_encode(info_bits);
 
-        std::vector<std::complex<float>> tx_syms(255);
+        std::vector<std::complex<float>> tx_syms(newcode::Params::BCH_N);
         for (std::size_t i = 0; i < tx_syms.size(); ++i) {
           tx_syms[i] = std::complex<float>(codeword[i] ? -1.0f : +1.0f, 0.0f);
         }
@@ -128,11 +134,11 @@ int main() {
         const uint32_t awgn_seed = seed_dist_local(awgn_seed_rng_local);
         auto rx_syms = newcode::add_awgn(tx_syms, ebn0_db, 1, awgn_seed);
 
-        std::array<float, 255> channel_llr{};
-        std::array<uint8_t, 255> channel_hard{};
+        std::array<float, newcode::Params::BCH_N> channel_llr{};
+        std::array<uint8_t, newcode::Params::BCH_N> channel_hard{};
         for (std::size_t i = 0; i < rx_syms.size(); ++i) {
           const float y = rx_syms[i].real();
-          const float llr = 2.0f * y * inv_sigma_sq;
+          const float llr =  y ;
           channel_llr[i] = llr;
           channel_hard[i] = hard_from_llr(llr);
         }
@@ -159,9 +165,20 @@ int main() {
         }
 
         if (cfg.run_soft) {
-          std::array<float, 255> extrinsic{};
-          newcode::chase_decode_255(channel_llr.data(), extrinsic.data(), chase_params);
-
+          std::array<float, newcode::Params::BCH_N> extrinsic{};
+          switch (cfg.soft_decoder) {
+            case SoftDecoderKind::Plain:
+              newcode::chase_decode_256_plain<float>(
+                  channel_llr.data(), channel_llr.data(), extrinsic.data(), chase_params);
+              break;
+            case SoftDecoderKind::EbchPF:
+              newcode::chase_decode_256_ebchPF<float>(
+                  channel_llr.data(), channel_llr.data(), extrinsic.data(), chase_params);
+              break;
+          }
+          for (auto& value : extrinsic) {
+            value *= chase_params.ALPHA;
+          }
           for (std::size_t i = 0; i < info_bits.size(); ++i) {
             const float total_llr = channel_llr[i] + extrinsic[i];
             const uint8_t bit = hard_from_llr(total_llr);
@@ -198,8 +215,11 @@ int main() {
     std::cout << "  Post-FEC BER (hard): " << post_hard_ber << " ("
               << res.post_hard_errors << " / " << res.total_bits << ")\n";
     if (cfg.run_soft) {
-      std::cout << "  Post-FEC BER (soft Chase): " << post_soft_ber << " ("
-                << res.post_soft_errors << " / " << res.total_bits << ")\n";
+      const char* decoder_label =
+          (cfg.soft_decoder == SoftDecoderKind::Plain) ? "plain" : "ebchPF";
+      std::cout << "  Post-FEC BER (soft Chase - " << decoder_label << "): "
+                << post_soft_ber << " (" << res.post_soft_errors << " / "
+                << res.total_bits << ")\n";
     }
     std::cout << "  Hard decoder failures: " << res.hard_failures << "\n\n";
   }

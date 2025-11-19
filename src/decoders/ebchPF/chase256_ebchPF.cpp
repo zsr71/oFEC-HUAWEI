@@ -59,14 +59,14 @@ static inline void pick_cp(const Params& p, float& beta, float& alpha)
     alpha = p.ALPHA;
 }
 
-// ----- find L least reliable core positions (indices 0..254) by |LLR| -----
+// ----- find L least reliable core positions (indices 0..255) by |LLR| -----
 template<typename LLR>
 static void find_least_reliable(const LLR* LLR_list, int L,
                                 std::vector<int>& pos, std::vector<float>& absval)
 {
     struct Node { float a; int i; };
-    std::vector<Node> v; v.reserve(BCH_N_CORE);
-    for (int i = 0; i < BCH_N_CORE; ++i)
+    std::vector<Node> v; v.reserve(BCH_N_TOTAL);
+    for (int i = 0; i < BCH_N_TOTAL; ++i)
         v.push_back({ std::fabs(llr_to_float(LLR_list[i])), i });
 
     const int take = std::min(L, (int)v.size());
@@ -135,7 +135,7 @@ void chase_decode_256_ebchPF(const LLR* Lin256,
     const int L      = std::max(1, p.CHASE_L);
     const int NTEST  = std::max(1, p.CHASE_NTEST);
 
-    // y_k = LLR inputs for correlation metric in (14)鈥?17)
+    // y_k = LLR inputs for correlation metric in (14))
     float y[BCH_N_TOTAL];
     uint8_t hard_ch[BCH_N_TOTAL];
     for (int i = 0; i < BCH_N_TOTAL; ++i) {
@@ -145,7 +145,7 @@ void chase_decode_256_ebchPF(const LLR* Lin256,
     }
     std::array<float, BCH_N_TOTAL> abs_y{};
     for (int k = 0; k < BCH_N_TOTAL; ++k) abs_y[k] = std::fabs(y[k]);
-    // unreliable set over core (0..254)
+    // unreliable set over core (0..255)
     std::vector<int>   lrp_pos; lrp_pos.reserve(L);
     std::vector<float> lrp_abs; lrp_abs.reserve(L);
     find_least_reliable(Lin256, L, lrp_pos, lrp_abs);
@@ -157,7 +157,12 @@ void chase_decode_256_ebchPF(const LLR* Lin256,
 
     // generate candidates, BCH hard-decode, extend to 256, and compute S(c)
     std::vector<std::vector<uint8_t>> CW_all(NTEST, std::vector<uint8_t>(BCH_N_TOTAL, 0));
-    struct Comp { float score; int idx; bool good; };
+    struct Comp {
+        float score;
+        int idx;
+        bool good;
+        int corrected_errors;
+    };
     std::vector<Comp> comps; comps.reserve(NTEST);
 
     std::vector<uint8_t> tmp_in(BCH_N_TOTAL), cw255(BCH_N_CORE);
@@ -170,11 +175,19 @@ void chase_decode_256_ebchPF(const LLR* Lin256,
             if (patt[c][j]) tmp_in[ lrp_pos[j] ] ^= 1u;
 
         // BCH decode over 255 (hard-input, hard-output)
-        bool ok = bch_255_239_decode_hiho_cw_255(tmp_in.data(), cw255.data());
+        int corrected_errors = 0;
+        bool ok = bch_255_239_decode_hiho_cw_255(tmp_in.data(),
+                                                 cw255.data(),
+                                                 &corrected_errors);
 
         // build full 256-bit codeword
         auto& CW = CW_all[c];
         std::copy(cw255.begin(), cw255.end(), CW.begin());
+        uint8_t parity = parity256_from255(CW.data());
+
+        if (parity != tmp_in[PAR_IDX] &&(corrected_errors==2) ) 
+        { ok = false; corrected_errors = -1; }
+
         CW[PAR_IDX] = parity256_from255(CW.data());
 
         float dist = 0.f;
@@ -184,7 +197,7 @@ void chase_decode_256_ebchPF(const LLR* Lin256,
         }
         float score = -dist;  // 越大越好（等价于最小化 dist）
 
-        comps.push_back({score, c, ok});
+        comps.push_back({score, c, ok, corrected_errors});
     }
 
     // pick ML among valid decodes; if none valid, fall back to channel hard word

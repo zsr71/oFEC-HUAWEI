@@ -57,7 +57,6 @@ target_link_libraries(newcode_frontend PUBLIC Threads::Threads)
 target_sources(newcode_frontend PRIVATE
   src/decoder_registry.cpp
   src/ber.cpp
-  src/chase255.cpp
   src/linspace.cpp
 )
 
@@ -162,7 +161,7 @@ add_executable(bch_bpsk_demo
   apps/bch_bpsk_demo.cpp
 )
 target_link_libraries(bch_bpsk_demo
-  PRIVATE newcode_frontend decoder_plain
+  PRIVATE newcode_frontend decoder_plain decoder_ebchPF
 )
 
 # ==============================

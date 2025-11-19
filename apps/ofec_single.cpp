@@ -17,7 +17,7 @@ static constexpr int         kChannelSeed       = 1333622628;   // 信道噪声�
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
 //量化相关参数
-static constexpr std::size_t kLlrBits = 6;                           // LLR 位宽：16=浮点，2~15=qfloat
+static constexpr std::size_t kLlrBits = 16;                           // LLR 位宽：16=浮点，2~15=qfloat
 static constexpr float       kQuantClipRatio = 0.001f;                 // 动态裁剪比例，0=禁用
 
 //解码相关参数
@@ -48,9 +48,9 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
 //调试相关参数
 
 //llr导出相关
-  static constexpr bool        kDumpQuantizedLlr = true;               // 是否导出量化后 LLR
+  static constexpr bool        kDumpQuantizedLlr = false;               // 是否导出量化后 LLR
   static constexpr const char* kQuantizedLlrPath = "data/llr/quantized_llr.txt"; // 量化 LLR 输出路径
-  static constexpr bool        kDumpWorkLlr = true;                    // 是否保存最后的的 work_llr
+  static constexpr bool        kDumpWorkLlr = false;                    // 是否保存最后的的 work_llr
   static constexpr const char* kWorkLlrPath = "data/llr/work_llr.txt"; // work_llr 输出路径
 
 // Decoder 调试跟踪配置

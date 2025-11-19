@@ -163,10 +163,13 @@ static int chien_and_correct(uint8_t* cw255, const uint8_t sigma[3], int L)
 }
 } // anon
 
-bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255, uint8_t* out255)
+bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255,
+                                    uint8_t* out255,
+                                    int* corrected_errors)
 {
     using G = GF256;
     G::init();
+    if (corrected_errors) *corrected_errors = 0;
 
     uint8_t cw[GF256::N];
     std::memcpy(cw, in255, GF256::N);
@@ -175,13 +178,22 @@ bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255, uint8_t* out255)
     if ((S[0]|S[1]|S[2]|S[3]) == 0) { std::memcpy(out255, cw, GF256::N); return true; }
 
     uint8_t sigma[3]; int L = berlekamp_massey_t2(S, sigma);
-    if (L < 0 || L > 2) { std::memcpy(out255, cw, GF256::N); return false; }
+    if (L < 0 || L > 2) {
+        if (corrected_errors) *corrected_errors = -1;
+        std::memcpy(out255, cw, GF256::N);
+        return false;
+    }
 
     int corr = chien_and_correct(cw, sigma, L);
-    if (corr < 0) { std::memcpy(out255, in255, GF256::N); return false; }
+    if (corr < 0) {
+        if (corrected_errors) *corrected_errors = -1;
+        std::memcpy(out255, in255, GF256::N);
+        return false;
+    }
 
     uint8_t S2[4]; compute_syndromes_1_4(cw, S2);
     bool ok = ((S2[0]|S2[1]|S2[2]|S2[3]) == 0);
+    if (corrected_errors) *corrected_errors = ok ? corr : -1;
     std::memcpy(out255, cw, GF256::N);
     return ok;
 }

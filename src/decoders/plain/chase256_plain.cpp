@@ -157,7 +157,12 @@ void chase_decode_256_plain(const LLR* Lin256,
 
     // generate candidates, BCH hard-decode, extend to 256, and compute S(c)
     std::vector<std::vector<uint8_t>> CW_all(NTEST, std::vector<uint8_t>(BCH_N_TOTAL, 0));
-    struct Comp { float score; int idx; bool good; };
+    struct Comp {
+        float score;
+        int idx;
+        bool good;
+        int corrected_errors;
+    };
     std::vector<Comp> comps; comps.reserve(NTEST);
 
     std::vector<uint8_t> tmp_in(BCH_N_TOTAL), cw255(BCH_N_CORE);
@@ -170,7 +175,10 @@ void chase_decode_256_plain(const LLR* Lin256,
             if (patt[c][j]) tmp_in[ lrp_pos[j] ] ^= 1u;
 
         // BCH decode over 255 (hard-input, hard-output)
-        bool ok = bch_255_239_decode_hiho_cw_255(tmp_in.data(), cw255.data());
+        int corrected_errors = 0;
+        bool ok = bch_255_239_decode_hiho_cw_255(tmp_in.data(),
+                                                 cw255.data(),
+                                                 &corrected_errors);
 
         // build full 256-bit codeword
         auto& CW = CW_all[c];
@@ -184,7 +192,7 @@ void chase_decode_256_plain(const LLR* Lin256,
         }
         float score = -dist;  // 越大越好（等价于最小化 dist）
 
-        comps.push_back({score, c, ok});
+        comps.push_back({score, c, ok, corrected_errors});
     }
 
     // pick ML among valid decodes; if none valid, fall back to channel hard word
@@ -205,10 +213,7 @@ void chase_decode_256_plain(const LLR* Lin256,
         // no valid codeword: take channel hard decisions (extend parity)
         std::copy(hard_ch, hard_ch + BCH_N_CORE, ML.begin());
         ML[PAR_IDX] = parity256_from255(ML.data());
-        
-        ml_S = 0.f;
-        for (int k = 0; k < BCH_N_TOTAL; ++k)
-            ml_S += y[k] * (ML[k] ? -1.f : +1.f);
+    
     }
 
     std::vector<float> omega(BCH_N_TOTAL, std::numeric_limits<float>::quiet_NaN());
