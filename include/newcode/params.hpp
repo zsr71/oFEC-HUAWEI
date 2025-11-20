@@ -18,7 +18,7 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     = 8 * 110 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     = 16 * 110 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 17657;                 // 随机种子
   int    CHANNEL_SEED      = BITGEN_SEED + 100;    // 信道噪声随机种子
   bool   BITGEN_RANDOM_BITS = true;             // true=随机比特，false=全 0
@@ -28,7 +28,7 @@ struct Params {
   std::string WORK_LLR_OUTPUT_PATH;              // work_llr 输出路径（为空则默认命名）
 
   // ===== 解码组织参数（单位：sub-block rows）=====
-  size_t TILES_PER_WIN   = 3;  // 每个 window 含有的 tile 数量（自下而上处理）
+  size_t TILES_PER_WIN   = 2;  // 每个 window 含有的 tile 数量（自下而上处理）
   size_t TILE_OVERLAP_BR = 0;  // 相邻 tile 在 sub-block-row 方向的重叠行数
   size_t TILE_HEIGHT_BR  = 22; // 单个 tile 的高度（单位：sub-block-row）
   size_t WINDOW_POP_PUSH = 2;  // window 每次滑动的 sub-block-row 数量（pop/push）

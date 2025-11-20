@@ -10,7 +10,7 @@ namespace newcode {
 namespace {
 
 template<typename LLR>
-using ChaseFn = void (*)(const LLR*, const LLR*, LLR*, const Params&);
+using ChaseFn = void (*)(const LLR*, const LLR*, float*, const Params&);
 
 template<typename LLR>
 DecoderCoreResult<LLR> Decoder_Core_impl(const Matrix<LLR>& lin_matrix,
@@ -28,7 +28,7 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const Matrix<LLR>& lin_matrix,
   }
 
   DecoderCoreResult<LLR> result{
-      Matrix<LLR>(rows, cols),
+      Matrix<float>(rows, cols),
       std::vector<bool>(rows, false)};
 
   for (size_t row = 0; row < rows; ++row) {
@@ -40,7 +40,7 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const Matrix<LLR>& lin_matrix,
       LchVec[col] = lch_matrix[row][col];
     }
 
-    std::array<LLR, Params::BCH_N> Y2{};
+    std::array<float, Params::BCH_N> Y2{};
     bool produced = false;
 
     if (use_hard_decode) {

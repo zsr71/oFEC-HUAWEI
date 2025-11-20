@@ -27,7 +27,7 @@ enum class SoftDecoderKind {
 };
 
 struct DemoConfig {
-  std::size_t frames = 500000;
+  std::size_t frames = 50000;
   float ebn0_R_start = 5.5f;
   float ebn0_R_end   = 8.5f;
   std::size_t ebn0_R_points = 7;
@@ -93,8 +93,8 @@ int main() {
   newcode::Params chase_params;
   chase_params.CHASE_L = 2;
   chase_params.CHASE_NTEST = 4;
-  chase_params.beta = 1.0f;
-  chase_params.ALPHA = 1.0f;
+  chase_params.beta = 1.75f;
+  chase_params.ALPHA = 0.8f;
 
   std::vector<SweepResult> results(ebn0_list.size());
   std::vector<std::future<void>> tasks;

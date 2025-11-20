@@ -11,7 +11,7 @@ namespace newcode {
 
 template <typename LLR>
 struct DecoderCoreResult {
-  Matrix<LLR> lout;
+  Matrix<float> lout;
   std::vector<bool> produced_rows;
 };
 

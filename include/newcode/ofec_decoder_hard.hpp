@@ -11,7 +11,7 @@ namespace newcode {
 template <typename LLR>
 bool perform_hard_decode(const std::array<LLR, 256>& Lin256,
                          const std::array<LLR, 256>& Lch256,
-                         std::array<LLR, 256>& Y2,
+                         std::array<float, 256>& Y2,
                          const Params& p);
 
 extern template bool perform_hard_decode<float>(const std::array<float, 256>&,
@@ -20,14 +20,14 @@ extern template bool perform_hard_decode<float>(const std::array<float, 256>&,
                                                 const Params&);
 extern template bool perform_hard_decode<int8_t>(const std::array<int8_t, 256>&,
                                                  const std::array<int8_t, 256>&,
-                                                 std::array<int8_t, 256>&,
+                                                 std::array<float, 256>&,
                                                  const Params&);
 
 #define DECLARE_HARD_DECODE_QFLOAT(N) \
 extern template bool perform_hard_decode<qfloat<N>>( \
     const std::array<qfloat<N>, 256>&, \
     const std::array<qfloat<N>, 256>&, \
-    std::array<qfloat<N>, 256>&, \
+    std::array<float, 256>&, \
     const Params&);
 
 DECLARE_HARD_DECODE_QFLOAT(2)

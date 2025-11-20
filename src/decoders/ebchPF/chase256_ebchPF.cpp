@@ -122,7 +122,7 @@ inline uint8_t parity256_from255(const uint8_t* cw255) {
 template<typename LLR>
 void chase_decode_256_ebchPF(const LLR* Lin256,
                             const LLR* /*Lch256*/,
-                            LLR* Y2_256,
+                            float* Y2_256,
                             const Params& p)
 {
     using namespace detail;
@@ -278,27 +278,27 @@ void chase_decode_256_ebchPF(const LLR* Lin256,
 
     // Output EXTRINSIC  Per (21), caller shall form y(next) = y(ch) + α·ω.
     for (int j = 0; j < BCH_N_TOTAL; ++j)
-        Y2_256[j] = llr_from_float<LLR>(omega[j]);
+        Y2_256[j] = omega[j];
 }
 
 // ======================== 2-arg wrapper (kept for API parity) ========================
 template<typename LLR>
-void chase_decode_256_ebchPF(const LLR* Y256, LLR* Y2_256, const Params& p)
+void chase_decode_256_ebchPF(const LLR* Y256, float* Y2_256, const Params& p)
 {
     chase_decode_256_ebchPF<LLR>(Y256, Y256, Y2_256, p);
 }
 
 // ======================== explicit instantiations ========================
 template void chase_decode_256_ebchPF<float >(const float*,  const float*,  float*,  const Params&);
-template void chase_decode_256_ebchPF<int8_t>(const int8_t*, const int8_t*, int8_t*, const Params&);
+template void chase_decode_256_ebchPF<int8_t>(const int8_t*, const int8_t*, float*, const Params&);
 template void chase_decode_256_ebchPF<float >(const float*,  float*,  const Params&);
-template void chase_decode_256_ebchPF<int8_t>(const int8_t*, int8_t*, const Params&);
+template void chase_decode_256_ebchPF<int8_t>(const int8_t*, float*, const Params&);
 
 #define INSTANTIATE_CHASE256_ebchPF_QFLOAT(N) \
 template void chase_decode_256_ebchPF<newcode::qfloat<N>>( \
-    const newcode::qfloat<N>*, const newcode::qfloat<N>*, newcode::qfloat<N>*, const Params&); \
+    const newcode::qfloat<N>*, const newcode::qfloat<N>*, float*, const Params&); \
 template void chase_decode_256_ebchPF<newcode::qfloat<N>>( \
-    const newcode::qfloat<N>*, newcode::qfloat<N>*, const Params&);
+    const newcode::qfloat<N>*, float*, const Params&);
 
 INSTANTIATE_CHASE256_ebchPF_QFLOAT(2)
 INSTANTIATE_CHASE256_ebchPF_QFLOAT(3)

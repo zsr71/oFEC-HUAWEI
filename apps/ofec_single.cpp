@@ -8,17 +8,17 @@
 //发射端参数
 static constexpr const char* kLabel             = "debug_L6";   // 运行标签：日志/输出文件标识
 static constexpr int         kChaseL_override   = 6;            // Chase L，-1 表示使用默认
-static constexpr int         kBitgenSeed        = 300549165;    // 比特生成随机种子
+static constexpr int         kBitgenSeed        = 300933354;    // 比特生成随机种子
 static constexpr bool        kGenerateRandomBits = false;             // true=随机比特，false=全 0
 
 //信道相关参数
-static constexpr float       kEbN0_db           = 3.3f;        // 信道 Eb/N0 (dB)
-static constexpr int         kChannelSeed       = 1333622628;   // 信道噪声随机种子
+static constexpr float       kEbN0_db           = 3.42f;        // 信道 Eb/N0 (dB)
+static constexpr int         kChannelSeed       = 8099;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
 //量化相关参数
-static constexpr std::size_t kLlrBits = 16;                           // LLR 位宽：16=浮点，2~15=qfloat
-static constexpr float       kQuantClipRatio = 0.001f;                 // 动态裁剪比例，0=禁用
+static constexpr std::size_t kLlrBits =4;                           // LLR 位宽：16=浮点，2~15=qfloat
+static constexpr float       kQuantClipRatio = 0.5f;                 // 动态裁剪比例，0=禁用
 
 //解码相关参数
 static constexpr const char* kInterleaverName = "identity";          // 交织器名称
@@ -33,14 +33,14 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
     // 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
     static const std::vector<float> kAlpha_explicit = {
       //0.3f,0.45f,0.60f,0.9f,0.5f
-      0.4444f,0.5555f,0.6666f
-      //0.571f,0.7141f
+      //1.0f
+      0.5f,2.5f
       //0.6f
     };
     static const std::vector<float> kBeta_explicit = {
       //0.2f,0.225f,0.30f,0.4f,0.0f
-      0.444444f,1.11111f,1.77777f
-      //0.22222f,1.77779f
+      //1.4f
+      3.0f,7.0f
       //1.4f
     };
 
@@ -59,12 +59,12 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
 // log_read_mapping   输出 tile -> global 的读取坐标展开
 // log_write_mapping  输出解码回写对应的坐标及 LLR
 // log_mismatch       当窗口内多个 tile 写回同一坐标且值不同时报错提示
-static constexpr bool kDecoderTraceEnable        = false;
-static constexpr long kDecoderTraceRow           = 9973;
-static constexpr long kDecoderTraceCol           = 15;
-static constexpr bool kDecoderTraceLogRead       = false;
-static constexpr bool kDecoderTraceLogWrite      = false;
-static constexpr bool kDecoderTraceLogMismatch   = false;
+static constexpr bool kDecoderTraceEnable        = true;
+static constexpr long kDecoderTraceRow           = 1074754/111+352;
+static constexpr long kDecoderTraceCol           = 1074754%111;
+static constexpr bool kDecoderTraceLogRead       = true;
+static constexpr bool kDecoderTraceLogWrite      = true;
+static constexpr bool kDecoderTraceLogMismatch   = true;
 
 
 // =============================

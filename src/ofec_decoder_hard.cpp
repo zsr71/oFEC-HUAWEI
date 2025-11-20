@@ -12,7 +12,7 @@ namespace newcode {
 template <typename LLR>
 bool perform_hard_decode(const std::array<LLR, 256>& Lin256,
                          const std::array<LLR, 256>& Lch256,
-                         std::array<LLR, 256>& Y2,
+                         std::array<float, 256>& Y2,
                          const Params& p)
 {
   std::array<uint8_t, 256> hard_in{};
@@ -42,7 +42,7 @@ bool perform_hard_decode(const std::array<LLR, 256>& Lin256,
     const float sign = cw[static_cast<size_t>(i)] ? -1.f : 1.f;
     const float Lpost = sign * hard_mag;
     const float Lch = llr_to_float(Lch256[static_cast<size_t>(i)]);
-    Y2[static_cast<size_t>(i)] = llr_from_float<LLR>(Lpost - Lch);
+    Y2[static_cast<size_t>(i)] = Lpost - Lch;
   }
 
   return true;
@@ -54,14 +54,14 @@ template bool perform_hard_decode<float>(const std::array<float, 256>&,
                                          const Params&);
 template bool perform_hard_decode<int8_t>(const std::array<int8_t, 256>&,
                                           const std::array<int8_t, 256>&,
-                                          std::array<int8_t, 256>&,
+                                          std::array<float, 256>&,
                                           const Params&);
 
 #define INSTANTIATE_HARD_DECODE_QFLOAT(N) \
 template bool perform_hard_decode<qfloat<N>>( \
     const std::array<qfloat<N>, 256>&, \
     const std::array<qfloat<N>, 256>&, \
-    std::array<qfloat<N>, 256>&, \
+    std::array<float, 256>&, \
     const Params&);
 
 INSTANTIATE_HARD_DECODE_QFLOAT(2)
