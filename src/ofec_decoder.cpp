@@ -136,7 +136,7 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
               const long cc_global = bc * B + bit_col_in_block;
 
               if (should_trace(trace_cfg.log_read_mapping, rr_global, cc_global)) {
-                  std::cout << " READ Mapping k=" << k
+                  std::cout << " AS History READ Mapping k=" << k
                             << " to global pos (" << rr_global << "," << cc_global << ")" << '\n';
               }
 
@@ -163,7 +163,10 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
               const size_t Ct = static_cast<size_t>((k - N) / B);
               const size_t ct = static_cast<size_t>((k % B) ^ r);
               const size_t src_col = Ct * static_cast<size_t>(B) + ct;
-
+              if (should_trace(trace_cfg.log_read_mapping, row_local+tile_top_row_global, src_col)) {
+                  std::cout << " AS New Information READ Mapping k=" << k
+                            << " to global pos (" << (row_local + tile_top_row_global) << "," << src_col << ")" << '\n';
+              }
               const float Lch = llr_to_float(ch_tile[row_local][src_col]);
               const float La  = llr_to_float(tile_in [row_local][src_col]);
               lin_matrix[row_idx][static_cast<size_t>(k)] = llr_from_float<LLR>(Lch + La);
@@ -408,10 +411,12 @@ void process_window_impl(Matrix<LLR>& work_llr,
             static_cast<long>(c) == trace_col) {
           const float existing_val = llr_to_float(work_llr[global_row][c]);
           const float incoming_val = llr_to_float(incoming);
+          const float channel_val  = llr_to_float(channel_llr[global_row][c]);
           if (existing_val != incoming_val) {
             std::cout << "Mismatch at work_llr[" << trace_row << "][" << trace_col
                       << "]: tile index " << t
-                      << " incoming=" << incoming_val << '\n';
+                      << " incoming=" << incoming_val << '\n'
+                      << " channel =" << channel_val << '\n';
           }
         }
         work_llr[global_row][c] = incoming;
