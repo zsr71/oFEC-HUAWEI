@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <vector>
 #include <string>
+#include <memory>
 
 namespace newcode {
 
@@ -18,7 +19,7 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     = 16 * 110 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     =  32 * 110 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 17657;                 // 随机种子
   int    CHANNEL_SEED      = BITGEN_SEED + 100;    // 信道噪声随机种子
   bool   BITGEN_RANDOM_BITS = true;             // true=随机比特，false=全 0
@@ -63,8 +64,34 @@ struct Params {
     bool log_read_mapping = false;
     bool log_write_mapping = false;
     bool log_mismatch = false;
+    bool log_chase_detail = false;       // 是否在 Chase 内部输出单比特信息
+    bool dump_chase_csv = false;         // 是否将 Chase 输入/输出向量写 CSV
     long row = -1;
     long col = -1;
+    int chase_decoder_row = -1;          // 在 Chase 输入矩阵中的行（0-based）
+    int chase_decoder_col = -1;          // 在 256 码字中的列（0-based）
+    int chase_tile_index = -1;           // 当前 tile 索引
+    int chase_invocation = -1;           // 本次进入 Chase 的序号
+    std::string chase_csv_dir;           // CSV 输出目录（为空则使用默认）
+    std::shared_ptr<std::vector<std::vector<int8_t>>> chase_expected_bits;
+    const std::vector<int8_t>* chase_expected_bits_row = nullptr;
+    struct TraceTarget {
+      long row = -1;
+      long col = -1;
+      long bit_index = -1;
+      std::string label;
+    };
+    struct ChaseTraceEntry {
+      int row_index = -1;
+      int k = -1;
+      long global_row = -1;
+      long global_col = -1;
+      long bit_index = -1;
+      std::string label;
+      int expected_bit = -1;
+    };
+    std::vector<TraceTarget> targets;
+    std::vector<ChaseTraceEntry> active_chase_entries;
   };
 
   DebugTraceConfig debug_trace{};

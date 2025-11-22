@@ -236,6 +236,7 @@ PipelineResult run_pipeline(const Params& params,
   DecodeRequest request{
       .label = label,
       .channel_llr = llr_mat,
+      .tx_llr_ref = &tx_llr_mat,
       .params = params,
       .format = llr_mode.format,
       .quant_bits = llr_mode.quant_bits,

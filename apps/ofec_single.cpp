@@ -9,11 +9,11 @@
 static constexpr const char* kLabel             = "debug_L6";   // 运行标签：日志/输出文件标识
 static constexpr int         kChaseL_override   = 6;            // Chase L，-1 表示使用默认
 static constexpr int         kBitgenSeed        = 300933354;    // 比特生成随机种子
-static constexpr bool        kGenerateRandomBits = false;             // true=随机比特，false=全 0
+static constexpr bool        kGenerateRandomBits = true;             // true=随机比特，false=全 0
 
 //信道相关参数
-static constexpr float       kEbN0_db           = 3.42f;        // 信道 Eb/N0 (dB)
-static constexpr int         kChannelSeed       = 8099;   // 信道噪声随机种子
+static constexpr float       kEbN0_db           = 4.42f;        // 信道 Eb/N0 (dB)
+static constexpr int         kChannelSeed       = 8040099;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
 //量化相关参数
@@ -34,13 +34,13 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
     static const std::vector<float> kAlpha_explicit = {
       //0.3f,0.45f,0.60f,0.9f,0.5f
       //1.0f
-      0.5f,2.5f
+      0.444444f,0.6666666f
       //0.6f
     };
     static const std::vector<float> kBeta_explicit = {
       //0.2f,0.225f,0.30f,0.4f,0.0f
       //1.4f
-      3.0f,7.0f
+      3.1111f,7.77777f
       //1.4f
     };
 
@@ -53,18 +53,56 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
   static constexpr bool        kDumpWorkLlr = false;                    // 是否保存最后的的 work_llr
   static constexpr const char* kWorkLlrPath = "data/llr/work_llr.txt"; // work_llr 输出路径
 
+namespace {
+constexpr long BitIndexToRow(long bit_index) { return bit_index / 111 + 352; }
+constexpr long BitIndexToCol(long bit_index) { return bit_index % 111; }
+struct TraceBitSpec {
+  long bit_index;
+  const char* label;
+};
+constexpr TraceBitSpec kTraceBitSpecs[] = {
+    {336769, "bit336769"},
+    {833517, "bit833517"},
+    {1051557, "bit1051557"},
+    {2274027, "bit2274027"},
+    {2639556, "bit2639556"},
+    {2896503, "bit2896503"},
+    {3585841, "bit3585841"},
+    {4489810, "bit4489810"},
+    {4633404, "bit4633404"},
+
+};
+} // namespace
+
+static const std::vector<newcode::Params::DebugTraceConfig::TraceTarget>
+    kDecoderTraceTargets = []() {
+      std::vector<newcode::Params::DebugTraceConfig::TraceTarget> targets;
+      for (const auto& spec : kTraceBitSpecs) {
+        newcode::Params::DebugTraceConfig::TraceTarget entry;
+        entry.row = BitIndexToRow(spec.bit_index);
+        entry.col = BitIndexToCol(spec.bit_index);
+        entry.bit_index = spec.bit_index;
+        if (spec.label) entry.label = spec.label;
+        targets.push_back(entry);
+      }
+      return targets;
+    }();
 // Decoder 调试跟踪配置
 // 用于定位单个比特的映射/写回问题：row/col 为全局 work_llr 坐标（0-based）
 // enable 与 row/col 同时满足才会输出日志
 // log_read_mapping   输出 tile -> global 的读取坐标展开
 // log_write_mapping  输出解码回写对应的坐标及 LLR
 // log_mismatch       当窗口内多个 tile 写回同一坐标且值不同时报错提示
+// log_chase_detail   追踪对应比特在 Chase 内部（plain/ebchPF）的输入/输出
+// dump_chase_csv     每次进入 Chase 时导出 256 码字的 LLR/ω/ML/硬判决到 CSV
+// chase_csv_dir      CSV 导出目录（可直接用 Excel 打开）
 static constexpr bool kDecoderTraceEnable        = true;
-static constexpr long kDecoderTraceRow           = 1074754/111+352;
-static constexpr long kDecoderTraceCol           = 1074754%111;
 static constexpr bool kDecoderTraceLogRead       = true;
 static constexpr bool kDecoderTraceLogWrite      = true;
 static constexpr bool kDecoderTraceLogMismatch   = true;
+static constexpr bool kDecoderTraceLogChase      = true;
+static constexpr bool kDecoderTraceDumpCsv       = true;
+static constexpr const char* kDecoderTraceCsvDir = "data/chase_csv";
 
 
 // =============================
@@ -94,11 +132,19 @@ int main() {
     .work_llr_output_path = kWorkLlrPath,
     .debug_trace = newcode::Params::DebugTraceConfig{
       .enable = kDecoderTraceEnable,
-      .log_read_mapping = kDecoderTraceLogRead,
-      .log_write_mapping = kDecoderTraceLogWrite,
-      .log_mismatch = kDecoderTraceLogMismatch,
-      .row = kDecoderTraceRow,
-      .col = kDecoderTraceCol,
+    .log_read_mapping = kDecoderTraceLogRead,
+    .log_write_mapping = kDecoderTraceLogWrite,
+    .log_mismatch = kDecoderTraceLogMismatch,
+    .log_chase_detail = kDecoderTraceLogChase,
+    .dump_chase_csv = kDecoderTraceDumpCsv,
+    .row = -1,
+    .col = -1,
+    .chase_decoder_row = -1,
+    .chase_decoder_col = -1,
+      .chase_tile_index = -1,
+      .chase_invocation = -1,
+      .chase_csv_dir = kDecoderTraceCsvDir,
+      .targets = kDecoderTraceTargets,
     },
   };
   return ofec_single::run_ofec_single(config);

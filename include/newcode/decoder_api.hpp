@@ -26,6 +26,7 @@ struct DecodeStats {
 struct DecodeRequest {
   std::string_view label;
   const Matrix<float>& channel_llr;
+  const Matrix<float>* tx_llr_ref = nullptr;
   const Params& params;
   LlrFormat format = LlrFormat::Float;
   std::size_t quant_bits = 16;

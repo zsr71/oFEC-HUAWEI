@@ -7,6 +7,8 @@
 #include "newcode/decoder_api.hpp"
 #include "newcode/quantized_llr_dump.hpp"
 
+#include <filesystem>
+#include <fstream>
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -14,6 +16,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <cctype>
+#include <memory>
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
@@ -120,10 +124,20 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
                                          size_t tile_top_row_global,
                                          bool use_hard_decode,
                                          bool normalize_extrinsic,
-                                         CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn)
+                                         const Matrix<float>* tx_llr_ref,
+                                         CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn,
+                                         Matrix<float>* last_tile_history_accum,
+                                         bool capture_last_tile_history)
 {
   using Adapter  = LinMatrixAdapter<LLR>;
   using CoreLLR  = typename Adapter::core_type;
+  auto core_to_float = [](const CoreLLR& value) -> float {
+    if constexpr (std::is_same_v<CoreLLR, float> || std::is_same_v<CoreLLR, double>) {
+      return static_cast<float>(value);
+    } else {
+      return llr_to_float(value);
+    }
+  };
 
   constexpr int B         = static_cast<int>(Params::BITS_PER_SUBBLOCK_DIM);            // 16
   constexpr int N         = static_cast<int>(Params::NUM_SUBBLOCK_COLS * B);            // 128
@@ -141,11 +155,126 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
 
   const auto& trace_cfg = p.debug_trace;
   const bool trace_has_coords = (trace_cfg.row >= 0 && trace_cfg.col >= 0);
-  const bool trace_enabled = trace_cfg.enable && trace_has_coords;
+  const bool trace_has_targets = !trace_cfg.targets.empty();
+  const bool trace_enabled = trace_cfg.enable && (trace_has_coords || trace_has_targets);
   const long trace_row = trace_has_coords ? trace_cfg.row : -1;
   const long trace_col = trace_has_coords ? trace_cfg.col : -1;
+  Params params_for_core = p;  // may be updated
+  params_for_core.debug_trace.active_chase_entries.clear();
+  if (params_for_core.debug_trace.chase_expected_bits) {
+    params_for_core.debug_trace.chase_expected_bits.reset();
+    params_for_core.debug_trace.chase_expected_bits_row = nullptr;
+  }
+  std::shared_ptr<std::vector<std::vector<int8_t>>> expected_bits;
   auto should_trace = [&](bool flag, long rr, long cc) -> bool {
     return trace_enabled && flag && rr == trace_row && cc == trace_col;
+  };
+  auto register_chase_entry = [&](const std::string& label,
+                                  long bit_index,
+                                  long rr, long cc,
+                                  size_t row_idx, int k) {
+    int expected_bit = -1;
+    if (expected_bits && row_idx < expected_bits->size() &&
+        k >= 0 && static_cast<size_t>(k) < (*expected_bits)[row_idx].size()) {
+      expected_bit = (*expected_bits)[row_idx][static_cast<size_t>(k)];
+    }
+    auto& entries = params_for_core.debug_trace.active_chase_entries;
+    for (const auto& entry : entries) {
+      if (entry.row_index == static_cast<int>(row_idx) &&
+          entry.k == k &&
+          entry.global_row == rr &&
+          entry.global_col == cc &&
+          entry.bit_index == bit_index &&
+          entry.label == label &&
+          entry.expected_bit == expected_bit) {
+        return;
+      }
+    }
+    newcode::Params::DebugTraceConfig::ChaseTraceEntry entry;
+    entry.row_index = static_cast<int>(row_idx);
+    entry.k = k;
+    entry.global_row = rr;
+    entry.global_col = cc;
+    entry.bit_index = bit_index;
+    entry.label = label;
+    entry.expected_bit = expected_bit;
+    params_for_core.debug_trace.active_chase_entries.push_back(entry);
+  };
+  auto try_mark_chase_coord = [&](long rr, long cc, size_t row_idx, int k) {
+    if (!trace_enabled) return;
+    if (trace_has_coords && rr == trace_row && cc == trace_col) {
+      const std::string label =
+          "row" + std::to_string(rr) + "_col" + std::to_string(cc);
+      register_chase_entry(label, -1, rr, cc, row_idx, k);
+    }
+    for (size_t idx = 0; idx < trace_cfg.targets.size(); ++idx) {
+      const auto& target = trace_cfg.targets[idx];
+      if (target.row == rr && target.col == cc) {
+        std::string label;
+        if (!target.label.empty()) {
+          label = target.label;
+        } else if (target.bit_index >= 0) {
+          label = "bit" + std::to_string(target.bit_index);
+        } else {
+          label = "target" + std::to_string(idx);
+        }
+        register_chase_entry(label, target.bit_index, rr, cc, row_idx, k);
+      }
+    }
+  };
+  auto sanitize_label = [](const std::string& label) {
+    std::string safe = label.empty() ? std::string("target") : label;
+    for (char& ch : safe) {
+      if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-') {
+        ch = '_';
+      }
+    }
+    return safe;
+  };
+  auto log_target_history = [&](const Params& params,
+                                const Matrix<float>& lout,
+                                const std::vector<bool>& produced_rows) {
+    const auto& trace = params.debug_trace;
+    if (!trace.enable || !trace.dump_chase_csv) return;
+    if (trace.active_chase_entries.empty()) return;
+    if (trace.chase_tile_index < 0 || trace.chase_invocation < 0) return;
+    namespace fs = std::filesystem;
+    const fs::path dir = trace.chase_csv_dir.empty()
+                             ? fs::path("data/chase_csv")
+                             : fs::path(trace.chase_csv_dir);
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    for (const auto& entry : trace.active_chase_entries) {
+      if (entry.row_index < 0 || entry.k < 0) continue;
+      if (entry.row_index >= static_cast<int>(lout.rows())) continue;
+      if (static_cast<size_t>(entry.k) >= lout.cols()) continue;
+      if (entry.row_index >= static_cast<int>(produced_rows.size())) continue;
+      if (!produced_rows[static_cast<size_t>(entry.row_index)]) continue;
+      float extrinsic = lout[static_cast<size_t>(entry.row_index)]
+                           [static_cast<size_t>(entry.k)];
+      std::string label = entry.label;
+      if (label.empty()) {
+        if (entry.bit_index >= 0) {
+          label = "bit" + std::to_string(entry.bit_index);
+        } else {
+          label = "row" + std::to_string(entry.global_row) + "_col" +
+                  std::to_string(entry.global_col);
+        }
+      }
+      const std::string safe_label = sanitize_label(label);
+      const fs::path file =
+          dir / ("target_" + safe_label + ".csv");
+      const bool existed = fs::exists(file);
+      std::ofstream out(file, std::ios::app);
+      if (!out) continue;
+      if (!existed) {
+        out << "invocation,tile_index,global_row,global_col,lin_row_index,lin_k,extrinsic,expected_bit\n";
+      }
+      out << trace.chase_invocation << ',' << trace.chase_tile_index << ','
+          << entry.global_row << ',' << entry.global_col << ','
+          << entry.row_index << ',' << entry.k << ','
+          << extrinsic << ',' << entry.expected_bit << '\n';
+    }
   };
 
   const int SBR = p.CHASE_SBR;
@@ -158,6 +287,10 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
   }
 
   const size_t decoder_cols = static_cast<size_t>(2 * N); // 256
+  if (tx_llr_ref) {
+    expected_bits = std::make_shared<std::vector<std::vector<int8_t>>>(
+        rows_to_decode, std::vector<int8_t>(decoder_cols, -1));
+  }
   Matrix<CoreLLR> lin_matrix(rows_to_decode, decoder_cols);
   Matrix<CoreLLR> lch_matrix(rows_to_decode, decoder_cols);
   std::vector<size_t> row_local_lookup(rows_to_decode, 0);
@@ -194,6 +327,7 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
                   std::cout << " AS History READ Mapping k=" << k
                             << " to global pos (" << rr_global << "," << cc_global << ")" << '\n';
               }
+              try_mark_chase_coord(rr_global, cc_global, row_idx, k);
 
 
 
@@ -203,13 +337,19 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
               if (rr_local2 >= 0 && rr_local2 < static_cast<long>(H) &&
                   cc_local2 >= 0 && cc_local2 < static_cast<long>(W))
               {
-                  const LLR Lch = ch_tile[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)];
-                  const LLR La  = tile_in [static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)];
-                  lin_matrix[row_idx][static_cast<size_t>(k)] = Adapter::combine(Lch, La);
-                  lch_matrix[row_idx][static_cast<size_t>(k)] = Adapter::channel(Lch);
+              const LLR Lch = ch_tile[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)];
+              const LLR La  = tile_in [static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)];
+              lin_matrix[row_idx][static_cast<size_t>(k)] = Adapter::combine(Lch, La);
+              lch_matrix[row_idx][static_cast<size_t>(k)] = Adapter::channel(Lch);
               }
               else {
                   throw std::out_of_range("process_tile: old info position out of tile range.");
+              }
+              if (expected_bits &&
+                  (rr_global) < tx_llr_ref->rows() &&
+                  cc_global < tx_llr_ref->cols()) {
+                  const float v = (*tx_llr_ref)[rr_global][cc_global];
+                  (*expected_bits)[row_idx][static_cast<size_t>(k)] = (v < 0.0f) ? 1 : 0;
               }
           }
 
@@ -222,10 +362,18 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
                   std::cout << " AS New Information READ Mapping k=" << k
                             << " to global pos (" << (row_local + tile_top_row_global) << "," << src_col << ")" << '\n';
               }
+              try_mark_chase_coord(static_cast<long>(row_local + tile_top_row_global),
+                                   static_cast<long>(src_col), row_idx, k);
               const LLR Lch = ch_tile[row_local][src_col];
               const LLR La  = tile_in [row_local][src_col];
               lin_matrix[row_idx][static_cast<size_t>(k)] = Adapter::combine(Lch, La);
               lch_matrix[row_idx][static_cast<size_t>(k)] = Adapter::channel(Lch);
+              if (expected_bits &&
+                  (tile_top_row_global + row_local) < tx_llr_ref->rows() &&
+                  src_col < tx_llr_ref->cols()) {
+                  const float v = (*tx_llr_ref)[tile_top_row_global + row_local][src_col];
+                  (*expected_bits)[row_idx][static_cast<size_t>(k)] = (v < 0.0f) ? 1 : 0;
+              }
           }
 
           for (int j = 0; j < BCH_PAR; ++j) {
@@ -238,6 +386,12 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
               const LLR La  = tile_in [row_local][src_col];
               lin_matrix[row_idx][static_cast<size_t>(k)] = Adapter::combine(Lch, La);
               lch_matrix[row_idx][static_cast<size_t>(k)] = Adapter::channel(Lch);
+              if (expected_bits &&
+                  (tile_top_row_global + row_local) < tx_llr_ref->rows() &&
+                  src_col < tx_llr_ref->cols()) {
+                  const float v = (*tx_llr_ref)[tile_top_row_global + row_local][src_col];
+                  (*expected_bits)[row_idx][static_cast<size_t>(k)] = (v < 0.0f) ? 1 : 0;
+              }
           }
 
           {
@@ -250,13 +404,34 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
               const LLR La  = tile_in [row_local][src_col];
               lin_matrix[row_idx][static_cast<size_t>(k)] = Adapter::combine(Lch, La);
               lch_matrix[row_idx][static_cast<size_t>(k)] = Adapter::channel(Lch);
+              if (expected_bits &&
+                  (tile_top_row_global + row_local) < tx_llr_ref->rows() &&
+                  src_col < tx_llr_ref->cols()) {
+                  const float v = (*tx_llr_ref)[tile_top_row_global + row_local][src_col];
+                  (*expected_bits)[row_idx][static_cast<size_t>(k)] = (v < 0.0f) ? 1 : 0;
+              }
           }
       }
     }
 
+  if (expected_bits) {
+    params_for_core.debug_trace.chase_expected_bits = expected_bits;
+  } else {
+    params_for_core.debug_trace.chase_expected_bits.reset();
+  }
+  if (!params_for_core.debug_trace.active_chase_entries.empty()) {
+    params_for_core.debug_trace.chase_decoder_row =
+        params_for_core.debug_trace.active_chase_entries.front().row_index;
+    params_for_core.debug_trace.chase_decoder_col =
+        params_for_core.debug_trace.active_chase_entries.front().k;
+  } else {
+    params_for_core.debug_trace.chase_decoder_row = -1;
+    params_for_core.debug_trace.chase_decoder_col = -1;
+  }
+
   bool early_stop_triggered = tile_should_early_stop(lin_matrix);
 
-  auto decoder_res = core_fn(lin_matrix, lch_matrix, use_hard_decode, p);
+  auto decoder_res = core_fn(lin_matrix, lch_matrix, use_hard_decode, params_for_core);
 
   // Normalization only applies to soft extrinsics; skip for hard-decoded tiles.
   if (normalize_extrinsic && !use_hard_decode)
@@ -334,6 +509,9 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
       }
   }
 
+  log_target_history(params_for_core, decoder_res.lout,
+                     decoder_res.produced_rows);
+
   for (int s = 0; s < SBR; ++s)
   {
       for (int r_off = 0; r_off < B; ++r_off)
@@ -400,8 +578,26 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
 
               assert(in_range && "process_tile: write-back out of tile range");
 
-              tile_out[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)] =
+              const size_t rr_idx_local = static_cast<size_t>(rr_local2);
+              const size_t cc_idx_local = static_cast<size_t>(cc_local2);
+              const LLR prior_llr =
+                  tile_out[rr_idx_local][cc_idx_local];
+              const LLR extrinsic_llr =
                   llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+              tile_out[rr_idx_local][cc_idx_local] = extrinsic_llr;
+
+              if (capture_last_tile_history && last_tile_history_accum) {
+                  if (rr_global >= 0 && cc_global >= 0) {
+                      const size_t rr_idx_global = static_cast<size_t>(rr_global);
+                      const size_t cc_idx_global = static_cast<size_t>(cc_global);
+                      if (rr_idx_global < last_tile_history_accum->rows() &&
+                          cc_idx_global < last_tile_history_accum->cols()) {
+                          const CoreLLR combined = Adapter::combine(extrinsic_llr, prior_llr);
+                          (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
+                              core_to_float(combined);
+                      }
+                  }
+              }
           }
       }
   }
@@ -416,7 +612,9 @@ void process_window_impl(Matrix<LLR>& work_llr,
                          size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
                          std::vector<TileEarlyStopCounter>* tile_stats,
                          bool normalize_extrinsic,
-                         CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn)
+                         const Matrix<float>* tx_llr_ref,
+                         CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn,
+                         Matrix<float>* last_tile_history_accum)
 {
   (void)win_start;
   const auto& trace_cfg = p.debug_trace;
@@ -426,9 +624,11 @@ void process_window_impl(Matrix<LLR>& work_llr,
   const long trace_row = trace_has_coords ? trace_cfg.row : -1;
   const long trace_col = trace_has_coords ? trace_cfg.col : -1;
   const size_t N = Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM;
+  static size_t chase_invocation_counter = 0;
 
   for (size_t t = 0; t < TILES_PER_WIN; ++t)
   {
+        const bool is_last_tile = (t + 1 == TILES_PER_WIN);
         const size_t tile_bottom_row = win_end  - t * tile_stride_rows;
         const size_t tile_top_row    = tile_bottom_row + 1 - tile_height_rows;
 
@@ -453,14 +653,20 @@ void process_window_impl(Matrix<LLR>& work_llr,
         Params tile_params = p;
         tile_params.beta = pick_float(p.beta_list, t, p.beta);
         tile_params.ALPHA = pick_float(p.ALPHA_LIST, t, p.ALPHA);
+        tile_params.debug_trace.chase_tile_index = static_cast<int>(t);
+        tile_params.debug_trace.chase_invocation =
+            static_cast<int>(++chase_invocation_counter);
 
     const bool use_hard = pick_int(p.HARD_TILE_LIST, t, p.HARD_DECODE_DEFAULT ? 1 : 0) != 0;
 
-    TileProcessResult<LLR> tile_result = process_tile_impl<LLR>(tile_in, ch_tile, tile_params,
+        TileProcessResult<LLR> tile_result = process_tile_impl<LLR>(tile_in, ch_tile, tile_params,
                                                                 /*tile_top_row_global=*/tile_top_row,
                                                                 /*use_hard_decode=*/use_hard,
                                                                 /*normalize_extrinsic=*/normalize_extrinsic,
-                                                                core_fn);
+                                                                tx_llr_ref,
+                                                                core_fn,
+                                                                last_tile_history_accum,
+                                                                (last_tile_history_accum && is_last_tile));
 
     if (tile_stats && t < tile_stats->size()) {
       auto& counter = (*tile_stats)[t];
@@ -497,6 +703,7 @@ template <typename LLR>
 Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
                                  std::vector<TileEarlyStopCounter>* tile_stats,
                                  bool normalize_extrinsic,
+                                 const Matrix<float>* tx_llr_ref,
                                  CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn)
 {
   const size_t N = Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM;
@@ -520,6 +727,7 @@ Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
   for (size_t r = 0; r < RROWS; ++r)
       for (size_t c = 0; c < N; ++c)
           work_llr[r][c] = llr_from_float<LLR>(0.0f);
+  Matrix<float> last_tile_history_llr(RROWS, N);
 
   if (RROWS < WIN_HEIGHT_ROWS) {
     if (tile_stats) {
@@ -546,7 +754,9 @@ Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
                              TILE_HEIGHT_ROWS, TILE_STRIDE_ROWS, TILES_PER_WIN,
                              stats_ptr,
                              normalize_extrinsic,
-                             core_fn);
+                             tx_llr_ref,
+                             core_fn,
+                             &last_tile_history_llr);
 
     win_start += POP_PUSH_ROWS;
   }
@@ -558,7 +768,7 @@ Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
   Matrix<LLR> out(RROWS, N);
   for (size_t r = 0; r < RROWS; ++r) {
     for (size_t c = 0; c < N; ++c) {
-      const float sum = llr_to_float(channel_llr[r][c]) + llr_to_float(work_llr[r][c]);
+      const float sum = llr_to_float(channel_llr[r][c]) + last_tile_history_llr[r][c];
       out[r][c] = llr_from_float<LLR>(sum);
     }
   }
@@ -573,6 +783,7 @@ Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
     DecodeRequest dump_req{
         .label = "work_llr",
         .channel_llr = work_float,
+        .tx_llr_ref = nullptr,
         .params = p,
         .format = LlrFormat::Float,
         .quant_bits = 16,
@@ -605,12 +816,16 @@ TileProcessResult<LLR> process_tile_plain(const Matrix<LLR>& tile_in,
                                           const Params& p,
                                           size_t tile_top_row_global,
                                           bool use_hard_decode,
-                                          bool normalize_extrinsic)
+                                          bool normalize_extrinsic,
+                                          const Matrix<float>* tx_llr_ref)
 {
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   return process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
                            use_hard_decode, normalize_extrinsic,
-                           &Decoder_Core_plain<CoreLLR>);
+                           tx_llr_ref,
+                           &Decoder_Core_plain<CoreLLR>,
+                           /*last_tile_history_accum=*/nullptr,
+                           /*capture_last_tile_history=*/false);
 }
 
 template <typename LLR>
@@ -619,12 +834,16 @@ TileProcessResult<LLR> process_tile_ebchPF(const Matrix<LLR>& tile_in,
                                            const Params& p,
                                           size_t tile_top_row_global,
                                           bool use_hard_decode,
-                                          bool normalize_extrinsic)
+                                          bool normalize_extrinsic,
+                                          const Matrix<float>* tx_llr_ref)
 {
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   return process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
                            use_hard_decode, normalize_extrinsic,
-                           &Decoder_Core_ebchPF<CoreLLR>);
+                           tx_llr_ref,
+                           &Decoder_Core_ebchPF<CoreLLR>,
+                           /*last_tile_history_accum=*/nullptr,
+                           /*capture_last_tile_history=*/false);
 }
 
 template <typename LLR>
@@ -633,98 +852,111 @@ void process_window_plain(Matrix<LLR>& work_llr,
                           size_t win_start, size_t win_end, const Params& p,
                           size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
                           std::vector<TileEarlyStopCounter>* tile_stats,
-                          bool normalize_extrinsic)
+                          bool normalize_extrinsic,
+                          const Matrix<float>* tx_llr_ref)
 {
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   process_window_impl(work_llr, channel_llr, win_start, win_end, p,
                       tile_height_rows, tile_stride_rows, TILES_PER_WIN,
-                      tile_stats, normalize_extrinsic,
-                      &Decoder_Core_plain<CoreLLR>);
+                      tile_stats, normalize_extrinsic, tx_llr_ref,
+                      &Decoder_Core_plain<CoreLLR>,
+                      /*last_tile_history_accum=*/nullptr);
 }
 
 template <typename LLR>
 void process_window_ebchPF(Matrix<LLR>& work_llr,
                            const Matrix<LLR>& channel_llr,
                            size_t win_start, size_t win_end, const Params& p,
-                           size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
-                           std::vector<TileEarlyStopCounter>* tile_stats,
-                           bool normalize_extrinsic)
+                          size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
+                          std::vector<TileEarlyStopCounter>* tile_stats,
+                          bool normalize_extrinsic,
+                          const Matrix<float>* tx_llr_ref)
 {
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   process_window_impl(work_llr, channel_llr, win_start, win_end, p,
                       tile_height_rows, tile_stride_rows, TILES_PER_WIN,
-                      tile_stats, normalize_extrinsic,
-                      &Decoder_Core_ebchPF<CoreLLR>);
+                      tile_stats, normalize_extrinsic, tx_llr_ref,
+                      &Decoder_Core_ebchPF<CoreLLR>,
+                      /*last_tile_history_accum=*/nullptr);
 }
 
 template <typename LLR>
 Matrix<LLR> ofec_decode_llr_plain(const Matrix<LLR>& llr_mat, const Params& p,
                                   std::vector<TileEarlyStopCounter>* tile_stats,
-                                  bool normalize_extrinsic)
+                                  bool normalize_extrinsic,
+                                  const Matrix<float>* tx_llr_ref)
 {
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   return ofec_decode_llr_impl(llr_mat, p, tile_stats, normalize_extrinsic,
+                              tx_llr_ref,
                               &Decoder_Core_plain<CoreLLR>);
 }
 
 template <typename LLR>
 Matrix<LLR> ofec_decode_llr_ebchPF(const Matrix<LLR>& llr_mat, const Params& p,
                                    std::vector<TileEarlyStopCounter>* tile_stats,
-                                   bool normalize_extrinsic)
+                                   bool normalize_extrinsic,
+                                   const Matrix<float>* tx_llr_ref)
 {
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   return ofec_decode_llr_impl(llr_mat, p, tile_stats, normalize_extrinsic,
+                              tx_llr_ref,
                               &Decoder_Core_ebchPF<CoreLLR>);
 }
 
 // ===== 显式实例化 =====
-template TileProcessResult<float>  process_tile_plain<float >(const Matrix<float>&,  const Matrix<float>&,  const Params&, size_t, bool, bool);
-template TileProcessResult<int8_t> process_tile_plain<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&, const Params&, size_t, bool, bool);
-template TileProcessResult<float>  process_tile_ebchPF<float >(const Matrix<float>&,  const Matrix<float>&,  const Params&, size_t, bool, bool);
-template TileProcessResult<int8_t> process_tile_ebchPF<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&, const Params&, size_t, bool, bool);
+template TileProcessResult<float>  process_tile_plain<float >(const Matrix<float>&,  const Matrix<float>&,  const Params&, size_t, bool, bool, const Matrix<float>*);
+template TileProcessResult<int8_t> process_tile_plain<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&, const Params&, size_t, bool, bool, const Matrix<float>*);
+template TileProcessResult<float>  process_tile_ebchPF<float >(const Matrix<float>&,  const Matrix<float>&,  const Params&, size_t, bool, bool, const Matrix<float>*);
+template TileProcessResult<int8_t> process_tile_ebchPF<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&, const Params&, size_t, bool, bool, const Matrix<float>*);
 
 template void process_window_plain<float >(Matrix<float>&,  const Matrix<float>&,  size_t, size_t, const Params&,
-                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
+                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool,
+                                           const Matrix<float>*);
 template void process_window_plain<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&, size_t, size_t, const Params&,
-                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
+                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool,
+                                           const Matrix<float>*);
 template void process_window_ebchPF<float >(Matrix<float>&,  const Matrix<float>&,  size_t, size_t, const Params&,
-                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
+                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool,
+                                           const Matrix<float>*);
 template void process_window_ebchPF<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&, size_t, size_t, const Params&,
-                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool);
+                                           size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool,
+                                           const Matrix<float>*);
 
-template Matrix<float>  ofec_decode_llr_plain<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool);
-template Matrix<int8_t> ofec_decode_llr_plain<int8_t>(const Matrix<int8_t>&, const Params&, std::vector<TileEarlyStopCounter>*, bool);
-template Matrix<float>  ofec_decode_llr_ebchPF<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool);
-template Matrix<int8_t> ofec_decode_llr_ebchPF<int8_t>(const Matrix<int8_t>&, const Params&, std::vector<TileEarlyStopCounter>*, bool);
+template Matrix<float>  ofec_decode_llr_plain<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*);
+template Matrix<int8_t> ofec_decode_llr_plain<int8_t>(const Matrix<int8_t>&, const Params&, std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*);
+template Matrix<float>  ofec_decode_llr_ebchPF<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*);
+template Matrix<int8_t> ofec_decode_llr_ebchPF<int8_t>(const Matrix<int8_t>&, const Params&, std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*);
 
 #define INSTANTIATE_QFLOAT(N) \
 template TileProcessResult<newcode::qfloat<N>> process_tile_plain<newcode::qfloat<N>>( \
     const Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
-    const Params&, size_t, bool, bool); \
+    const Params&, size_t, bool, bool, const Matrix<float>*); \
 template TileProcessResult<newcode::qfloat<N>> process_tile_ebchPF<newcode::qfloat<N>>( \
     const Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
-    const Params&, size_t, bool, bool); \
+    const Params&, size_t, bool, bool, const Matrix<float>*); \
 template void process_window_plain<newcode::qfloat<N>>( \
     Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
     size_t, size_t, const Params&, \
     size_t, size_t, size_t, \
-    std::vector<TileEarlyStopCounter>*, bool); \
+    std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*); \
 template void process_window_ebchPF<newcode::qfloat<N>>( \
     Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
     size_t, size_t, const Params&, \
     size_t, size_t, size_t, \
-    std::vector<TileEarlyStopCounter>*, bool); \
+    std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*); \
 template Matrix<newcode::qfloat<N>> ofec_decode_llr_plain<newcode::qfloat<N>>( \
     const Matrix<newcode::qfloat<N>>&, const Params&, \
-    std::vector<TileEarlyStopCounter>*, bool); \
+    std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*); \
 template Matrix<newcode::qfloat<N>> ofec_decode_llr_ebchPF<newcode::qfloat<N>>( \
     const Matrix<newcode::qfloat<N>>&, const Params&, \
-    std::vector<TileEarlyStopCounter>*, bool); \
+    std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*); \
 template void process_window<newcode::qfloat<N>>( \
     Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
     std::size_t, std::size_t, const Params&, \
     std::size_t, std::size_t, std::size_t, \
-    std::vector<TileEarlyStopCounter>*, bool);
+    std::vector<TileEarlyStopCounter>*, bool, \
+    const Matrix<float>*);
 
 INSTANTIATE_QFLOAT(2)
 INSTANTIATE_QFLOAT(3)
@@ -746,10 +978,12 @@ INSTANTIATE_QFLOAT(15)
 template void process_window<float >(Matrix<float>&,  const Matrix<float>&,
                                      std::size_t, std::size_t, const Params&,
                                      std::size_t, std::size_t, std::size_t,
-                                     std::vector<TileEarlyStopCounter>*, bool);
+                                     std::vector<TileEarlyStopCounter>*, bool,
+                                     const Matrix<float>*);
 template void process_window<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&,
                                      std::size_t, std::size_t, const Params&,
                                      std::size_t, std::size_t, std::size_t,
-                                     std::vector<TileEarlyStopCounter>*, bool);
+                                     std::vector<TileEarlyStopCounter>*, bool,
+                                     const Matrix<float>*);
 
 } // namespace newcode

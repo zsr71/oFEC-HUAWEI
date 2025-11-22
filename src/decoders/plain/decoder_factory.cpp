@@ -29,7 +29,8 @@ void decode_plain_qfloat(const DecodeRequest& request, DecodeResult& result) {
   }
   
   result.pre_decoder_llr = dequantize_matrix_from_qfloat(quantized, clip); //量化后的channel LLR反量化作为pre_decoder_llr
-  auto decoded = ofec_decode_llr_plain(quantized, request.params, &result.tile_stats,request.normalize_extrinsic);//对量化后的LLR进行解码，得到解码后的量化LLR矩阵
+  auto decoded = ofec_decode_llr_plain(quantized, request.params, &result.tile_stats,
+                                       request.normalize_extrinsic, request.tx_llr_ref);//对量化后的LLR进行解码
   result.post_decoder_llr = dequantize_matrix_from_qfloat(decoded, clip); //对解码后的量化LLR矩阵反量化，得到post_decoder_llr
 
   if (request.dump_quantized_codes) {
@@ -87,7 +88,7 @@ public:
         result.pre_decoder_llr = request.channel_llr;
         result.post_decoder_llr =
             ofec_decode_llr_plain(result.pre_decoder_llr, request.params, &result.tile_stats,
-                                   request.normalize_extrinsic);
+                                   request.normalize_extrinsic, request.tx_llr_ref);
         break;
 
       case LlrFormat::Quantized:

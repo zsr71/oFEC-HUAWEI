@@ -43,10 +43,39 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const Matrix<LLR>& lin_matrix,
     std::array<float, Params::BCH_N> Y2{};
     bool produced = false;
 
+    Params row_params = p;
+    const auto& trace_cfg = p.debug_trace;
+    row_params.debug_trace.active_chase_entries.clear();
+    row_params.debug_trace.chase_expected_bits = trace_cfg.chase_expected_bits;
+    if (trace_cfg.chase_expected_bits &&
+        static_cast<size_t>(row) < trace_cfg.chase_expected_bits->size()) {
+      row_params.debug_trace.chase_expected_bits_row =
+          &(*trace_cfg.chase_expected_bits)[row];
+    } else {
+      row_params.debug_trace.chase_expected_bits_row = nullptr;
+    }
+    for (const auto& entry : trace_cfg.active_chase_entries) {
+      if (entry.row_index == static_cast<int>(row)) {
+        row_params.debug_trace.active_chase_entries.push_back(entry);
+      }
+    }
+    if (!row_params.debug_trace.active_chase_entries.empty()) {
+      row_params.debug_trace.chase_decoder_row = static_cast<int>(row);
+      row_params.debug_trace.chase_decoder_col =
+          row_params.debug_trace.active_chase_entries.front().k;
+    } else if (trace_cfg.chase_decoder_row >= 0 &&
+               static_cast<int>(row) == trace_cfg.chase_decoder_row) {
+      row_params.debug_trace.chase_decoder_row = static_cast<int>(row);
+      row_params.debug_trace.chase_decoder_col = trace_cfg.chase_decoder_col;
+    } else {
+      row_params.debug_trace.chase_decoder_row = -1;
+      row_params.debug_trace.chase_decoder_col = -1;
+    }
+
     if (use_hard_decode) {
       produced = perform_hard_decode<LLR>(LinVec, LchVec, Y2, p);
     } else {
-      chase_fn(LinVec.data(), LchVec.data(), Y2.data(), p);
+      chase_fn(LinVec.data(), LchVec.data(), Y2.data(), row_params);
       produced = true;
     }
 

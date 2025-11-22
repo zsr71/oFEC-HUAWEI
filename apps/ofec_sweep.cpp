@@ -77,8 +77,15 @@ int main() {
     .log_read_mapping = kDecoderTraceLogRead,
     .log_write_mapping = kDecoderTraceLogWrite,
     .log_mismatch = kDecoderTraceLogMismatch,
+    .log_chase_detail = false,
+    .dump_chase_csv = false,
     .row = kDecoderTraceRow,
     .col = kDecoderTraceCol,
+    .chase_decoder_row = -1,
+    .chase_decoder_col = -1,
+    .chase_tile_index = -1,
+    .chase_invocation = -1,
+    .chase_csv_dir = {},
   };
   config.base_params.BITGEN_RANDOM_BITS = kGenerateRandomBits;
   config.base_params.NORMALIZE_KNOWN_PREFIX_TAIL = kNormalizeKnownPrefixTail;
