@@ -8,10 +8,10 @@ static constexpr const char* kInterleaverName = "identity";
 static constexpr const char* kDecoderName = "plain";
 static constexpr unsigned    kBitsPerSymbol = 1; // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
 static constexpr bool        kNormalizeExtrinsic = false;
-static constexpr bool kGenerateRandomBits        = false;
+static constexpr bool kGenerateRandomBits        = true;
 static constexpr bool kNormalizeKnownPrefixTail  = false;
-static constexpr float kQuantClipRatio           = 0.0f; // 0 表示禁用动态 clip
-static constexpr std::size_t kLlrBits            = 16;
+static constexpr float kQuantClipRatio           = 0.5f; // 0 表示禁用动态 clip
+static constexpr std::size_t kLlrBits            = 6;
 static constexpr bool kQuietConsole              = false;
 
 // Alpha/Beta 扫描候选
@@ -22,17 +22,17 @@ static const std::vector<float> kBetaStepCandidates   = newcode::linspace(0.0f, 
 static const std::vector<int>   kChaseLCandidates     = {6};
 
 // 随机种子（为空则自动生成 bitgen/channel seeds 数量）
-static constexpr int kBitgenSeedCount  = 3;
-static constexpr int kChannelSeedCount = 3;
+static constexpr int kBitgenSeedCount  = 1;
+static constexpr int kChannelSeedCount = 1;
 
 // Eb/N0 设置
-static constexpr float kEbN0Start = 3.3345f;
-static constexpr float kEbN0End   = 3.3345f;
-static constexpr int   kEbN0Points = 1;
+static constexpr float kEbN0Start = 3.07f;
+static constexpr float kEbN0End   = 3.37f;
+static constexpr int   kEbN0Points = 14;
 
 // 显式 alpha/beta 模式（可选）
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
-  {"custom_label", {0.44444f,0.55555f,0.66666f}, {0.4444f,1.1111f,1.777777f}},
+  {"custom_label", {0.333333,0.416667,0.500000}, {4.444445,15.274477,31.111113}},
 };
 
 // Decoder 调试跟踪配置

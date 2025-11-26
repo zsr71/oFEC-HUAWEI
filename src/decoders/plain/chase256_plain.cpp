@@ -183,7 +183,14 @@ static void dump_chase_csv(const Params::DebugTraceConfig& trace,
         out << "lin_matrix_row_index," << entry.row_index << '\n';
         out << "lin_matrix_k," << entry.k << '\n';
         const std::vector<int8_t>* expected_bits_row = trace.chase_expected_bits_row;
-        out << "Index,LLR,Omega,ML,HardCh,ExpectedBit\n";
+        const bool has_competing =
+            entry.cplus_bits.size() == detail::BCH_N_TOTAL &&
+            entry.cminus_bits.size() == detail::BCH_N_TOTAL;
+        out << "Index,LLR,Omega,ML,HardCh,ExpectedBit";
+        if (has_competing) {
+            out << ",CplusBit,CminusBit";
+        }
+        out << '\n';
         for (int k = 0; k < BCH_N_TOTAL; ++k) {
             int expected_bit = -1;
             if (expected_bits_row && static_cast<size_t>(k) < expected_bits_row->size()) {
@@ -191,7 +198,12 @@ static void dump_chase_csv(const Params::DebugTraceConfig& trace,
             }
             out << k << ',' << y[k] << ',' << omega[k] << ','
                 << int(ML[k]) << ',' << int(hard_ch[k]) << ','
-                << expected_bit << '\n';
+                << expected_bit;
+            if (has_competing) {
+                out << ',' << int(entry.cplus_bits[static_cast<size_t>(k)])
+                    << ',' << int(entry.cminus_bits[static_cast<size_t>(k)]);
+            }
+            out << '\n';
         }
     }
 }
@@ -295,6 +307,13 @@ void chase_decode_256_plain(const LLR* Lin256,
     
     }
 
+    auto trace_copy = p.debug_trace;
+    if (!trace_copy.active_chase_entries.empty()) {
+        for (auto& entry : trace_copy.active_chase_entries) {
+            entry.cplus_bits.clear();
+            entry.cminus_bits.clear();
+        }
+    }
     std::vector<float> omega(BCH_N_TOTAL, std::numeric_limits<float>::quiet_NaN());
     for (int j = 0; j < BCH_N_TOTAL; ++j) {
         // ----- find best competing codeword for bit j -----
@@ -323,6 +342,14 @@ void chase_decode_256_plain(const LLR* Lin256,
         if (best_idx_plus >= 0 && best_idx_minus >= 0) {
             const auto &Cplus  = CW_all[best_idx_plus];  // c^{+1(j)}
             const auto &Cminus = CW_all[best_idx_minus]; // c^{-1(j)}
+            if (!trace_copy.active_chase_entries.empty()) {
+                for (auto& entry : trace_copy.active_chase_entries) {
+                    if (entry.k == j) {
+                        entry.cplus_bits.assign(Cplus.begin(), Cplus.end());
+                        entry.cminus_bits.assign(Cminus.begin(), Cminus.end());
+                    }
+                }
+            }
 
             float wj = 0.f;
             for (int l = 0; l < BCH_N_TOTAL; ++l) {
@@ -347,7 +374,7 @@ void chase_decode_256_plain(const LLR* Lin256,
         }
     }
 
-    dump_chase_csv(p.debug_trace, y, hard_ch, ML.data(), omega.data());
+    dump_chase_csv(trace_copy, y, hard_ch, ML.data(), omega.data());
 
     // Output EXTRINSIC  Per (21), caller shall form y(next) = y(ch) + α·ω.
     for (int j = 0; j < BCH_N_TOTAL; ++j)

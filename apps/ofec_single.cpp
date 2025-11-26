@@ -8,12 +8,12 @@
 //发射端参数
 static constexpr const char* kLabel             = "debug_L6";   // 运行标签：日志/输出文件标识
 static constexpr int         kChaseL_override   = 6;            // Chase L，-1 表示使用默认
-static constexpr int         kBitgenSeed        = 300933354;    // 比特生成随机种子
+static constexpr int         kBitgenSeed        = 11500;    // 比特生成随机种子
 static constexpr bool        kGenerateRandomBits = true;             // true=随机比特，false=全 0
 
 //信道相关参数
-static constexpr float       kEbN0_db           = 4.42f;        // 信道 Eb/N0 (dB)
-static constexpr int         kChannelSeed       = 8040099;   // 信道噪声随机种子
+static constexpr float       kEbN0_db           = 3.07f;        // 信道 Eb/N0 (dB)
+static constexpr int         kChannelSeed       = 14681;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
 //量化相关参数
@@ -32,15 +32,15 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
 
     // 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
     static const std::vector<float> kAlpha_explicit = {
-      //0.3f,0.45f,0.60f,0.9f,0.5f
+      0.272727,0.363636,0.454545,0.545455
       //1.0f
-      0.444444f,0.6666666f
+      //0.4f,0.7f
       //0.6f
     };
     static const std::vector<float> kBeta_explicit = {
-      //0.2f,0.225f,0.30f,0.4f,0.0f
+      6.666667,11.781143,19.259983,28.000000
       //1.4f
-      3.1111f,7.77777f
+      //2.66666f,8.0f
       //1.4f
     };
 
@@ -48,9 +48,9 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
 //调试相关参数
 
 //llr导出相关
-  static constexpr bool        kDumpQuantizedLlr = false;               // 是否导出量化后 LLR
+  static constexpr bool        kDumpQuantizedLlr = true;               // 是否导出量化后 LLR
   static constexpr const char* kQuantizedLlrPath = "data/llr/quantized_llr.txt"; // 量化 LLR 输出路径
-  static constexpr bool        kDumpWorkLlr = false;                    // 是否保存最后的的 work_llr
+  static constexpr bool        kDumpWorkLlr = true;                    // 是否保存最后的的 work_llr
   static constexpr const char* kWorkLlrPath = "data/llr/work_llr.txt"; // work_llr 输出路径
 
 namespace {
@@ -61,16 +61,11 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = {
-    {336769, "bit336769"},
-    {833517, "bit833517"},
-    {1051557, "bit1051557"},
-    {2274027, "bit2274027"},
-    {2639556, "bit2639556"},
-    {2896503, "bit2896503"},
-    {3585841, "bit3585841"},
-    {4489810, "bit4489810"},
-    {4633404, "bit4633404"},
-
+    {625549, "bit625549"},
+    {625560, "bit625560"},
+    {625569, "bit625569"},
+    {626246, "bit626246"},
+    {626668, "bit626668"},
 };
 } // namespace
 

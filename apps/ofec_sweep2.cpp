@@ -18,7 +18,7 @@
 namespace {
 
 constexpr size_t kTilesPerWindow = 2;
-constexpr float  kEvalEbN0       = 3.47f;
+constexpr float  kEvalEbN0       = 3.07f;
 constexpr size_t kStage1Bits     = 4 * 110 * 16 * 111;
 constexpr size_t kStage2Bits     = 16 * 110 * 16 * 111;
 constexpr float  kKeepRatio      = 0.20f;

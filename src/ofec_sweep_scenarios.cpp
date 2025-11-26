@@ -84,37 +84,6 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
   const auto& base_params = config.base_params;
   std::vector<SweepScenario> scenarios;
 
-  SweepScenario baseline;
-  baseline.name = "baseline";
-  baseline.alpha_list = base_params.ALPHA_LIST;
-  baseline.beta_list = base_params.beta_list;
-  if (!baseline.alpha_list.empty()) {
-    baseline.alpha_start = baseline.alpha_list.front();
-    baseline.alpha_step = infer_step(baseline.alpha_list);
-  }
-  if (!baseline.beta_list.empty()) {
-    baseline.beta_start = baseline.beta_list.front();
-    baseline.beta_step = infer_step(baseline.beta_list);
-  }
-  baseline.chase_L = base_params.CHASE_L;
-  baseline.chase_n_test = 1 << base_params.CHASE_L;
-  baseline.bitgen_seed = base_params.BITGEN_SEED;
-  baseline.channel_seed = base_params.CHANNEL_SEED;
-  baseline.ebn0_db = !ebn0_candidates.empty()
-                       ? ebn0_candidates.front()
-                       : newcode::DEFAULT_EBN0_DB;
-  scenarios.push_back(baseline);
-
-  auto matches_baseline = [&](const SweepScenario& candidate) -> bool {
-    const SweepScenario& base = scenarios.front();
-    return candidate.alpha_list == base.alpha_list &&
-           candidate.beta_list == base.beta_list &&
-           candidate.chase_L == base.chase_L &&
-           candidate.bitgen_seed == base.bitgen_seed &&
-           candidate.channel_seed == base.channel_seed &&
-           std::fabs(candidate.ebn0_db - base.ebn0_db) < 1e-6f;
-  };
-
   const std::size_t len = base_params.TILES_PER_WIN;
   if (config.explicit_patterns.empty()) {
     for (float alpha_start : config.alpha_start_candidates) {
@@ -137,10 +106,6 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
                     scenario.ebn0_db = ebn0_db;
                     scenario.alpha_list = generate_sequence(alpha_start, alpha_step, len);
                     scenario.beta_list = generate_sequence(beta_start, beta_step, len);
-
-                    if (matches_baseline(scenario)) {
-                      continue;
-                    }
 
                     std::ostringstream oss;
                     oss << std::fixed << std::setprecision(3)
@@ -192,10 +157,6 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
             scenario.bitgen_seed = bitgen_seed;
             scenario.channel_seed = channel_seed;
             scenario.ebn0_db = ebn0_db;
-
-            if (matches_baseline(scenario)) {
-              continue;
-            }
 
             std::ostringstream oss;
             oss << base_label
