@@ -8,16 +8,16 @@
 //发射端参数
 static constexpr const char* kLabel             = "debug_L6";   // 运行标签：日志/输出文件标识
 static constexpr int         kChaseL_override   = 6;            // Chase L，-1 表示使用默认
-static constexpr int         kBitgenSeed        = 11500;    // 比特生成随机种子
+static constexpr int         kBitgenSeed        = 11598;    // 比特生成随机种子
 static constexpr bool        kGenerateRandomBits = true;             // true=随机比特，false=全 0
 
 //信道相关参数
-static constexpr float       kEbN0_db           = 3.07f;        // 信道 Eb/N0 (dB)
-static constexpr int         kChannelSeed       = 14681;   // 信道噪声随机种子
+static constexpr float       kEbN0_db           = 4.32f;        // 信道 Eb/N0 (dB)
+static constexpr int         kChannelSeed       = 148189;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
 //量化相关参数
-static constexpr std::size_t kLlrBits =4;                           // LLR 位宽：16=浮点，2~15=qfloat
+static constexpr std::size_t kLlrBits =6;                           // LLR 位宽：16=浮点，2~15=qfloat
 static constexpr float       kQuantClipRatio = 0.5f;                 // 动态裁剪比例，0=禁用
 
 //解码相关参数
@@ -32,16 +32,17 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
 
     // 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
     static const std::vector<float> kAlpha_explicit = {
-      0.272727,0.363636,0.454545,0.545455
-      //1.0f
-      //0.4f,0.7f
+      //0.320000,0.349468,0.405692,0.580000     //1.0f
+      //0.4f,1.0f
       //0.6f
+      0.606316
     };
     static const std::vector<float> kBeta_explicit = {
-      6.666667,11.781143,19.259983,28.000000
+      //0.200000,0.276980,0.417732,0.600000
       //1.4f
-      //2.66666f,8.0f
+      //24.0f,1.0f
       //1.4f
+      1.794872*31
     };
 
 
@@ -61,11 +62,12 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = {
-    {625549, "bit625549"},
-    {625560, "bit625560"},
-    {625569, "bit625569"},
-    {626246, "bit626246"},
-    {626668, "bit626668"},
+    {625631, "bit625631"},
+    {625691, "bit625691"},
+    {626440, "bit626440"},
+    {630041, "bit630041"},
+    {637034, "bit637034"},
+    {637036, "bit637036"},
 };
 } // namespace
 

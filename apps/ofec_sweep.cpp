@@ -22,17 +22,17 @@ static const std::vector<float> kBetaStepCandidates   = newcode::linspace(0.0f, 
 static const std::vector<int>   kChaseLCandidates     = {6};
 
 // 随机种子（为空则自动生成 bitgen/channel seeds 数量）
-static constexpr int kBitgenSeedCount  = 1;
-static constexpr int kChannelSeedCount = 1;
+static constexpr int kBitgenSeedCount  =2;
+static constexpr int kChannelSeedCount = 2;
 
 // Eb/N0 设置
 static constexpr float kEbN0Start = 3.07f;
-static constexpr float kEbN0End   = 3.37f;
-static constexpr int   kEbN0Points = 14;
+static constexpr float kEbN0End   = 3.07f;
+static constexpr int   kEbN0Points = 1;
 
 // 显式 alpha/beta 模式（可选）
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
-  {"custom_label", {0.333333,0.416667,0.500000}, {4.444445,15.274477,31.111113}},
+ {"custom_label", {0.342857,0.387439,0.435806,0.485714}, {8.571428,10.037715,16.865997,31.428572}},
 };
 
 // Decoder 调试跟踪配置

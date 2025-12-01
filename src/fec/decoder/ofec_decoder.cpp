@@ -1,11 +1,11 @@
 #include "newcode/ofec_decoder.hpp"
 #include "newcode/chase256.hpp" // 保留 Chase 头；本文档内有三参前向声明
-#include "newcode/bch_255_239.hpp"
 #include "newcode/ofec_decoder_hard.hpp"
 #include "newcode/decoder_core.hpp"
 #include "newcode/llr_utils.hpp"
 #include "newcode/decoder_api.hpp"
 #include "newcode/quantized_llr_dump.hpp"
+#include "common/lin_matrix_utils.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -25,91 +25,7 @@
 
 namespace newcode {
 
-template <typename LLR>
-static bool tile_should_early_stop(const Matrix<LLR>& lin_matrix)
-{
-  // 预期列数为 256 = 128(旧) + 111(新) + 16(BCH校验) + 1(整体奇偶)
-  const size_t rows = lin_matrix.rows();
-  const size_t cols = lin_matrix.cols();
-  if (cols < 256) return false; // 保守：尺寸异常则不早停
-
-  std::array<uint8_t, 255> hard255;
-  std::array<uint8_t, 255> decoded255;
-
-  for (size_t r = 0; r < rows; ++r)
-  {
-    for (int j = 0; j < 255; ++j) {
-      const float v = llr_to_float(lin_matrix[r][static_cast<size_t>(j)]);
-      hard255[static_cast<size_t>(j)] = (v < 0.0f) ? 1u : 0u;
-    }
-
-    if (!bch_255_239_decode_hiho_cw_255(hard255.data(), decoded255.data()))
-      return false;
-
-    uint8_t parity255 = 0u;
-    for (int j = 0; j < 255; ++j) parity255 ^= (hard255[static_cast<size_t>(j)] & 1u);
-    const uint8_t overall = (llr_to_float(lin_matrix[r][255]) < 0.0f) ? 1u : 0u;
-
-    if ((parity255 ^ overall) != 0u)
-      return false;
-  }
-
-  return true;
-}
-
 namespace {
-
-template <typename LLR, typename Enable = void>
-struct LinMatrixAdapter {
-  using core_type = LLR;
-
-  static core_type combine(const LLR& Lch, const LLR& La)
-  {
-    const float sum = llr_to_float(Lch) + llr_to_float(La);
-    return llr_from_float<core_type>(sum);
-  }
-
-  static core_type channel(const LLR& v)
-  {
-    return llr_from_float<core_type>(llr_to_float(v));
-  }
-};
-
-template <int NBITS, typename Store>
-struct LinMatrixAdapter<qfloat<NBITS, Store>> {
-  using core_type = float;
-
-  static core_type combine(const qfloat<NBITS, Store>& Lch,
-                           const qfloat<NBITS, Store>& La)
-  {
-    return static_cast<float>(Lch.code() + La.code());
-  }
-
-  static core_type channel(const qfloat<NBITS, Store>& v)
-  {
-    return static_cast<float>(v.code());
-  }
-};
-
-template <typename LLR, typename Enable = void>
-struct ExtrinsicQuantizer {
-  static float quantize(float value) { return value; }
-};
-
-template <int NBITS, typename Store>
-struct ExtrinsicQuantizer<qfloat<NBITS, Store>> {
-  static float quantize(float value)
-  {
-    int code = static_cast<int>(std::lrint(value));
-    const int lo = qfloat<NBITS, Store>::LO();
-    const int hi = qfloat<NBITS, Store>::HI();
-    if (code < lo) code = lo;
-    if (code > hi) code = hi;
-    qfloat<NBITS, Store> q;
-    q.set_code(code);
-    return llr_to_float(q);
-  }
-};
 
 template <typename LLR>
 using CoreFn = DecoderCoreResult<LLR> (*)(const Matrix<LLR>&,
@@ -346,9 +262,11 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
                   throw std::out_of_range("process_tile: old info position out of tile range.");
               }
               if (expected_bits &&
-                  (rr_global) < tx_llr_ref->rows() &&
-                  cc_global < tx_llr_ref->cols()) {
-                  const float v = (*tx_llr_ref)[rr_global][cc_global];
+                  rr_global >= 0 && cc_global >= 0 &&
+                  static_cast<size_t>(rr_global) < tx_llr_ref->rows() &&
+                  static_cast<size_t>(cc_global) < tx_llr_ref->cols()) {
+                  const float v = (*tx_llr_ref)[static_cast<size_t>(rr_global)]
+                                              [static_cast<size_t>(cc_global)];
                   (*expected_bits)[row_idx][static_cast<size_t>(k)] = (v < 0.0f) ? 1 : 0;
               }
           }
@@ -479,7 +397,7 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
           }
       }
   }
-  if(!use_hard_decode)
+  if(1)
   {
       // Apply global α scaling on extrinsic outputs (moved from Chase decoder).
       const std::size_t Rcnt = decoder_res.lout.rows();
@@ -531,21 +449,78 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
               const size_t Ct = static_cast<size_t>((k - N) / B);
               const size_t ct = static_cast<size_t>((k % B) ^ r);
               const size_t col = Ct * static_cast<size_t>(B) + ct;
-              tile_out[row_local][col] = llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+              const LLR prior_llr = tile_out[row_local][col];
+              const LLR extrinsic_llr =
+                  llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+              tile_out[row_local][col] = extrinsic_llr;
+
+              if (capture_last_tile_history && last_tile_history_accum) {
+                  const long rr_global = static_cast<long>(row_global);
+                  const long cc_global = static_cast<long>(col);
+                  if (rr_global >= 0 && cc_global >= 0) {
+                      const size_t rr_idx_global = static_cast<size_t>(rr_global);
+                      const size_t cc_idx_global = static_cast<size_t>(cc_global);
+                      if (rr_idx_global < last_tile_history_accum->rows() &&
+                          cc_idx_global < last_tile_history_accum->cols()) {
+                          const CoreLLR combined =
+                              Adapter::combine(extrinsic_llr, prior_llr);
+                          (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
+                              core_to_float(combined);
+                      }
+                  }
+              }
           }
           for (int j = 0; j < BCH_PAR; ++j) {
               const int k = K + j;
               const size_t Ct = static_cast<size_t>((k - N) / B);
               const size_t ct = static_cast<size_t>((k % B) ^ r);
               const size_t col = Ct * static_cast<size_t>(B) + ct;
-              tile_out[row_local][col] = llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+              const LLR prior_llr = tile_out[row_local][col];
+              const LLR extrinsic_llr =
+                  llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+              tile_out[row_local][col] = extrinsic_llr;
+
+              if (capture_last_tile_history && last_tile_history_accum) {
+                  const long rr_global = static_cast<long>(row_global);
+                  const long cc_global = static_cast<long>(col);
+                  if (rr_global >= 0 && cc_global >= 0) {
+                      const size_t rr_idx_global = static_cast<size_t>(rr_global);
+                      const size_t cc_idx_global = static_cast<size_t>(cc_global);
+                      if (rr_idx_global < last_tile_history_accum->rows() &&
+                          cc_idx_global < last_tile_history_accum->cols()) {
+                          const CoreLLR combined =
+                              Adapter::combine(extrinsic_llr, prior_llr);
+                          (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
+                              core_to_float(combined);
+                      }
+                  }
+              }
           }
           {
               const int k = OVR_IDX;
               const size_t Ct = static_cast<size_t>((k - N) / B);
               const size_t ct = static_cast<size_t>((k % B) ^ r);
               const size_t col = Ct * static_cast<size_t>(B) + ct;
-              tile_out[row_local][col] = llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+              const LLR prior_llr = tile_out[row_local][col];
+              const LLR extrinsic_llr =
+                  llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+              tile_out[row_local][col] = extrinsic_llr;
+
+              if (capture_last_tile_history && last_tile_history_accum) {
+                  const long rr_global = static_cast<long>(row_global);
+                  const long cc_global = static_cast<long>(col);
+                  if (rr_global >= 0 && cc_global >= 0) {
+                      const size_t rr_idx_global = static_cast<size_t>(rr_global);
+                      const size_t cc_idx_global = static_cast<size_t>(cc_global);
+                      if (rr_idx_global < last_tile_history_accum->rows() &&
+                          cc_idx_global < last_tile_history_accum->cols()) {
+                          const CoreLLR combined =
+                              Adapter::combine(extrinsic_llr, prior_llr);
+                          (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
+                              core_to_float(combined);
+                      }
+                  }
+              }
           }
 
           const long R = static_cast<long>(row_global / static_cast<size_t>(B));
@@ -626,9 +601,24 @@ void process_window_impl(Matrix<LLR>& work_llr,
   const size_t N = Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM;
   static size_t chase_invocation_counter = 0;
 
+  auto pick_float = [](const std::vector<float>& tbl, size_t idx, float fallback) -> float {
+      return (idx < tbl.size()) ? tbl[idx] : fallback;
+  };
+  auto pick_int = [](const std::vector<int>& tbl, size_t idx, int fallback) -> int {
+      return (idx < tbl.size()) ? tbl[idx] : fallback;
+  };
+  std::vector<bool> hard_tile_mask(TILES_PER_WIN);
+  int last_soft_tile_idx = -1;
+  for (size_t t = 0; t < TILES_PER_WIN; ++t) {
+      const bool is_hard = pick_int(p.HARD_TILE_LIST, t, p.HARD_DECODE_DEFAULT ? 1 : 0) != 0;
+      hard_tile_mask[t] = is_hard;
+      if (!is_hard) {
+          last_soft_tile_idx = static_cast<int>(t);
+      }
+  }
+
   for (size_t t = 0; t < TILES_PER_WIN; ++t)
   {
-        const bool is_last_tile = (t + 1 == TILES_PER_WIN);
         const size_t tile_bottom_row = win_end  - t * tile_stride_rows;
         const size_t tile_top_row    = tile_bottom_row + 1 - tile_height_rows;
 
@@ -636,19 +626,24 @@ void process_window_impl(Matrix<LLR>& work_llr,
         Matrix<LLR> tile_in(tile_height_rows_actual, N);
         Matrix<LLR> ch_tile(tile_height_rows_actual, N);
 
+        const bool use_hard = hard_tile_mask[t];
+        const bool use_history_input =
+            use_hard && last_tile_history_accum &&
+            last_soft_tile_idx >= 0 &&
+            static_cast<int>(t) > last_soft_tile_idx;
+
         for (size_t r = 0; r < tile_height_rows_actual; ++r) {
             for (size_t c = 0; c < N; ++c) {
-                tile_in[r][c]  = work_llr[tile_top_row + r][c];
-                ch_tile[r][c]  = channel_llr[tile_top_row + r][c];
+                const size_t global_row = tile_top_row + r;
+                if (use_history_input) {
+                    const float hist = (*last_tile_history_accum)[global_row][c];
+                    tile_in[r][c] = llr_from_float<LLR>(hist);
+                } else {
+                    tile_in[r][c]  = work_llr[global_row][c];
+                }
+                ch_tile[r][c]  = channel_llr[global_row][c];
             }
         }
-
-        auto pick_float = [](const std::vector<float>& tbl, size_t idx, float fallback) -> float {
-            return (idx < tbl.size()) ? tbl[idx] : fallback;
-        };
-        auto pick_int = [](const std::vector<int>& tbl, size_t idx, int fallback) -> int {
-            return (idx < tbl.size()) ? tbl[idx] : fallback;
-        };
 
         Params tile_params = p;
         tile_params.beta = pick_float(p.beta_list, t, p.beta);
@@ -657,7 +652,9 @@ void process_window_impl(Matrix<LLR>& work_llr,
         tile_params.debug_trace.chase_invocation =
             static_cast<int>(++chase_invocation_counter);
 
-    const bool use_hard = pick_int(p.HARD_TILE_LIST, t, p.HARD_DECODE_DEFAULT ? 1 : 0) != 0;
+        const bool capture_history =
+            last_tile_history_accum &&
+            (use_hard || static_cast<int>(t) == last_soft_tile_idx);
 
         TileProcessResult<LLR> tile_result = process_tile_impl<LLR>(tile_in, ch_tile, tile_params,
                                                                 /*tile_top_row_global=*/tile_top_row,
@@ -666,7 +663,7 @@ void process_window_impl(Matrix<LLR>& work_llr,
                                                                 tx_llr_ref,
                                                                 core_fn,
                                                                 last_tile_history_accum,
-                                                                (last_tile_history_accum && is_last_tile));
+                                                                capture_history);
 
     if (tile_stats && t < tile_stats->size()) {
       auto& counter = (*tile_stats)[t];
@@ -721,8 +718,8 @@ Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
   const size_t POP_PUSH_ROWS    = p.pop_push_rows();
   const size_t TILES_PER_WIN    = p.TILES_PER_WIN;
 
+  
   Matrix<LLR> channel_llr = llr_mat;
-
   Matrix<LLR> work_llr(RROWS, N);
   for (size_t r = 0; r < RROWS; ++r)
       for (size_t c = 0; c < N; ++c)

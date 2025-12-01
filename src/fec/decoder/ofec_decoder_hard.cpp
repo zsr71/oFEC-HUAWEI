@@ -41,7 +41,7 @@ bool perform_hard_decode(const std::array<LLR, 256>& Lin256,
   for (int i = 0; i < static_cast<int>(Params::BCH_N); ++i) {
     const float sign = cw[static_cast<size_t>(i)] ? -1.f : 1.f;
     const float Lpost = sign * hard_mag;
-    const float Lch = llr_to_float(Lch256[static_cast<size_t>(i)]);
+    const float Lch = llr_to_float(Lin256[static_cast<size_t>(i)]);
     Y2[static_cast<size_t>(i)] = Lpost - Lch;
   }
 
