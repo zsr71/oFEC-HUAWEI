@@ -199,7 +199,7 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
 
   const size_t rows_to_decode = static_cast<size_t>(SBR) * static_cast<size_t>(B);
   if (rows_to_decode == 0) {
-      return TileProcessResult<LLR>{tile_out, false};
+      return TileProcessResult<LLR>{tile_out, false, 0, 0};
   }
 
   const size_t decoder_cols = static_cast<size_t>(2 * N); // 256
@@ -347,7 +347,8 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
     params_for_core.debug_trace.chase_decoder_col = -1;
   }
 
-  bool early_stop_triggered = tile_should_early_stop(lin_matrix);
+  TileEarlyStopResult early_stop_stats = tile_early_stop_stats(lin_matrix);
+  bool early_stop_triggered = early_stop_stats.all_rows_passed;
 
   auto decoder_res = core_fn(lin_matrix, lch_matrix, use_hard_decode, params_for_core);
 
@@ -577,7 +578,11 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
       }
   }
 
-  return TileProcessResult<LLR>{std::move(tile_out), early_stop_triggered};
+  return TileProcessResult<LLR>{
+      std::move(tile_out),
+      early_stop_triggered,
+      early_stop_stats.rows_passed,
+      early_stop_stats.rows_total};
 }
 
 template <typename LLR>
@@ -656,7 +661,7 @@ void process_window_impl(Matrix<LLR>& work_llr,
             last_tile_history_accum &&
             (use_hard || static_cast<int>(t) == last_soft_tile_idx);
 
-        TileProcessResult<LLR> tile_result = process_tile_impl<LLR>(tile_in, ch_tile, tile_params,
+    TileProcessResult<LLR> tile_result = process_tile_impl<LLR>(tile_in, ch_tile, tile_params,
                                                                 /*tile_top_row_global=*/tile_top_row,
                                                                 /*use_hard_decode=*/use_hard,
                                                                 /*normalize_extrinsic=*/normalize_extrinsic,
@@ -671,6 +676,8 @@ void process_window_impl(Matrix<LLR>& work_llr,
       if (tile_result.early_stop_triggered) {
         counter.triggered += 1;
       }
+      counter.row_total += tile_result.rows_total;
+      counter.row_triggered += tile_result.rows_early_stop;
     }
 
     for (size_t r = 0; r < tile_height_rows_actual; ++r) {

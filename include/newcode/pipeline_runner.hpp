@@ -17,9 +17,9 @@ struct PipelineConfig {
   unsigned bits_per_symbol = 2;
   bool quiet = false;
   bool dump_quantized_llr = false;           // 打开时保存量化后的 LLR（便于画直方图）
-  std::string quantized_llr_output_path;     // 输出路径（为空则由调用方决定）
+  std::string quantized_llr_output_path;     // 输出路径（为空则由调用方确定）
   bool dump_work_llr = false;                // 是否保存 decoder 工作矩阵 work_llr
-  std::string work_llr_output_path;          // work_llr 输出路径（为空则由调用方决定）
+  std::string work_llr_output_path;          // work_llr 输出路径（为空则由调用方确定）
 };
 
 struct PipelineResult {
@@ -29,9 +29,10 @@ struct PipelineResult {
   std::vector<std::size_t> pre_fec_error_positions;
   std::vector<std::size_t> post_fec_error_positions;
   std::vector<double> tile_early_stop_pct;
-  std::string dequantized_llr_path; // 量化后反量化的 LLR 保存位置
-  std::string float_llr_path;       // 量化前 LLR 的保存位置
-  std::string quantized_codes_path; // 量化码值保存位置
+  std::vector<double> tile_row_early_stop_pct;
+  std::string dequantized_llr_path; // 反量化后的 LLR 保存位置
+  std::string float_llr_path;       // 解调 float LLR 的保存位置
+  std::string quantized_codes_path; // 量化码字的保存位置
 };
 
 inline constexpr float DEFAULT_EBN0_DB = 3.24f;

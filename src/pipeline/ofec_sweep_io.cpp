@@ -52,7 +52,7 @@ void ensure_csv_header(const std::string& csv_path) {
   fout << "timestamp,run_id,scenario,alpha_start,alpha_step,beta_start,beta_step,"
           "chase_L,chase_n_test,bitgen_seed,channel_seed,ebn0_db,ALPHA_LIST,beta_list,"
           "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
-          "early_stop_mean_pct,early_stop_list\n";
+          "early_stop_mean_pct,early_stop_row_mean_pct,early_stop_list,early_stop_row_list\n";
 }
 
 void ensure_csv_header_v2(const std::string& csv_path) {
@@ -66,7 +66,7 @@ void ensure_csv_header_v2(const std::string& csv_path) {
           "alpha_low,alpha_high,gamma_alpha,beta_low,beta_high,gamma_beta,"
           "chase_L,chase_n_test,bitgen_seed,channel_seed,ebn0_db,"
           "alpha_list,beta_list,pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
-          "early_stop_list\n";
+          "early_stop_list,early_stop_row_list\n";
 }
 
 std::string join_vec(const std::vector<float>& values, char sep, int precision) {
@@ -119,6 +119,7 @@ void write_csv_row(std::ostream& csv,
     const float alpha_step = infer_step(scenario.alpha_list);
     const float beta_step = infer_step(scenario.beta_list);
     const double es_mean = mean(result.tile_early_stop_pct);
+    const double es_row_mean = mean(result.tile_row_early_stop_pct);
     csv << timestamp << ","
         << run_id << ","
         << scenario.name << ","
@@ -146,7 +147,14 @@ void write_csv_row(std::ostream& csv,
       csv << std::setprecision(3) << es_mean << ",";
       csv.precision(prev_prec);
     }
-    csv << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\"\n";
+    if (std::isnan(es_row_mean)) {
+      csv << ",";
+    } else {
+      csv << std::setprecision(3) << es_row_mean << ",";
+      csv.precision(prev_prec);
+    }
+    csv << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\","
+        << '"' << join_vec(result.tile_row_early_stop_pct, '|', 1) << "\"\n";
   } else {
     csv << timestamp << ","
         << run_id << ","
@@ -172,7 +180,8 @@ void write_csv_row(std::ostream& csv,
         << std::setprecision(10) << result.post_fec.ber << ","
         << result.post_fec.errors << ","
         << result.post_fec.total << ","
-        << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\"\n";
+        << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\","
+        << '"' << join_vec(result.tile_row_early_stop_pct, '|', 1) << "\"\n";
     csv.precision(prev_prec);
   }
 }

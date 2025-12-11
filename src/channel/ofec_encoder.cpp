@@ -130,7 +130,7 @@ Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const Params& p)
         for (uint8_t b : msg239)     overall ^= (b & 1u);
         for (uint8_t pbit : parity16) overall ^= (pbit & 1u);
 
-        // (4) 写回 V（与 MATLAB 完全一致的寻址）
+        // (4) 写回 V
         // 128..238 : 111 系统位
         for (int kk = 0; kk < TAKE_BITS; ++kk)
             write_right_to_mat(R, r, N + kk, right111[static_cast<size_t>(kk)]);

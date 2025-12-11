@@ -312,6 +312,7 @@ int run_sweep(const SweepParameterConfig& config) {
   std::size_t best_index = static_cast<std::size_t>(-1);
   newcode::PipelineResult best_result{};
   std::vector<double> best_tile_early_stop_pct;
+  std::vector<double> best_tile_row_early_stop_pct;
   float best_alpha_start = 0.0f;
   float best_alpha_step = 0.0f;
   float best_beta_start = 0.0f;
@@ -330,6 +331,15 @@ int run_sweep(const SweepParameterConfig& config) {
       for (size_t i = 0; i < result.tile_early_stop_pct.size(); ++i) {
         out << result.tile_early_stop_pct[i]
             << (i + 1 < result.tile_early_stop_pct.size() ? ", " : "\n");
+      }
+      out << std::defaultfloat;
+    }
+    if (!result.tile_row_early_stop_pct.empty()) {
+      out << "[INFO] " << pack.name << " tile row-early-stop hit rates (%): ";
+      out << std::fixed << std::setprecision(1);
+      for (size_t i = 0; i < result.tile_row_early_stop_pct.size(); ++i) {
+        out << result.tile_row_early_stop_pct[i]
+            << (i + 1 < result.tile_row_early_stop_pct.size() ? ", " : "\n");
       }
       out << std::defaultfloat;
     }
@@ -355,6 +365,11 @@ int run_sweep(const SweepParameterConfig& config) {
               << detail::join_vec(result.tile_early_stop_pct, ',', 1)
               << "]";
     }
+    if (!result.tile_row_early_stop_pct.empty()) {
+      summary << " | EarlyStopRow%=["
+              << detail::join_vec(result.tile_row_early_stop_pct, ',', 1)
+              << "]";
+    }
     scenario_summaries.push_back(summary.str());
     out << summary.str() << "\n";
 
@@ -372,6 +387,7 @@ int run_sweep(const SweepParameterConfig& config) {
       best_index = pack.idx;
       best_result = result;
       best_tile_early_stop_pct = result.tile_early_stop_pct;
+      best_tile_row_early_stop_pct = result.tile_row_early_stop_pct;
       best_alpha_start = pack.alpha_start;
       best_alpha_step = pack.alpha_step;
       best_beta_start = pack.beta_start;
@@ -416,6 +432,15 @@ int run_sweep(const SweepParameterConfig& config) {
     for (size_t i = 0; i < best_tile_early_stop_pct.size(); ++i) {
       out << best_tile_early_stop_pct[i]
           << (i + 1 < best_tile_early_stop_pct.size() ? ", " : "\n");
+    }
+    out << std::defaultfloat;
+  }
+  if (!best_tile_row_early_stop_pct.empty()) {
+    out << "[RESULT] Best tile row-early-stop hit rates (%): ";
+    out << std::fixed << std::setprecision(1);
+    for (size_t i = 0; i < best_tile_row_early_stop_pct.size(); ++i) {
+      out << best_tile_row_early_stop_pct[i]
+          << (i + 1 < best_tile_row_early_stop_pct.size() ? ", " : "\n");
     }
     out << std::defaultfloat;
   }

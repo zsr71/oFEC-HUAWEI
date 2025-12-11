@@ -84,6 +84,19 @@ void log_pipeline_results(const newcode::PipelineResult& result,
     log << "[RESULT] EarlyStop hit rates (%): "
         << oss.str() << "\n";
   }
+  if (!result.tile_row_early_stop_pct.empty()) {
+    std::ostringstream oss;
+    oss.setf(std::ios::fixed);
+    oss << std::setprecision(1);
+    for (std::size_t i = 0; i < result.tile_row_early_stop_pct.size(); ++i) {
+      oss << result.tile_row_early_stop_pct[i];
+      if (i + 1 < result.tile_row_early_stop_pct.size()) {
+        oss << ", ";
+      }
+    }
+    log << "[RESULT] EarlyStop (per-row) hit rates (%): "
+        << oss.str() << "\n";
+  }
 
   if (!result.dequantized_llr_path.empty()) {
     log << "[INFO] Dequantized LLR saved to " << result.dequantized_llr_path << "\n";

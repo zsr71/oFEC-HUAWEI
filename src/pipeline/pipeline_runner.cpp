@@ -61,6 +61,21 @@ std::vector<double> compute_early_stop_percentages(const std::vector<TileEarlySt
   return pct;
 }
 
+std::vector<double> compute_row_early_stop_percentages(const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::vector<double> pct;
+  pct.reserve(counters.size());
+  for (const auto& counter : counters) {
+    double value = 0.0;
+    if (counter.row_total > 0) {
+      value = static_cast<double>(counter.row_triggered) /
+              static_cast<double>(counter.row_total) * 100.0;
+    }
+    pct.push_back(value);
+  }
+  return pct;
+}
+
 // Flatten an encoded matrix (row-major) to a 0/1 bitstream.
 std::vector<uint8_t> flatten_row_major(const Matrix<uint8_t>& matrix)
 {
@@ -277,6 +292,7 @@ PipelineResult run_pipeline(const Params& params,
   result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(),
                                           params, &result.post_fec_error_positions, config.quiet);
   result.tile_early_stop_pct = compute_early_stop_percentages(decode_result.tile_stats);
+  result.tile_row_early_stop_pct = compute_row_early_stop_percentages(decode_result.tile_stats);
   result.dequantized_llr_path = decode_result.dequantized_llr_path;
   result.float_llr_path = decode_result.float_llr_path;
   result.quantized_codes_path = decode_result.quantized_codes_path;

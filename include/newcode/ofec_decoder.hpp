@@ -11,12 +11,16 @@ namespace newcode {
 struct TileEarlyStopCounter {
   std::size_t triggered = 0;
   std::size_t total = 0;
+  std::size_t row_triggered = 0;
+  std::size_t row_total = 0;
 };
 
 template <typename LLR>
 struct TileProcessResult {
   Matrix<LLR> tile_out;
   bool early_stop_triggered = false;
+  std::size_t rows_early_stop = 0;
+  std::size_t rows_total = 0;
 };
 
 // 顶层解码（plain / ebchPF 两个变体分别导出）
