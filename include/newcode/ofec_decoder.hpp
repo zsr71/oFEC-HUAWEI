@@ -24,6 +24,7 @@ struct TileProcessResult {
 };
 
 // 顶层解码（plain / ebchPF 两个变体分别导出）
+<<<<<<< Updated upstream
 template <typename LLR>
 Matrix<LLR> ofec_decode_llr_plain(const Matrix<LLR>& llr_mat, const Params& p,
                                   std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
@@ -31,6 +32,15 @@ Matrix<LLR> ofec_decode_llr_plain(const Matrix<LLR>& llr_mat, const Params& p,
                                   const Matrix<float>* tx_llr_ref = nullptr);
 
 template <typename LLR>
+=======
+template <typename LLR>
+Matrix<LLR> ofec_decode_llr_plain(const Matrix<LLR>& llr_mat, const Params& p,
+                                  std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
+                                  bool normalize_extrinsic = true,
+                                  const Matrix<float>* tx_llr_ref = nullptr);
+
+template <typename LLR>
+>>>>>>> Stashed changes
 Matrix<LLR> ofec_decode_llr_ebchPF(const Matrix<LLR>& llr_mat, const Params& p,
                                    std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
                                    bool normalize_extrinsic = true,
@@ -104,35 +114,49 @@ inline TileProcessResult<LLR> process_tile(const Matrix<LLR>& tile_in,
 // ===== extern template（减少重复实例化）=====
 // 基础类型
 extern template Matrix<float>  ofec_decode_llr_plain<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*);
+<<<<<<< Updated upstream
 extern template Matrix<int8_t> ofec_decode_llr_plain<int8_t>(const Matrix<int8_t>&, const Params&, std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*);
 
 extern template Matrix<float>  ofec_decode_llr_ebchPF<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*);
 extern template Matrix<int8_t> ofec_decode_llr_ebchPF<int8_t>(const Matrix<int8_t>&, const Params&, std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*);
+=======
+
+extern template Matrix<float>  ofec_decode_llr_ebchPF<float >(const Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*);
+>>>>>>> Stashed changes
 
 extern template void process_window_plain<float >(Matrix<float>&,  const Matrix<float>&,
                                                   std::size_t, std::size_t, const Params&,
                                                   std::size_t, std::size_t, std::size_t,
                                                   std::vector<TileEarlyStopCounter>*, bool,
                                                   const Matrix<float>*);
+<<<<<<< Updated upstream
 extern template void process_window_plain<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&,
                                                   std::size_t, std::size_t, const Params&,
                                                   std::size_t, std::size_t, std::size_t,
                                                   std::vector<TileEarlyStopCounter>*, bool,
                                                   const Matrix<float>*);
+=======
+
+>>>>>>> Stashed changes
 extern template void process_window_ebchPF<float >(Matrix<float>&,  const Matrix<float>&,
                                                   std::size_t, std::size_t, const Params&,
                                                   std::size_t, std::size_t, std::size_t,
                                                   std::vector<TileEarlyStopCounter>*, bool,
                                                   const Matrix<float>*);
+<<<<<<< Updated upstream
 extern template void process_window_ebchPF<int8_t>(Matrix<int8_t>&, const Matrix<int8_t>&,
                                                   std::size_t, std::size_t, const Params&,
                                                   std::size_t, std::size_t, std::size_t,
                                                   std::vector<TileEarlyStopCounter>*, bool,
                                                   const Matrix<float>*);
+=======
+
+>>>>>>> Stashed changes
 
 extern template TileProcessResult<float>  process_tile_plain<float >(const Matrix<float>&,  const Matrix<float>&,
                                                                      const Params&, std::size_t, bool, bool,
                                                                      const Matrix<float>*);
+<<<<<<< Updated upstream
 extern template TileProcessResult<int8_t> process_tile_plain<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&,
                                                                      const Params&, std::size_t, bool, bool,
                                                                      const Matrix<float>*);
@@ -142,6 +166,13 @@ extern template TileProcessResult<float>  process_tile_ebchPF<float >(const Matr
 extern template TileProcessResult<int8_t> process_tile_ebchPF<int8_t>(const Matrix<int8_t>&, const Matrix<int8_t>&,
                                                                       const Params&, std::size_t, bool, bool,
                                                                       const Matrix<float>*);
+=======
+
+extern template TileProcessResult<float>  process_tile_ebchPF<float >(const Matrix<float>&,  const Matrix<float>&,
+                                                                      const Params&, std::size_t, bool, bool,
+                                                                      const Matrix<float>*);
+
+>>>>>>> Stashed changes
 
 // qfloat 量化类型（按需开启）
 extern template Matrix<newcode::qfloat<4>> ofec_decode_llr_plain<newcode::qfloat<4>>(const Matrix<newcode::qfloat<4>>&,

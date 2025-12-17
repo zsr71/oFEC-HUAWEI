@@ -30,9 +30,13 @@ void chase_decode_256_ebchPF(const LLR* Y256,
 
 // 显式实例化（与你项目中常用 LLR 类型对齐）
 extern template void chase_decode_256_plain<float >(const float*,  const float*,  float*,  const Params&);
+<<<<<<< Updated upstream
 extern template void chase_decode_256_plain<int8_t>(const int8_t*, const int8_t*, float*, const Params&);
 extern template void chase_decode_256_plain<float >(const float*,  float*,  const Params&);
 extern template void chase_decode_256_plain<int8_t>(const int8_t*, float*, const Params&);
+=======
+extern template void chase_decode_256_plain<float >(const float*,  float*,  const Params&);
+>>>>>>> Stashed changes
 
 #define DECLARE_CHASE256_QFLOAT(N) \
 extern template void chase_decode_256_plain<qfloat<N>>(const qfloat<N>*, const qfloat<N>*, float*, const Params&); \
@@ -58,8 +62,12 @@ DECLARE_CHASE256_QFLOAT(15)
 #undef DECLARE_CHASE256_QFLOAT
 
 extern template void chase_decode_256_ebchPF<float >(const float*,  const float*,  float*,  const Params&);
+<<<<<<< Updated upstream
 extern template void chase_decode_256_ebchPF<int8_t>(const int8_t*, const int8_t*, float*, const Params&);
 extern template void chase_decode_256_ebchPF<float >(const float*,  float*,  const Params&);
 extern template void chase_decode_256_ebchPF<int8_t>(const int8_t*, float*, const Params&);
+=======
+extern template void chase_decode_256_ebchPF<float >(const float*,  float*,  const Params&);
+>>>>>>> Stashed changes
 
 } // namespace newcode
