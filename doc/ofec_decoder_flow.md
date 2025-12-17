@@ -1,6 +1,6 @@
 # oFEC 解码整体流程说明
 
-本节总结 `src/ofec_decoder.cpp` 与 `src/decoder_core.cpp` 中的关键步骤，展示窗口化 oFEC 解码的输入、调度及输出组合方式。
+本节总结 `src/rx/ofec/decoder/ofec_frame_decode.cpp` 与 `src/rx/ofec/decoder/ofec_row_decoder_core.cpp` 中的关键步骤，展示窗口化 oFEC 解码的输入、调度及输出组合方式。
 
 ## 1. 输入矩阵与先验处理
 

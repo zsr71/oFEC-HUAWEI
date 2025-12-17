@@ -52,11 +52,11 @@ endif()
 
 # 共享译码核心（plain / ebchPF 共用）
 set(DECODER_SHARED_SRCS
-  src/rx/ofec/decoder/decoder_core.cpp
-  src/rx/ofec/decoder/ofec_tile.cpp
-  src/rx/ofec/decoder/ofec_window.cpp
-  src/rx/ofec/decoder/ofec_decode.cpp
-  src/rx/ofec/decoder/ofec_decoder_hard.cpp
+  src/rx/ofec/decoder/ofec_row_decoder_core.cpp
+  src/rx/ofec/decoder/ofec_tile_process.cpp
+  src/rx/ofec/decoder/ofec_window_process.cpp
+  src/rx/ofec/decoder/ofec_frame_decode.cpp
+  src/rx/ofec/decoder/ofec_hard_decode_bch.cpp
 )
 
 # ==============================
