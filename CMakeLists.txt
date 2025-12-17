@@ -51,13 +51,9 @@ endif()
 set(DECODER_SHARED_SRCS
   src/fec/decoder/decoder_core.cpp
   src/extract/llr_to_bit.cpp
-<<<<<<< Updated upstream
-  src/fec/decoder/ofec_decoder.cpp
-=======
   src/fec/decoder/ofec_tile.cpp
   src/fec/decoder/ofec_window.cpp
   src/fec/decoder/ofec_decode.cpp
->>>>>>> Stashed changes
   src/fec/decoder/ofec_decoder_hard.cpp
 )
 
