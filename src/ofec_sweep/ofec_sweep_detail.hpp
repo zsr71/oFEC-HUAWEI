@@ -1,8 +1,6 @@
 #pragma once
 
-#include <chrono>
 #include <condition_variable>
-#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <ostream>
@@ -87,8 +85,6 @@ class Semaphore {
   std::size_t count_;
 };
 
-std::string now_stamp();
-void ensure_dir(const std::filesystem::path& path);
 void ensure_csv_header(const std::string& csv_path);
 void ensure_csv_header_v2(const std::string& csv_path);
 

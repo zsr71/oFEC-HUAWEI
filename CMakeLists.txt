@@ -82,6 +82,7 @@ add_library(newcode_frontend STATIC
   ${RX_BER_SRCS}
 )
 target_include_directories(newcode_frontend PUBLIC ${NEWCODE_INCLUDE})
+target_include_directories(newcode_frontend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/ofec_sweep)
 target_link_libraries(newcode_frontend PUBLIC Threads::Threads)
 
 # ------- Compatibility fallbacks（临时兜底，便于平滑迁移）-------
@@ -146,7 +147,6 @@ target_link_libraries(ofec_app_interleaved
 add_executable(ofec_single
   apps/ofec_single.cpp
   src/ofec_single/ofec_single_dual_writer.cpp
-  src/ofec_single/ofec_single_logging.cpp
   src/ofec_single/ofec_single_params.cpp
   src/ofec_single/ofec_single_summary.cpp
   src/ofec_single/ofec_single_runner.cpp

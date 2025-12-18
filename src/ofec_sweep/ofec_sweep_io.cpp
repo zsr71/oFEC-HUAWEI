@@ -4,7 +4,6 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
-#include <system_error>
 
 namespace ofec_sweep {
 namespace detail {
@@ -21,25 +20,6 @@ DualOut& DualOut::operator<<(std::ostream& (*pf)(std::ostream&)) {
     pf(file_);
   }
   return *this;
-}
-
-std::string now_stamp() {
-  using clock = std::chrono::system_clock;
-  const auto t = clock::to_time_t(clock::now());
-  std::tm tm{};
-#ifdef _WIN32
-  localtime_s(&tm, &t);
-#else
-  localtime_r(&t, &tm);
-#endif
-  std::ostringstream oss;
-  oss << std::put_time(&tm, "%Y%m%d-%H%M%S");
-  return oss.str();
-}
-
-void ensure_dir(const std::filesystem::path& path) {
-  std::error_code ec;
-  std::filesystem::create_directories(path, ec);
 }
 
 void ensure_csv_header(const std::string& csv_path) {

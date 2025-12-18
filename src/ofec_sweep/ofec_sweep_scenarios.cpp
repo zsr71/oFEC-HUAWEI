@@ -3,69 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
-#include <random>
 #include <sstream>
-#include <unordered_set>
 
 namespace ofec_sweep {
 namespace detail {
-
-std::vector<float> generate_sequence(float start, float step, std::size_t length) {
-  std::vector<float> seq(length, start);
-  for (std::size_t i = 0; i < length; ++i) {
-    seq[i] = start + step * static_cast<float>(i);
-  }
-  return seq;
-}
-
-float infer_step(const std::vector<float>& values) {
-  return values.size() >= 2 ? values[1] - values[0] : 0.0f;
-}
-
-std::vector<int> generate_random_seeds(int count) {
-  std::vector<int> seeds;
-  if (count <= 0) {
-    return seeds;
-  }
-
-  std::random_device rd;
-  std::mt19937 rng(rd());
-  std::uniform_int_distribution<int> dist(1, std::numeric_limits<int>::max());
-  std::unordered_set<int> seen;
-  seen.reserve(static_cast<std::size_t>(count));
-  seeds.reserve(static_cast<std::size_t>(count));
-
-  while (seeds.size() < static_cast<std::size_t>(count)) {
-    int candidate = dist(rng);
-    if (seen.insert(candidate).second) {
-      seeds.push_back(candidate);
-    }
-  }
-  return seeds;
-}
-
-std::vector<float> build_ebn0_values(const SweepParameterConfig& config) {
-  if (!config.ebn0_candidates.empty()) {
-    return config.ebn0_candidates;
-  }
-
-  if (config.ebn0_points <= 0) {
-    return {newcode::DEFAULT_EBN0_DB};
-  }
-
-  if (config.ebn0_points == 1) {
-    return {config.ebn0_start};
-  }
-
-  std::vector<float> values;
-  values.reserve(static_cast<std::size_t>(config.ebn0_points));
-  const float step = (config.ebn0_end - config.ebn0_start) /
-                     static_cast<float>(config.ebn0_points - 1);
-  for (int i = 0; i < config.ebn0_points; ++i) {
-    values.push_back(config.ebn0_start + step * static_cast<float>(i));
-  }
-  return values;
-}
 
 newcode::PipelineConfig make_pipeline_config(const SweepParameterConfig& config) {
   newcode::PipelineConfig cfg;
