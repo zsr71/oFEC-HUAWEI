@@ -24,6 +24,8 @@ bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255,
                                     uint8_t* out255,
                                     int* corrected_errors = nullptr);
 
+bool bch_255_239_syndromes_zero_cw_255(const uint8_t* in255);
+
 // 便捷封装：若你传 256 位（丢弃第 256 位整体奇偶），对前 255 位译码
 inline bool bch_255_239_decode_hiho_cw_256(const uint8_t* in256,
                                            uint8_t* out255,

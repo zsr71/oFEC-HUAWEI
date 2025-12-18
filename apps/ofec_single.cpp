@@ -12,7 +12,7 @@ static constexpr int         kBitgenSeed        = 115988;    // 比特生成随�
 static constexpr bool        kGenerateRandomBits = true;             // true=随机比特，false=全 0
 
 //信道相关参数
-static constexpr float       kEbN0_db           = 3.07f;        // 信道 Eb/N0 (dB)
+static constexpr float       kEbN0_db           = 4.17f;        // 信道 Eb/N0 (dB)
 static constexpr int         kChannelSeed       = 1481898;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 

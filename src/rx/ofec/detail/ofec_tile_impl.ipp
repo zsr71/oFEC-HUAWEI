@@ -28,7 +28,8 @@ template <typename LLR>
 using CoreFn = DecoderCoreResult<LLR> (*)(const Matrix<LLR>&,
                                           const Matrix<LLR>&,
                                           bool,
-                                          const Params&);
+                                          const Params&,
+                                          const std::vector<bool>* early_stop_row_flags);
 
 } // namespace detail
 } // namespace newcode
@@ -80,7 +81,12 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
   TileEarlyStopResult early_stop_stats = tile_early_stop_stats(prep.lin_matrix);
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
 
-  auto decoder_res = decode_tile<LLR>(prep, use_hard_decode, normalize_extrinsic, p, core_fn);
+  auto decoder_res = decode_tile<LLR>(prep,
+                                      use_hard_decode,
+                                      normalize_extrinsic,
+                                      p,
+                                      &early_stop_stats.row_passed_flags,
+                                      core_fn);
 
   writeback_tile(prep,
                  decoder_res,

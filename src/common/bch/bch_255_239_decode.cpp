@@ -154,4 +154,11 @@ bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255,
     return ok;
 }
 
+bool bch_255_239_syndromes_zero_cw_255(const uint8_t* in255)
+{
+    uint8_t S[4];
+    compute_syndromes_1_4(in255, S);
+    return ((S[0] | S[1] | S[2] | S[3]) == 0);
+}
+
 } // namespace newcode

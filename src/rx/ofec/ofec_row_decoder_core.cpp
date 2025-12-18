@@ -17,7 +17,8 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const Matrix<LLR>& lin_matrix,
                                          const Matrix<LLR>& lch_matrix,
                                          bool use_hard_decode,
                                          const Params& p,
-                                         ChaseFn<LLR> chase_fn)
+                                         ChaseFn<LLR> chase_fn,
+                                         const std::vector<bool>* early_stop_row_flags)
 {
   const size_t rows = lin_matrix.rows();
   const size_t cols = lin_matrix.cols();
@@ -75,6 +76,12 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const Matrix<LLR>& lin_matrix,
     if (use_hard_decode) {
       produced = perform_hard_decode<LLR>(LinVec, LchVec, Y2, p);
     } else {
+      if (early_stop_row_flags &&
+          row < early_stop_row_flags->size() &&
+          (*early_stop_row_flags)[row]) {
+        //produced = false;
+        //continue;
+      }
       chase_fn(LinVec.data(), LchVec.data(), Y2.data(), row_params);
       produced = true;
     }
@@ -96,45 +103,55 @@ template<typename LLR>
 DecoderCoreResult<LLR> Decoder_Core_plain(const Matrix<LLR>& lin_matrix,
                                           const Matrix<LLR>& lch_matrix,
                                           bool use_hard_decode,
-                                          const Params& p)
+                                          const Params& p,
+                                          const std::vector<bool>* early_stop_row_flags)
 {
   return Decoder_Core_impl(lin_matrix, lch_matrix, use_hard_decode, p,
-                           &chase_decode_256_plain<LLR>);
+                           &chase_decode_256_plain<LLR>,
+                           early_stop_row_flags);
 }
 
 template<typename LLR>
 DecoderCoreResult<LLR> Decoder_Core_ebchPF(const Matrix<LLR>& lin_matrix,
                                            const Matrix<LLR>& lch_matrix,
                                            bool use_hard_decode,
-                                           const Params& p)
+                                           const Params& p,
+                                           const std::vector<bool>* early_stop_row_flags)
 {
   return Decoder_Core_impl(lin_matrix, lch_matrix, use_hard_decode, p,
-                           &chase_decode_256_ebchPF<LLR>);
+                           &chase_decode_256_ebchPF<LLR>,
+                           early_stop_row_flags);
 }
 
 template DecoderCoreResult<float> Decoder_Core_plain<float>(const Matrix<float>&,
                                                             const Matrix<float>&,
                                                             bool,
-                                                            const Params&);
+                                                            const Params&,
+                                                            const std::vector<bool>*);
 template DecoderCoreResult<int8_t> Decoder_Core_plain<int8_t>(const Matrix<int8_t>&,
                                                               const Matrix<int8_t>&,
                                                               bool,
-                                                              const Params&);
+                                                              const Params&,
+                                                              const std::vector<bool>*);
 
 template DecoderCoreResult<float> Decoder_Core_ebchPF<float>(const Matrix<float>&,
                                                              const Matrix<float>&,
                                                              bool,
-                                                             const Params&);
+                                                             const Params&,
+                                                             const std::vector<bool>*);
 template DecoderCoreResult<int8_t> Decoder_Core_ebchPF<int8_t>(const Matrix<int8_t>&,
                                                                const Matrix<int8_t>&,
                                                                bool,
-                                                               const Params&);
+                                                               const Params&,
+                                                               const std::vector<bool>*);
 
 #define INSTANTIATE_DECODER_CORE_QFLOAT(N) \
 template DecoderCoreResult<qfloat<N>> Decoder_Core_plain<qfloat<N>>( \
-    const Matrix<qfloat<N>>&, const Matrix<qfloat<N>>&, bool, const Params&); \
+    const Matrix<qfloat<N>>&, const Matrix<qfloat<N>>&, bool, const Params&, \
+    const std::vector<bool>*); \
 template DecoderCoreResult<qfloat<N>> Decoder_Core_ebchPF<qfloat<N>>( \
-    const Matrix<qfloat<N>>&, const Matrix<qfloat<N>>&, bool, const Params&);
+    const Matrix<qfloat<N>>&, const Matrix<qfloat<N>>&, bool, const Params&, \
+    const std::vector<bool>*);
 
 INSTANTIATE_DECODER_CORE_QFLOAT(2)
 INSTANTIATE_DECODER_CORE_QFLOAT(3)

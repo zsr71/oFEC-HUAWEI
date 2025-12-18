@@ -14,7 +14,6 @@ TileEarlyStopResult tile_early_stop_stats(const Matrix<LLR>& lin_matrix)
   res.row_passed_flags.assign(rows, false);
   if (cols < 256) return res; // Defensive: unexpected shape, do not early-stop.
   std::array<uint8_t, 255> hard255{};
-  std::array<uint8_t, 255> decoded255{};
 
   bool all_pass = true;
   for (size_t r = 0; r < rows; ++r) {
@@ -24,13 +23,16 @@ TileEarlyStopResult tile_early_stop_stats(const Matrix<LLR>& lin_matrix)
       hard255[static_cast<size_t>(j)] = (v < 0.0f) ? 1u : 0u;
     }
 
-    if (!bch_255_239_decode_hiho_cw_255(hard255.data(), decoded255.data())) {
+    if (!bch_255_239_syndromes_zero_cw_255(hard255.data())) {
       row_passed = false;
     } else {
+      // 条件B：整体奇偶一致（extended parity）
       uint8_t parity255 = 0u;
       for (int j = 0; j < 255; ++j)
         parity255 ^= (hard255[static_cast<size_t>(j)] & 1u);
-      const uint8_t overall = (llr_to_float(lin_matrix[r][255]) < 0.0f) ? 1u : 0u;
+
+      const uint8_t overall =
+          (llr_to_float(lin_matrix[r][255]) < 0.0f) ? 1u : 0u;
 
       if ((parity255 ^ overall) != 0u) {
         row_passed = false;

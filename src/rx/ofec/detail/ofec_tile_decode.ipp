@@ -68,9 +68,14 @@ decode_tile(const TilePrepared<LLR>& prep,
             bool use_hard_decode,
             bool normalize_extrinsic,
             const Params& p,
+            const std::vector<bool>* early_stop_row_flags,
             CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn)
 {
-  auto decoder_res = core_fn(prep.lin_matrix, prep.lch_matrix, use_hard_decode, prep.params_for_core);
+  auto decoder_res = core_fn(prep.lin_matrix,
+                             prep.lch_matrix,
+                             use_hard_decode,
+                             prep.params_for_core,
+                             early_stop_row_flags);
 
   if (normalize_extrinsic && !use_hard_decode)
   {
