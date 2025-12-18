@@ -129,20 +129,6 @@ endif()
 # ==============================
 # Apps
 # ==============================
-add_executable(ofec_app_plain
-  apps/ofec_app_plain.cpp
-)
-target_link_libraries(ofec_app_plain
-  PRIVATE newcode_frontend decoder_plain decoder_ebchPF
-)
-
-add_executable(ofec_app_interleaved
-  apps/ofec_app_interleaved.cpp
-)
-target_link_libraries(ofec_app_interleaved
-  PRIVATE newcode_frontend decoder_plain decoder_ebchPF
-)
-
 # 保留现有两个入口，默认走 plain 变体
 add_executable(ofec_single
   apps/ofec_single.cpp
@@ -170,13 +156,6 @@ add_executable(ofec_sweep2
 )
 target_include_directories(ofec_sweep2 PRIVATE src/ofec_sweep)
 target_link_libraries(ofec_sweep2 PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
-
-add_executable(bch_bpsk_demo
-  apps/bch_bpsk_demo.cpp
-)
-target_link_libraries(bch_bpsk_demo
-  PRIVATE newcode_frontend decoder_plain decoder_ebchPF
-)
 
 # ==============================
 # Tests

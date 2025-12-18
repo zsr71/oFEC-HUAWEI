@@ -41,9 +41,8 @@ void apply_known_zero_prefix(Matrix<float>& llr_mat, const Params& p)
             if (llrMean > 0.0)
             {
                 const float invMean = static_cast<float>(1.0 / llrMean);
-                for (size_t r = known_rows; r < R; ++r)
-                    for (size_t c = 0; c < C; ++c)
-                        llr_mat[r][c] *= invMean;  // LLR normalization
+                auto tail = llr_mat.slice(known_rows, R, 0, C);
+                scale(tail, invMean);
             }
             // 若 llrMean==0 则不缩放，保持原值（避免除零）
         }
