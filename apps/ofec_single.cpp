@@ -8,12 +8,12 @@
 //发射端参数
 static constexpr const char* kLabel             = "debug_L6";   // 运行标签：日志/输出文件标识
 static constexpr int         kChaseL_override   = 6;            // Chase L，-1 表示使用默认
-static constexpr int         kBitgenSeed        = 11598;    // 比特生成随机种子
+static constexpr int         kBitgenSeed        = 115988;    // 比特生成随机种子
 static constexpr bool        kGenerateRandomBits = true;             // true=随机比特，false=全 0
 
 //信道相关参数
 static constexpr float       kEbN0_db           = 3.07f;        // 信道 Eb/N0 (dB)
-static constexpr int         kChannelSeed       = 148189;   // 信道噪声随机种子
+static constexpr int         kChannelSeed       = 1481898;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
 //量化相关参数

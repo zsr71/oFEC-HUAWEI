@@ -17,7 +17,10 @@ endif()
 find_package(Threads REQUIRED)
 
 # 统一头文件路径
-set(NEWCODE_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set(NEWCODE_INCLUDE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/rx
+)
 
 # pipeline_runner 作为公共实现编入 newcode_frontend（apps 无需重复编译）
 

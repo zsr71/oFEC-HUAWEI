@@ -6,7 +6,8 @@
 #include "newcode/decoder_core.hpp"
 #include "newcode/llr_utils.hpp"
 #include "newcode/decoder_api.hpp"
-#include "../common/lin_matrix_utils.hpp"
+#include "newcode/ofec/common/lin_matrix_adapters.hpp"
+#include "newcode/ofec/earltstop/tile_early_stop_stats.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -33,7 +34,6 @@ using CoreFn = DecoderCoreResult<LLR> (*)(const Matrix<LLR>&,
 } // namespace newcode
 
 #include "ofec_tile_input.ipp"
-#include "ofec_tile_early_stop.ipp"
 #include "ofec_tile_decode.ipp"
 #include "ofec_tile_writeback.ipp"
 
@@ -77,7 +77,7 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
                                                rows_to_decode,
                                                tx_llr_ref);
 
-  TileEarlyStopResult early_stop_stats = run_tile_early_stop(prep);
+  TileEarlyStopResult early_stop_stats = tile_early_stop_stats(prep.lin_matrix);
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
 
   auto decoder_res = decode_tile<LLR>(prep, use_hard_decode, normalize_extrinsic, p, core_fn);
