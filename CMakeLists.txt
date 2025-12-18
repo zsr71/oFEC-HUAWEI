@@ -30,6 +30,8 @@ file(GLOB CHANNEL_SRCS CONFIGURE_DEPENDS "src/channel/*.cpp")
 file(GLOB EXTRACT_SRCS CONFIGURE_DEPENDS "src/common/extract/*.cpp")
 file(GLOB COMMON_INTERLEAVER_SRCS CONFIGURE_DEPENDS "src/common/interleaver/*.cpp")
 file(GLOB COMMON_PIPELINE_SRCS    CONFIGURE_DEPENDS "src/common/pipeline/*.cpp")
+file(GLOB COMMON_UTILS_SRCS       CONFIGURE_DEPENDS "src/common/utils/*.cpp")
+file(GLOB RX_DECODER_REGISTRY_SRCS CONFIGURE_DEPENDS "src/rx/decoder/registry/*.cpp")
 
 file(GLOB TX_BITGEN_SRCS CONFIGURE_DEPENDS "src/tx/bitgen/*.cpp")
 file(GLOB TX_OFEC_SRCS   CONFIGURE_DEPENDS "src/tx/ofec/*.cpp")
@@ -40,23 +42,23 @@ file(GLOB RX_LLR_SRCS     CONFIGURE_DEPENDS "src/rx/llr/*.cpp")
 file(GLOB RX_EXTRACT_SRCS CONFIGURE_DEPENDS "src/rx/extract/*.cpp")
 
 # 两个解码变体
-file(GLOB DECODER_PLAIN_SRCS   CONFIGURE_DEPENDS "src/rx/ofec/decoder/plain/*.cpp")
-file(GLOB DECODER_EBCHPF_SRCS  CONFIGURE_DEPENDS "src/rx/ofec/decoder/ebchPF/*.cpp")
+file(GLOB DECODER_PLAIN_SRCS   CONFIGURE_DEPENDS "src/rx/ofec/plain/*.cpp")
+file(GLOB DECODER_EBCHPF_SRCS  CONFIGURE_DEPENDS "src/rx/ofec/ebchPF/*.cpp")
 
 # 若存在公共译码源（两变体共享），自动并入两边
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/rx/ofec/decoder/common")
-  file(GLOB DECODER_COMMON_SRCS CONFIGURE_DEPENDS "src/rx/ofec/decoder/common/*.cpp")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/rx/ofec/common")
+  file(GLOB DECODER_COMMON_SRCS CONFIGURE_DEPENDS "src/rx/ofec/common/*.cpp")
   list(APPEND DECODER_PLAIN_SRCS  ${DECODER_COMMON_SRCS})
   list(APPEND DECODER_EBCHPF_SRCS ${DECODER_COMMON_SRCS})
 endif()
 
 # 共享译码核心（plain / ebchPF 共用）
 set(DECODER_SHARED_SRCS
-  src/rx/ofec/decoder/ofec_row_decoder_core.cpp
-  src/rx/ofec/decoder/ofec_tile_process.cpp
-  src/rx/ofec/decoder/ofec_window_process.cpp
-  src/rx/ofec/decoder/ofec_frame_decode.cpp
-  src/rx/ofec/decoder/ofec_hard_decode_bch.cpp
+  src/rx/ofec/ofec_row_decoder_core.cpp
+  src/rx/ofec/ofec_tile_process.cpp
+  src/rx/ofec/ofec_window_process.cpp
+  src/rx/ofec/ofec_frame_decode.cpp
+  src/rx/ofec/ofec_hard_decode_bch.cpp
 )
 
 # ==============================
@@ -68,6 +70,8 @@ add_library(newcode_frontend STATIC
   ${EXTRACT_SRCS}
   ${COMMON_PIPELINE_SRCS}
   ${COMMON_INTERLEAVER_SRCS}
+  ${COMMON_UTILS_SRCS}
+  ${RX_DECODER_REGISTRY_SRCS}
   ${TX_BITGEN_SRCS}
   ${TX_OFEC_SRCS}
   ${TX_QAM_SRCS}
@@ -102,6 +106,7 @@ add_library(decoder_plain STATIC
 )
 target_include_directories(decoder_plain PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_plain PUBLIC newcode_frontend)
+target_sources(decoder_plain PRIVATE src/rx/decoder/factories/plain_decoder_factory.cpp)
 
 add_library(decoder_ebchPF STATIC
   ${DECODER_EBCHPF_SRCS}
@@ -109,11 +114,12 @@ add_library(decoder_ebchPF STATIC
 )
 target_include_directories(decoder_ebchPF PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_ebchPF PUBLIC newcode_frontend)
+target_sources(decoder_ebchPF PRIVATE src/rx/decoder/factories/ebchPF_decoder_factory.cpp)
 
 # 如果专门的模板实例化文件存在（建议放在 src/fec/decoder/common/）
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/rx/ofec/decoder/common/ofec_decoder_inst.cpp")
-  target_sources(decoder_plain  PRIVATE src/rx/ofec/decoder/common/ofec_decoder_inst.cpp)
-  target_sources(decoder_ebchPF PRIVATE src/rx/ofec/decoder/common/ofec_decoder_inst.cpp)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/rx/ofec/common/ofec_decoder_inst.cpp")
+  target_sources(decoder_plain  PRIVATE src/rx/ofec/common/ofec_decoder_inst.cpp)
+  target_sources(decoder_ebchPF PRIVATE src/rx/ofec/common/ofec_decoder_inst.cpp)
 endif()
 
 # ==============================

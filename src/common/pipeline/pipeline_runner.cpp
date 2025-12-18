@@ -10,6 +10,7 @@
 #include <mutex>
 #include <streambuf>
 
+#include "newcode/matrix.hpp"
 #include "newcode/awgn.hpp"
 #include "newcode/bitgen.hpp"
 #include "newcode/decoder_api.hpp"
@@ -76,17 +77,6 @@ std::vector<double> compute_row_early_stop_percentages(const std::vector<TileEar
   return pct;
 }
 
-// Flatten an encoded matrix (row-major) to a 0/1 bitstream.
-std::vector<uint8_t> flatten_row_major(const Matrix<uint8_t>& matrix)
-{
-  std::vector<uint8_t> out;
-  out.reserve(matrix.rows() * matrix.cols());
-  for (size_t r = 0; r < matrix.rows(); ++r)
-    for (size_t c = 0; c < matrix.cols(); ++c)
-      out.push_back(matrix[r][c] & 1u);
-  return out;
-}
-
 // 将硬比特矩阵(0/1)转换为“理想”LLR矩阵：0 -> +A，1 -> -A（供提取 TX 参考信息）
 static Matrix<float> hard_bits_to_llr_matrix(const Matrix<uint8_t>& bits_mat, float A = 50.0f)
 {
@@ -148,7 +138,7 @@ PipelineResult run_pipeline(const Params& params,
   }
 
   // oFEC矩阵比特展平
-  auto coded_bits = flatten_row_major(code_matrix);
+  auto coded_bits = flatten_row_major(code_matrix, [](uint8_t b) { return static_cast<uint8_t>(b & 1u); });
   if (verbose) {
     log << "[INFO] (" << label << ") Coded bits (flattened): " << coded_bits.size() << "\n";
   }

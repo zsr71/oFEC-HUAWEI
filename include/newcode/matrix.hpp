@@ -2,6 +2,8 @@
 #include <vector>
 #include <iostream>
 #include <stdexcept>
+#include <type_traits>
+#include <utility>
 
 namespace newcode {
 
@@ -54,5 +56,34 @@ public:
 private:
     std::vector<std::vector<T>> data_;
 };
+
+// Flatten a Matrix in row-major order into a contiguous vector.
+template <typename T>
+std::vector<T> flatten_row_major(const Matrix<T>& matrix)
+{
+    std::vector<T> out;
+    out.reserve(matrix.rows() * matrix.cols());
+    for (size_t r = 0; r < matrix.rows(); ++r)
+        for (size_t c = 0; c < matrix.cols(); ++c)
+            out.push_back(matrix[r][c]);
+    return out;
+}
+
+// Flatten a Matrix in row-major order and apply a transform to each element.
+// The transform should be callable as: U f(const T&).
+template <typename T, typename Transform>
+auto flatten_row_major(const Matrix<T>& matrix, Transform&& transform)
+    -> std::vector<std::decay_t<decltype(std::declval<Transform&>()(std::declval<const T&>()))>>
+{
+    using U = std::decay_t<decltype(std::declval<Transform&>()(std::declval<const T&>()))>;
+    std::vector<U> out;
+    out.reserve(matrix.rows() * matrix.cols());
+    for (size_t r = 0; r < matrix.rows(); ++r) {
+        for (size_t c = 0; c < matrix.cols(); ++c) {
+            out.push_back(transform(matrix[r][c]));
+        }
+    }
+    return out;
+}
 
 } // namespace newcode
