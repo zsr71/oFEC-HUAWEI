@@ -5,13 +5,6 @@
 
 namespace newcode {
 
-static inline std::size_t saturating_mul(std::size_t a, std::size_t b, std::size_t cap)
-{
-    if (a == 0 || b == 0) return 0;
-    if (a > cap / b) return cap; // 防溢出：上饱和到 cap
-    return a * b;
-}
-
 BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
                      const std::vector<uint8_t>& rx_bits,
                      const Params& p,
@@ -24,7 +17,7 @@ BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
 
     // 窗口高度（比特行） * 每行比特数 = 一个 window 覆盖的比特数
     const std::size_t win_rows  = p.win_height_rows(); // 已是“比特行”数量
-    const std::size_t win_bits  = saturating_mul(win_rows, row_bits, L);
+    const std::size_t win_bits  = win_rows * row_bits;
 
     // 去掉首尾各一个 window 覆盖的比特
     const std::size_t skip_prefix = std::min(L, 4*win_bits);

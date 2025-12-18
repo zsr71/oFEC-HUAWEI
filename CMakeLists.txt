@@ -28,6 +28,7 @@ set(NEWCODE_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 file(GLOB CORE_SRCS    CONFIGURE_DEPENDS "src/common/core/*.cpp")
 file(GLOB CHANNEL_SRCS CONFIGURE_DEPENDS "src/channel/*.cpp")
 file(GLOB EXTRACT_SRCS CONFIGURE_DEPENDS "src/common/extract/*.cpp")
+file(GLOB RX_BER_SRCS  CONFIGURE_DEPENDS "src/rx/ber/*.cpp")
 file(GLOB COMMON_INTERLEAVER_SRCS CONFIGURE_DEPENDS "src/common/interleaver/*.cpp")
 file(GLOB COMMON_PIPELINE_SRCS    CONFIGURE_DEPENDS "src/common/pipeline/*.cpp")
 file(GLOB COMMON_UTILS_SRCS       CONFIGURE_DEPENDS "src/common/utils/*.cpp")
@@ -78,14 +79,16 @@ add_library(newcode_frontend STATIC
   ${RX_QAM_SRCS}
   ${RX_LLR_SRCS}
   ${RX_EXTRACT_SRCS}
+  ${RX_BER_SRCS}
 )
 target_include_directories(newcode_frontend PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(newcode_frontend PUBLIC Threads::Threads)
 
 # ------- Compatibility fallbacks（临时兜底，便于平滑迁移）-------
 # 编码侧依赖的 BCH：让 frontend 也能提供 parity/encode
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/common/fec/bch/bch_255_239.cpp")
-  target_sources(newcode_frontend PRIVATE src/common/fec/bch/bch_255_239.cpp)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/common/bch")
+  file(GLOB COMMON_BCH_SRCS CONFIGURE_DEPENDS "src/common/bch/*.cpp")
+  target_sources(newcode_frontend PRIVATE ${COMMON_BCH_SRCS})
 elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/fec/encoder/bch_255_239.cpp")
   target_sources(newcode_frontend PRIVATE src/fec/encoder/bch_255_239.cpp)
 elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/bch_255_239.cpp")

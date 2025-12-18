@@ -14,6 +14,7 @@
 #include "newcode/awgn.hpp"
 #include "newcode/bitgen.hpp"
 #include "newcode/decoder_api.hpp"
+#include "newcode/hard_bits_to_llr_matrix.hpp"
 #include "newcode/info_extract.hpp"
 #include "newcode/llr_known_prefix.hpp"
 #include "newcode/llr_qpack.hpp"
@@ -75,16 +76,6 @@ std::vector<double> compute_row_early_stop_percentages(const std::vector<TileEar
     pct.push_back(value);
   }
   return pct;
-}
-
-// 将硬比特矩阵(0/1)转换为“理想”LLR矩阵：0 -> +A，1 -> -A（供提取 TX 参考信息）
-static Matrix<float> hard_bits_to_llr_matrix(const Matrix<uint8_t>& bits_mat, float A = 50.0f)
-{
-  Matrix<float> m(bits_mat.rows(), bits_mat.cols());
-  for (size_t r = 0; r < bits_mat.rows(); ++r)
-    for (size_t c = 0; c < bits_mat.cols(); ++c)
-      m[r][c] = (bits_mat[r][c] ? -A : +A);
-  return m;
 }
 
 struct LlrMode {
