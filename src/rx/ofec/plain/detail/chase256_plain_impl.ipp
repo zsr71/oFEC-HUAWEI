@@ -59,7 +59,7 @@ void chase_decode_256_plain(const LLR* Lin256,
 
         // BCH decode over 255 (hard-input, hard-output)
         int corrected_errors = 0;
-        bool ok = bch_255_239_decode_hiho_cw_255(tmp_in.data(),
+        bool ok = bch::bch_255_239_decode_hiho_cw_255(tmp_in.data(),
                                                  cw255.data(),
                                                  &corrected_errors);
 

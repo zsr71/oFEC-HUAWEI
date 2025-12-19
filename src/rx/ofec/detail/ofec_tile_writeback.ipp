@@ -31,6 +31,21 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       return llr_to_float(value);
     }
   };
+  constexpr bool history_needs_dequant =
+      std::is_same_v<CoreLLR, float> &&
+      !std::is_floating_point_v<LLR> &&
+      !std::is_integral_v<LLR>;
+  auto history_value = [&](const CoreLLR& combined,
+                           const LLR& extrinsic,
+                           const LLR& prior) -> float {
+    if constexpr (history_needs_dequant) {
+      // For quantized LLR (e.g., qfloat<N>), combined is in code domain.
+      // Sum dequantized values so history stores real amplitudes.
+      return llr_to_float(extrinsic) + llr_to_float(prior);
+    } else {
+      return core_to_float(combined);
+    }
+  };
 
   const size_t H = tile_out->rows();
   const size_t W = tile_out->cols();
@@ -38,7 +53,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
   for (size_t row_idx = 0; row_idx < prep.row_local_lookup.size(); ++row_idx)
   {
     if (row_idx >= decoder_res.produced_rows.size()) continue;
-    if (!decoder_res.produced_rows[row_idx]) continue;
+    const bool row_produced = decoder_res.produced_rows[row_idx];
 
     const size_t row_local  = prep.row_local_lookup[row_idx];
     const size_t row_global = prep.row_global_lookup[row_idx];
@@ -54,7 +69,9 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       const LLR prior_llr = (*tile_out)[row_local][col];
       const LLR extrinsic_llr =
           llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
-      (*tile_out)[row_local][col] = extrinsic_llr;
+      if (row_produced) {
+        (*tile_out)[row_local][col] = extrinsic_llr;
+      }
 
       if (capture_last_tile_history && last_tile_history_accum) {
         const long rr_global = static_cast<long>(row_global);
@@ -67,7 +84,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
             const CoreLLR combined =
                 Adapter::combine(extrinsic_llr, prior_llr);
             (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
-                core_to_float(combined);
+                history_value(combined, extrinsic_llr, prior_llr);
           }
         }
       }
@@ -80,7 +97,9 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       const LLR prior_llr = (*tile_out)[row_local][col];
       const LLR extrinsic_llr =
           llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
-      (*tile_out)[row_local][col] = extrinsic_llr;
+      if (row_produced) {
+        (*tile_out)[row_local][col] = extrinsic_llr;
+      }
 
       if (capture_last_tile_history && last_tile_history_accum) {
         const long rr_global = static_cast<long>(row_global);
@@ -93,7 +112,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
             const CoreLLR combined =
                 Adapter::combine(extrinsic_llr, prior_llr);
             (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
-                core_to_float(combined);
+                history_value(combined, extrinsic_llr, prior_llr);
           }
         }
       }
@@ -106,7 +125,9 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       const LLR prior_llr = (*tile_out)[row_local][col];
       const LLR extrinsic_llr =
           llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
-      (*tile_out)[row_local][col] = extrinsic_llr;
+      if (row_produced) {
+        (*tile_out)[row_local][col] = extrinsic_llr;
+      }
 
       if (capture_last_tile_history && last_tile_history_accum) {
         const long rr_global = static_cast<long>(row_global);
@@ -119,7 +140,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
             const CoreLLR combined =
                 Adapter::combine(extrinsic_llr, prior_llr);
             (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
-                core_to_float(combined);
+                history_value(combined, extrinsic_llr, prior_llr);
           }
         }
       }
@@ -160,7 +181,9 @@ void writeback_tile(const TilePrepared<LLR>& prep,
           (*tile_out)[rr_idx_local][cc_idx_local];
       const LLR extrinsic_llr =
           llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
-      (*tile_out)[rr_idx_local][cc_idx_local] = extrinsic_llr;
+      if (row_produced) {
+        (*tile_out)[rr_idx_local][cc_idx_local] = extrinsic_llr;
+      }
 
       if (capture_last_tile_history && last_tile_history_accum) {
         if (rr_global >= 0 && cc_global >= 0) {
@@ -170,7 +193,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
               cc_idx_global < last_tile_history_accum->cols()) {
             const CoreLLR combined = Adapter::combine(extrinsic_llr, prior_llr);
             (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
-                core_to_float(combined);
+                history_value(combined, extrinsic_llr, prior_llr);
           }
         }
       }

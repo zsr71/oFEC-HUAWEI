@@ -11,20 +11,20 @@
 #include <streambuf>
 
 #include "newcode/matrix.hpp"
-#include "newcode/awgn.hpp"
-#include "newcode/bitgen.hpp"
+#include "newcode/channel/awgn.hpp"
+#include "newcode/tx/bitgen/bitgen.hpp"
 #include "newcode/decoder_api.hpp"
 #include "newcode/hard_bits_to_llr_matrix.hpp"
 #include "newcode/info_extract.hpp"
 #include "newcode/llr_known_prefix.hpp"
 #include "newcode/llr_qpack.hpp"
 #include "newcode/ofec_decoder.hpp"
-#include "newcode/ofec_encoder.hpp"
+#include "newcode/tx/ofecencoder/ofec_encoder.hpp"
 #include "newcode/ofec_llr_matrix.hpp"
 #include "newcode/qam.hpp"
 #include "newcode/qam_llr.hpp"
 #include "newcode/qfloat.hpp"
-#include "newcode/interleaver.hpp"
+#include "newcode/common/interleaver/interleaver.hpp"
 
 namespace newcode {
 namespace {
@@ -107,13 +107,13 @@ PipelineResult run_pipeline(const Params& params,
   }
   
   // 生成信息比特
-  auto info_bits = generate_bits(params);
+  auto info_bits = bitgen::generate_bits(params);
   if (verbose) {
     log << "[INFO] (" << label << ") Generated bits: " << info_bits.size() << "\n";
   }
 
   // oFEC 编码
-  auto code_matrix = ofec_encode(info_bits, params);
+  auto code_matrix = ofecencoder::ofec_encode(info_bits, params);
   if (verbose) {
     log << "[INFO] (" << label << ") oFEC matrix: " << code_matrix.rows()
         << " x " << code_matrix.cols() << "\n";
@@ -136,7 +136,7 @@ PipelineResult run_pipeline(const Params& params,
 
   // 交织
   const std::size_t block_dim = static_cast<std::size_t>(Params::BITS_PER_SUBBLOCK_DIM);
-  auto interleaver = newcode::Interleaver::build_from_shape(
+  auto interleaver = interleaver::Interleaver::build_from_shape(
       code_matrix.rows(), code_matrix.cols(), block_dim, block_dim, config.interleaver_name);
 
   auto coded_bits_itlv = interleaver.interleave_chunks(coded_bits);
@@ -171,7 +171,7 @@ PipelineResult run_pipeline(const Params& params,
   const int   TAKEBITS = K - N;
   const float code_rate = static_cast<float>(TAKEBITS) / static_cast<float>(N);
   const uint32_t awgn_seed = static_cast<uint32_t>(params.CHANNEL_SEED);
-  auto rx_syms = add_awgn(tx_syms, ebn0_dB, n_bps, awgn_seed);
+  auto rx_syms = channel::add_awgn(tx_syms, ebn0_dB, n_bps, awgn_seed);
 
   if (verbose) {
     log << "[INFO] (" << label << ") Eb/N0 set to " << ebn0_dB << " dB\n";

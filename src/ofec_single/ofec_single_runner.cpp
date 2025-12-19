@@ -1,12 +1,13 @@
 #include "newcode/ofec_single_runner.hpp"
-
+#include "newcode/io/dualwriter.hpp"
+#include "newcode/io/prepare_log_file.hpp"
 namespace ofec_single {
 
 int run_ofec_single(const Config& config) {
   const std::filesystem::path data_dir = "data";
   std::string log_path;
-  std::ofstream log_file = detail::prepare_log_file(data_dir, log_path);
-  DualWriter log(log_file);
+  std::ofstream log_file = io::prepare_log_file(data_dir, log_path);
+  io::DualWriter log(log_file);
 
   std::optional<newcode::Params> params = detail::build_params(config, log);
   if (!params.has_value()) {

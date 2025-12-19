@@ -1,6 +1,6 @@
-#include "newcode/ofec_single_runner.hpp"
+#include "newcode/io/dualwriter.hpp"
 
-namespace ofec_single {
+namespace io {
 
 DualWriter::DualWriter(std::ofstream& file)
     : console_(&std::cout), file_(&file) {}

@@ -1,6 +1,6 @@
-#include "newcode/interleaver.hpp"
+#include "newcode/common/interleaver/interleaver.hpp"
 
-namespace newcode {
+namespace interleaver {
 namespace {
 
 class IdentityInterleaver final : public IInterleaver {
@@ -14,8 +14,8 @@ public:
       mapping_[i] = static_cast<int>(i);
   }
 
-  void interleave(const Matrix<float>& in, Matrix<float>& out) const override { out = in; }
-  void deinterleave(const Matrix<float>& in, Matrix<float>& out) const override { out = in; }
+  void interleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const override { out = in; }
+  void deinterleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const override { out = in; }
 
   const std::vector<int>& forward_mapping() const override { return mapping_; }
   const std::vector<int>& inverse_mapping() const override { return mapping_; }

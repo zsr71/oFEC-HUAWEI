@@ -1,6 +1,6 @@
-#include "newcode/linspace.hpp"
+#include "newcode/utils/linspace.hpp"
 
-namespace newcode {
+namespace utils {
 
 std::vector<float> linspace(float start, float end, std::size_t count) {
   std::vector<float> values;

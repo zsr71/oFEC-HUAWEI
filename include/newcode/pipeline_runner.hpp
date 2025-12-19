@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "newcode/ber.hpp"
+#include "newcode/rx/ber/ber.hpp"
 #include "newcode/decoder_api.hpp"
 #include "newcode/params.hpp"
 

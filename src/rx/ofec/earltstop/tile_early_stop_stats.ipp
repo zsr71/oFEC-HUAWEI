@@ -1,5 +1,7 @@
 #pragma once
 
+#include "newcode/common/bch/bch_255_239.hpp"
+
 namespace newcode {
 
 template <typename LLR>
@@ -23,7 +25,7 @@ TileEarlyStopResult tile_early_stop_stats(const Matrix<LLR>& lin_matrix)
       hard255[static_cast<size_t>(j)] = (v < 0.0f) ? 1u : 0u;
     }
 
-    if (!bch_255_239_syndromes_zero_cw_255(hard255.data())) {
+    if (!bch::bch_255_239_syndromes_zero_cw_255(hard255.data())) {
       row_passed = false;
     } else {
       // 条件B：整体奇偶一致（extended parity）

@@ -8,12 +8,14 @@
 
 namespace ofec_sweep {
 
+// 显式 α/β 参数模式
 struct ExplicitAlphaBetaPattern {
   std::string label;
   std::vector<float> alpha_list;
   std::vector<float> beta_list;
 };
 
+// 配置结构体，包含所有可扫参数及基础参数
 struct SweepParameterConfig {
   newcode::Params base_params{};
   std::string interleaver_name = "identity";

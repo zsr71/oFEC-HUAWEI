@@ -1,7 +1,7 @@
-#include "newcode/bch_255_239.hpp"
+#include "newcode/common/bch/bch_255_239.hpp"
 #include <cstring>
 
-namespace newcode
+namespace bch
 {
 
 // ================== 硬判决译码（t=2，GF(2^8)） ==================

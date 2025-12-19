@@ -1,14 +1,14 @@
 #include <stdexcept>
 #include <algorithm>
-#include "newcode/ofec_encoder.hpp"
-#include "newcode/bch_255_239.hpp"
+#include "newcode/tx/ofecencoder/ofec_encoder.hpp"
+#include "newcode/common/bch/bch_255_239.hpp"
 #include <vector>
 #include <cstddef>
 #include <cstdint>
 
-namespace newcode {
+namespace ofecencoder {
 
-Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const Params& p)
+newcode::Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const newcode::Params& p)
 {
     // 基本尺寸
     const int B  = static_cast<int>(p.BITS_PER_SUBBLOCK_DIM);                         // 16
@@ -17,7 +17,7 @@ Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const Params& p)
     const int NB = static_cast<int>(p.NUM_SUBBLOCK_COLS);                             // 8 (= N/B)
 
     // BCH(255,239)
-    const int K         = static_cast<int>(Params::BCH_K); // 239
+    const int K         = static_cast<int>(newcode::Params::BCH_K); // 239
     const int PAR_LEN   = 16;                              // parity bits
     const int TAKE_BITS = K - N;                           // 111
 
@@ -38,7 +38,7 @@ Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const Params& p)
     std::copy(bits.begin(), bits.end(), u.begin() + ZERO_PREFIX);
 
     // 将 V(R,C,r,c) 展开为二维：行 = R*B + r，列 = C*B + c
-    Matrix<uint8_t> mat = Matrix<uint8_t>::zero(p.tile_height_rows(), N);
+    newcode::Matrix<uint8_t> mat = newcode::Matrix<uint8_t>::zero(p.tile_height_rows(), N);
 
     // —— 左半历史位读取（按你给的式子，带 -2*(N/B) 项）——
     auto read_hist_bit = [&](long R, int r, int k) -> uint8_t {
@@ -125,7 +125,7 @@ Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const Params& p)
         msg239.insert(msg239.end(), left128.begin(),  left128.end());
         msg239.insert(msg239.end(), right111.begin(), right111.end());
 
-        auto parity16 = bch_255_239_parity(msg239);
+        auto parity16 = bch::bch_255_239_parity(msg239);
         uint8_t overall = 0;
         for (uint8_t b : msg239)     overall ^= (b & 1u);
         for (uint8_t pbit : parity16) overall ^= (pbit & 1u);
@@ -147,4 +147,4 @@ Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const Params& p)
     return mat;
 }
 
-} // namespace newcode
+} // namespace ofecencoder

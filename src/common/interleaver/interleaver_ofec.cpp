@@ -1,11 +1,11 @@
-#include "newcode/interleaver.hpp"
+#include "newcode/common/interleaver/interleaver.hpp"
 
 #include <algorithm>
 #include <array>
 #include <stdexcept>
 #include <vector>
 
-namespace newcode {
+namespace interleaver {
 namespace {
 
 using PermTable = std::vector<int>;
@@ -79,14 +79,14 @@ void apply_permutation(const std::vector<T>& src, std::vector<T>& dst, const Per
 }
 
 void matrix_from_flat(const std::vector<float>& flat, std::size_t rows, std::size_t cols,
-                      Matrix<float>& out) {
-  out = Matrix<float>(rows, cols);
+                      newcode::Matrix<float>& out) {
+  out = newcode::Matrix<float>(rows, cols);
   for (std::size_t r = 0; r < rows; ++r)
     for (std::size_t c = 0; c < cols; ++c)
       out[r][c] = flat[r * cols + c];
 }
 
-void matrix_to_flat(const Matrix<float>& in, std::vector<float>& flat) {
+void matrix_to_flat(const newcode::Matrix<float>& in, std::vector<float>& flat) {
   flat.resize(in.rows() * in.cols());
   for (std::size_t r = 0; r < in.rows(); ++r)
     for (std::size_t c = 0; c < in.cols(); ++c)
@@ -103,7 +103,7 @@ public:
     cols_ = C * W;
   }
 
-  void interleave(const Matrix<float>& in, Matrix<float>& out) const override {
+  void interleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const override {
     if (forward_.empty()) { out = in; return; }
     std::vector<float> flat;
     matrix_to_flat(in, flat);
@@ -112,7 +112,7 @@ public:
     matrix_from_flat(perm, in.rows(), in.cols(), out);
   }
 
-  void deinterleave(const Matrix<float>& in, Matrix<float>& out) const override {
+  void deinterleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const override {
     if (inverse_.empty()) { out = in; return; }
     std::vector<float> flat;
     matrix_to_flat(in, flat);

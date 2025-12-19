@@ -9,10 +9,10 @@
 static constexpr const char* kLabel             = "debug_L6";   // 运行标签：日志/输出文件标识
 static constexpr int         kChaseL_override   = 6;            // Chase L，-1 表示使用默认
 static constexpr int         kBitgenSeed        = 115988;    // 比特生成随机种子
-static constexpr bool        kGenerateRandomBits = true;             // true=随机比特，false=全 0
+static constexpr bool        kGenerateRandomBits = false;             // true=随机比特，false=全 0
 
 //信道相关参数
-static constexpr float       kEbN0_db           = 4.17f;        // 信道 Eb/N0 (dB)
+static constexpr float       kEbN0_db           = 3.17f;        // 信道 Eb/N0 (dB)
 static constexpr int         kChannelSeed       = 1481898;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
@@ -38,7 +38,7 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
       //0.606316
     };
     static const std::vector<float> kBeta_explicit = {
-      3.000000,4.322813,12.873823,35.000000 
+      3.000000,4.322813,12.873823,35.000000
       //1.4f
       //24.0f,1.0f
       //1.4f
@@ -62,12 +62,14 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = {
-    {625631, "bit625631"},
-    {625691, "bit625691"},
-    {626440, "bit626440"},
-    {630041, "bit630041"},
-    {637034, "bit637034"},
-    {637036, "bit637036"},
+    {1123823, "bit1123823"},
+    {1170236, "bit1170236"},
+    {1192856, "bit1192856"},
+    {1192896, "bit1192896"},
+    {1192910, "bit1192910"},
+    {1476839, "bit1476839"},
+
+
 };
 } // namespace
 

@@ -1,5 +1,5 @@
 #include "newcode/ofec_single_runner.hpp"
-
+#include "newcode/io/dualwriter.hpp"
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
@@ -40,7 +40,7 @@ namespace detail {
 
 void log_run_overview(const Config& cfg,
                       const newcode::Params& params,
-                      DualWriter& log) {
+                      io::DualWriter& log) {
   log << "[INFO] run_pipeline(label=" << cfg.label
       << ", Eb/N0=" << cfg.ebn0_db
       << " dB, CHASE_L=" << params.CHASE_L << ")\n";
@@ -58,7 +58,7 @@ void log_run_overview(const Config& cfg,
 }
 
 void log_pipeline_results(const newcode::PipelineResult& result,
-                          DualWriter& log) {
+                          io::DualWriter& log) {
   log << "[RESULT] Pre-FEC BER=" << result.pre_fec.ber
       << " (errs=" << result.pre_fec.errors
       << "/" << result.pre_fec.total << ")";

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "newcode/bch_255_239.hpp"
 #include "newcode/llr_utils.hpp"
 #include "newcode/matrix.hpp"
 

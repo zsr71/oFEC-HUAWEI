@@ -1,12 +1,12 @@
 #include "newcode/ofec_single_runner.hpp"
-
+#include "newcode/io/dualwriter.hpp"
 #include <algorithm>
 
 namespace ofec_single {
 namespace detail {
 
 std::optional<newcode::Params> build_params(const Config& cfg,
-                                            DualWriter& log) {
+                                            io::DualWriter& log) {
   newcode::Params params;
   params.BITGEN_SEED = cfg.bitgen_seed;
   params.CHANNEL_SEED = cfg.channel_seed;

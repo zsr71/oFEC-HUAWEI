@@ -1,6 +1,6 @@
 #include "newcode/ofec_decoder_hard.hpp"
 
-#include "newcode/bch_255_239.hpp"
+#include "newcode/common/bch/bch_255_239.hpp"
 #include "newcode/llr_utils.hpp"
 
 #include <array>
@@ -21,7 +21,7 @@ bool perform_hard_decode(const std::array<LLR, 256>& Lin256,
   }
 
   std::array<uint8_t, Params::BCH_N - 1> decoded{};
-  if (!bch_255_239_decode_hiho_cw_255(hard_in.data(), decoded.data())) {
+  if (!bch::bch_255_239_decode_hiho_cw_255(hard_in.data(), decoded.data())) {
     return false;
   }
 

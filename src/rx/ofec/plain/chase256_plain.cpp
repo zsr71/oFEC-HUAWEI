@@ -12,7 +12,7 @@
 //     shall form the next input as y(next) = y(channel) + α·ω, with α being a schedule.
 // -------------------------------------------------------------------------------------
 #include "newcode/chase256.hpp"
-#include "newcode/bch_255_239.hpp"
+#include "newcode/common/bch/bch_255_239.hpp"
 #include "newcode/params.hpp"
 #include "newcode/qfloat.hpp"
 

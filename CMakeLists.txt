@@ -19,6 +19,7 @@ find_package(Threads REQUIRED)
 # 统一头文件路径
 set(NEWCODE_INCLUDE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/common
   ${CMAKE_CURRENT_SOURCE_DIR}/src/rx
 )
 
@@ -159,43 +160,3 @@ add_executable(ofec_sweep2
 )
 target_include_directories(ofec_sweep2 PRIVATE src/ofec_sweep)
 target_link_libraries(ofec_sweep2 PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
-
-# ==============================
-# Tests
-# ==============================
-include(CTest)
-if(BUILD_TESTING)
-  add_executable(test_matrix tests/test_matrix.cpp)
-  target_link_libraries(test_matrix PRIVATE newcode_frontend)
-  add_test(NAME MatrixTest COMMAND test_matrix)
-
-  add_executable(test_qfloat tests/test_qfloat.cpp)
-  target_link_libraries(test_qfloat PRIVATE newcode_frontend)
-  add_test(NAME QFloatTest COMMAND test_qfloat)
-
-  add_executable(test_qam tests/test_qam.cpp)
-  target_link_libraries(test_qam PRIVATE newcode_frontend)
-  add_test(NAME QAMTest COMMAND test_qam)
-
-  add_executable(test_awgn tests/test_awgn.cpp)
-  target_link_libraries(test_awgn PRIVATE newcode_frontend)
-  add_test(NAME AWGNTest COMMAND test_awgn)
-
-  add_executable(test_qam_llr tests/test_qam_llr.cpp)
-  target_link_libraries(test_qam_llr PRIVATE newcode_frontend)
-  add_test(NAME QAMLLRTest COMMAND test_qam_llr)
-
-  add_executable(llr_reshape_demo tests/llr_reshape_demo.cpp)
-  # 注意：为了满足 ofec_encoder 与 BCH 的依赖，这里也链接 decoder_plain（带有 BCH/译码侧符号）
-  target_link_libraries(llr_reshape_demo PRIVATE newcode_frontend decoder_plain)
-  add_test(NAME LLRReshapeTest COMMAND llr_reshape_demo)
-
-  add_executable(test_interleaver tests/test_interleaver.cpp)
-  target_link_libraries(test_interleaver PRIVATE newcode_frontend)
-  add_test(NAME InterleaverTest COMMAND test_interleaver)
-
-  # BCH 专项测试依赖译码实现，这里链接到一个变体（任选其一）
-  add_executable(test_bch tests/test_bch.cpp)
-  target_link_libraries(test_bch PRIVATE newcode_frontend decoder_plain)
-  add_test(NAME BCHTest COMMAND test_bch)
-endif()

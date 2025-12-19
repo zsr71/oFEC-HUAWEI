@@ -1,7 +1,7 @@
-#include "newcode/awgn.hpp"
+#include "newcode/channel/awgn.hpp"
 #include <random>
 
-namespace newcode {
+namespace channel {
 
 std::vector<std::complex<float>>
 add_awgn(const std::vector<std::complex<float>>& x,

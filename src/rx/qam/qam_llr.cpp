@@ -1,7 +1,7 @@
 // path: newcode/qam_llr.cpp
 #include "newcode/qam_llr.hpp"
 #include "newcode/qam.hpp"
-#include "newcode/awgn.hpp"
+#include "newcode/channel/awgn.hpp"
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -114,7 +114,7 @@ qam_llr_from_ebn0(const std::vector<std::complex<float>>& y,
                   float ebn0_dB,
                   float code_rate)
 {
-    const float sigma = ebn0_to_sigma(ebn0_dB, n_bps, code_rate);
+    const float sigma = channel::ebn0_to_sigma(ebn0_dB, n_bps, code_rate);
     return qam_llr_logsumexp(y, n_bps, sigma);
 }
 

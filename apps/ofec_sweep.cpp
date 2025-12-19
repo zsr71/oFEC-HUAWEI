@@ -1,6 +1,6 @@
 #include <vector>
 
-#include "newcode/linspace.hpp"
+#include "newcode/utils/linspace.hpp"
 #include "newcode/ofec_sweep_runner.hpp"
 
 // ======== 用户可调参数区域 ========
@@ -15,10 +15,10 @@ static constexpr std::size_t kLlrBits            = 6;
 static constexpr bool kQuietConsole              = false;
 
 // Alpha/Beta 扫描候选
-static const std::vector<float> kAlphaStartCandidates = newcode::linspace(0.0f, 0.2f, 2);
-static const std::vector<float> kAlphaStepCandidates  = newcode::linspace(0.0f, 0.2f, 2);
-static const std::vector<float> kBetaStartCandidates  = newcode::linspace(0.0f, 0.2f, 2);
-static const std::vector<float> kBetaStepCandidates   = newcode::linspace(0.0f, 0.2f, 2);
+static const std::vector<float> kAlphaStartCandidates = utils::linspace(0.0f, 0.2f, 2);
+static const std::vector<float> kAlphaStepCandidates  = utils::linspace(0.0f, 0.2f, 2);
+static const std::vector<float> kBetaStartCandidates  = utils::linspace(0.0f, 0.2f, 2);
+static const std::vector<float> kBetaStepCandidates   = utils::linspace(0.0f, 0.2f, 2);
 static const std::vector<int>   kChaseLCandidates     = {6};
 
 // 随机种子（为空则自动生成 bitgen/channel seeds 数量）

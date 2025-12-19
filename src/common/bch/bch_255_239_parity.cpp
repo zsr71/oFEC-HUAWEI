@@ -1,7 +1,7 @@
-#include "newcode/bch_255_239.hpp"
+#include "newcode/common/bch/bch_255_239.hpp"
 #include <algorithm>
 
-namespace newcode
+namespace bch
 {
 // ---------------- LFSR 奇偶（保留你的实现） ----------------
 static inline std::array<uint8_t,16> parity_core_239(const uint8_t* info239)
@@ -11,8 +11,8 @@ static inline std::array<uint8_t,16> parity_core_239(const uint8_t* info239)
     {
         const uint8_t feedback = (info239[i] & 1u) ^ reg[15];
         for (int j = 15; j > 0; --j)
-            reg[j] = static_cast<uint8_t>( reg[j - 1] ^ (G_COEFFS[j] & feedback) );
-        reg[0] = static_cast<uint8_t>( G_COEFFS[0] & feedback ); // g0=1 => reg[0]=feedback
+            reg[j] = static_cast<uint8_t>( reg[j - 1] ^ (bch::G_COEFFS[j] & feedback) );
+        reg[0] = static_cast<uint8_t>( bch::G_COEFFS[0] & feedback ); // g0=1 => reg[0]=feedback
     }
     return reg; // 16 位校验
 }
@@ -25,4 +25,4 @@ std::array<uint8_t,16> bch_255_239_parity(const std::vector<uint8_t>& info239)
     return parity_core_239(buf.data());
 }
 
-} // namespace newcode
+} // namespace bch

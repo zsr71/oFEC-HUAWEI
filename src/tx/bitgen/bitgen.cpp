@@ -1,9 +1,9 @@
-#include "newcode/bitgen.hpp"
+#include "newcode/tx/bitgen/bitgen.hpp"
 #include <random>
 
-namespace newcode {
+namespace bitgen {
 
-std::vector<uint8_t> generate_bits(const Params& params) {
+std::vector<uint8_t> generate_bits(const  newcode::Params& params) {
     std::vector<uint8_t> bits;
     bits.reserve(params.NUM_INFO_BITS);
 

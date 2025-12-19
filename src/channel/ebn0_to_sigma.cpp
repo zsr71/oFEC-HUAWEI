@@ -1,8 +1,8 @@
-#include "newcode/awgn.hpp"
+#include "newcode/channel/awgn.hpp"
 #include <cmath>
 #include <stdexcept>
 
-namespace newcode {
+namespace channel {
 
 float ebn0_to_sigma(float ebn0_dB, unsigned bits_per_symbol, float code_rate)
 {

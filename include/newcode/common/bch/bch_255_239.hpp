@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstddef>
 
-namespace newcode
+namespace bch
 {
 // ========== 生成多项式 g(y)（保持你原实现） ==========
 static constexpr uint8_t G_COEFFS[16] = {
@@ -34,4 +34,4 @@ inline bool bch_255_239_decode_hiho_cw_256(const uint8_t* in256,
     return bch_255_239_decode_hiho_cw_255(in256, out255, corrected_errors);
 }
 
-} // namespace newcode
+} // namespace bch

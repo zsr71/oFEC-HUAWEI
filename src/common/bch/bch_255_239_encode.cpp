@@ -1,6 +1,6 @@
-#include "newcode/bch_255_239.hpp"
+#include "newcode/common/bch/bch_255_239.hpp"
 
-namespace newcode
+namespace bch
 {
 
 std::array<uint8_t,256> bch_255_239_encode(const std::vector<uint8_t>& info239)
@@ -11,7 +11,7 @@ std::array<uint8_t,256> bch_255_239_encode(const std::vector<uint8_t>& info239)
         out[i] = (i < static_cast<int>(info239.size())) ? (info239[i] & 1u) : 0u;
 
     // 计算 16 位校验并写到 [239..254]
-    const auto par = bch_255_239_parity(info239);
+    const auto par = bch::bch_255_239_parity(info239);
     for (int j = 0; j < 16; ++j)
         out[239 + j] = par[j];
 
@@ -23,4 +23,4 @@ std::array<uint8_t,256> bch_255_239_encode(const std::vector<uint8_t>& info239)
     return out;
 }
 
-} // namespace newcode
+} // namespace bch

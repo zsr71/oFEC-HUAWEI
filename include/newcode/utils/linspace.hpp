@@ -4,16 +4,8 @@
 #include <initializer_list>
 #include <vector>
 
-namespace newcode {
-
-struct LinspaceSpec {
-  float start;
-  float end;
-  std::size_t count;
-};
+namespace utils {
 
 std::vector<float> linspace(float start, float end, std::size_t count);
 
-
-}  // namespace newcode
-
+}  // namespace utils
