@@ -1,6 +1,6 @@
 #pragma once
 
-#include "newcode/llr_utils.hpp"
+#include "newcode/common/qfloat/llr_utils.hpp"
 #include "newcode/common/matrix/matrix.hpp"
 #include "newcode/common/qfloat/qfloat.hpp"
 

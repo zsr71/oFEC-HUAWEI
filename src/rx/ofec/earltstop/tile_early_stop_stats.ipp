@@ -21,7 +21,7 @@ TileEarlyStopResult tile_early_stop_stats(const matrix::Matrix<LLR>& lin_matrix)
   for (size_t r = 0; r < rows; ++r) {
     bool row_passed = true;
     for (int j = 0; j < 255; ++j) {
-      const float v = llr_to_float(lin_matrix[r][static_cast<size_t>(j)]);
+      const float v = qfloat::llr_to_float(lin_matrix[r][static_cast<size_t>(j)]);
       hard255[static_cast<size_t>(j)] = (v < 0.0f) ? 1u : 0u;
     }
 
@@ -34,7 +34,7 @@ TileEarlyStopResult tile_early_stop_stats(const matrix::Matrix<LLR>& lin_matrix)
         parity255 ^= (hard255[static_cast<size_t>(j)] & 1u);
 
       const uint8_t overall =
-          (llr_to_float(lin_matrix[r][255]) < 0.0f) ? 1u : 0u;
+          (qfloat::llr_to_float(lin_matrix[r][255]) < 0.0f) ? 1u : 0u;
 
       if ((parity255 ^ overall) != 0u) {
         row_passed = false;

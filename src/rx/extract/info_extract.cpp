@@ -1,12 +1,12 @@
-#include "newcode/info_extract.hpp"
+#include "newcode/common/matrix/info_extract.hpp"
 #include <cassert>
 #include <algorithm>
 
-namespace newcode {
+namespace matrix {
 
 static inline uint8_t hard_decide(float L) noexcept { return (L >= 0.f) ? 0u : 1u; }
 
-std::vector<uint8_t> rx_info_from_bit_llr(const matrix::Matrix<float>& bit_llr_mat, const Params& p)
+std::vector<uint8_t> rx_info_from_bit_llr(const matrix::Matrix<float>& bit_llr_mat, const newcode::Params& p)
 {
     // 基本参数
     const int B = static_cast<int>(p.BITS_PER_SUBBLOCK_DIM);

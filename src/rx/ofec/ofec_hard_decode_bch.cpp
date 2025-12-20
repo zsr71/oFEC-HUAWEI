@@ -1,7 +1,7 @@
 #include "newcode/ofec_decoder_hard.hpp"
 
 #include "newcode/common/bch/bch_255_239.hpp"
-#include "newcode/llr_utils.hpp"
+#include "newcode/common/qfloat/llr_utils.hpp"
 
 #include <array>
 #include <cstdint>
@@ -17,7 +17,7 @@ bool perform_hard_decode(const std::array<LLR, 256>& Lin256,
 {
   std::array<uint8_t, 256> hard_in{};
   for (int i = 0; i < 256; ++i) {
-    hard_in[static_cast<size_t>(i)] = (llr_to_float(Lin256[static_cast<size_t>(i)]) < 0.f) ? 1u : 0u;
+    hard_in[static_cast<size_t>(i)] = (qfloat::llr_to_float(Lin256[static_cast<size_t>(i)]) < 0.f) ? 1u : 0u;
   }
 
   std::array<uint8_t, newcode::Params::BCH_N - 1> decoded{};
@@ -41,7 +41,7 @@ bool perform_hard_decode(const std::array<LLR, 256>& Lin256,
   for (int i = 0; i < static_cast<int>(newcode::Params::BCH_N); ++i) {
     const float sign = cw[static_cast<size_t>(i)] ? -1.f : 1.f;
     const float Lpost = sign * hard_mag;
-    const float Lch = llr_to_float(Lin256[static_cast<size_t>(i)]);
+    const float Lch = qfloat::llr_to_float(Lin256[static_cast<size_t>(i)]);
     Y2[static_cast<size_t>(i)] = Lpost - Lch;
   }
 

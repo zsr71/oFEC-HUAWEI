@@ -38,6 +38,9 @@ file(GLOB COMMON_PIPELINE_SRCS    CONFIGURE_DEPENDS "src/common/pipeline/*.cpp")
 file(GLOB COMMON_UTILS_SRCS       CONFIGURE_DEPENDS "src/common/utils/*.cpp")
 file(GLOB RX_DECODER_REGISTRY_SRCS CONFIGURE_DEPENDS "src/rx/decoder/registry/*.cpp")
 
+# qfloat implementation sources (显式加入以生成模板显式实例化符号)
+file(GLOB QFLOAT_SRCS CONFIGURE_DEPENDS "src/common/qfloat/*.cpp")
+
 file(GLOB TX_BITGEN_SRCS CONFIGURE_DEPENDS "src/tx/bitgen/*.cpp")
 file(GLOB TX_OFEC_SRCS   CONFIGURE_DEPENDS "src/tx/ofec/*.cpp")
 file(GLOB TX_QAM_SRCS    CONFIGURE_DEPENDS "src/tx/qam/*.cpp")
@@ -77,6 +80,7 @@ add_library(newcode_frontend STATIC
   ${COMMON_INTERLEAVER_SRCS}
   ${COMMON_UTILS_SRCS}
   ${RX_DECODER_REGISTRY_SRCS}
+  ${QFLOAT_SRCS}
   ${TX_BITGEN_SRCS}
   ${TX_OFEC_SRCS}
   ${TX_QAM_SRCS}

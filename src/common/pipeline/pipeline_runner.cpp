@@ -15,7 +15,7 @@
 #include "newcode/tx/bitgen/bitgen.hpp"
 #include "newcode/decoder_api.hpp"
 #include "newcode/common/matrix/hard_bits_to_llr_matrix.hpp"
-#include "newcode/info_extract.hpp"
+#include "newcode/common/matrix/info_extract.hpp"
 #include "newcode/llr_known_prefix.hpp"
 #include "newcode/llr_qpack.hpp"
 #include "newcode/ofec_decoder.hpp"
@@ -122,7 +122,7 @@ PipelineResult run_pipeline(const Params& params,
   //抽取Tx发射参考信息
   const float TX_REF_LLR = 50.0f; // 任意足够大的幅度即可
   matrix::Matrix<float> tx_llr_mat = hard_bits_to_llr_matrix(code_matrix, TX_REF_LLR);
-  auto tx_info_bits_ref = rx_info_from_bit_llr(tx_llr_mat, params);
+  auto tx_info_bits_ref = matrix::rx_info_from_bit_llr(tx_llr_mat, params);
   if (verbose) {
     log << "[INFO] (" << label << ") tx_info_bits_ref (by extractor): "
         << tx_info_bits_ref.size() << "\n";
@@ -220,7 +220,7 @@ PipelineResult run_pipeline(const Params& params,
       for (size_t r = 0; r < llr_mat.rows(); ++r)
         for (size_t c = 0; c < llr_mat.cols(); ++c)
           llr_values.push_back(llr_mat[r][c]);
-      quant_clip = compute_clip_from_ratio(llr_values.begin(), llr_values.end(),
+      quant_clip = qfloat::compute_clip_from_ratio(llr_values.begin(), llr_values.end(),
                                            params.LLR_CLIP_RATIO);
     }
     if (quant_clip <= 0.0f) {
@@ -253,8 +253,8 @@ PipelineResult run_pipeline(const Params& params,
   auto decode_result = decoder->decode(request);
 
   // 提取解码后信息比特
-  auto rx_info_bits_pre  = rx_info_from_bit_llr(decode_result.pre_decoder_llr,  params);
-  auto rx_info_bits_post = rx_info_from_bit_llr(decode_result.post_decoder_llr, params);
+  auto rx_info_bits_pre  = matrix::rx_info_from_bit_llr(decode_result.pre_decoder_llr,  params);
+  auto rx_info_bits_post = matrix::rx_info_from_bit_llr(decode_result.post_decoder_llr, params);
 
   if (verbose) {
     log << "[INFO] (" << label << ") rx_info_bits: " << rx_info_bits_pre.size()

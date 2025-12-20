@@ -6,15 +6,15 @@ template <typename LLR, typename Enable>
 typename LinMatrixAdapter<LLR, Enable>::core_type
 LinMatrixAdapter<LLR, Enable>::combine(const LLR& Lch, const LLR& La)
 {
-  const float sum = llr_to_float(Lch) + llr_to_float(La);
-  return llr_from_float<core_type>(sum);
+  const float sum = qfloat::llr_to_float(Lch) + qfloat::llr_to_float(La);
+  return qfloat::llr_from_float<core_type>(sum);
 }
 
 template <typename LLR, typename Enable>
 typename LinMatrixAdapter<LLR, Enable>::core_type
 LinMatrixAdapter<LLR, Enable>::channel(const LLR& v)
 {
-  return llr_from_float<core_type>(llr_to_float(v));
+  return qfloat::llr_from_float<core_type>(qfloat::llr_to_float(v));
 }
 
 template <int NBITS, typename Store>

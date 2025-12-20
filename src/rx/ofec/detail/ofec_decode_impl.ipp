@@ -3,7 +3,7 @@
 #include "ofec_window_impl.ipp"
 
 #include "newcode/decoder_api.hpp"
-#include "newcode/llr_utils.hpp"
+#include "newcode/common/qfloat/llr_utils.hpp"
 #include "newcode/quantized_llr_dump.hpp"
 
 #include <string>
@@ -40,7 +40,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   matrix::Matrix<LLR> work_llr(RROWS, N);
   for (size_t r = 0; r < RROWS; ++r)
       for (size_t c = 0; c < N; ++c)
-          work_llr[r][c] = llr_from_float<LLR>(0.0f);
+          work_llr[r][c] = qfloat::llr_from_float<LLR>(0.0f);
   matrix::Matrix<float> last_tile_history_llr(RROWS, N);
 
   if (RROWS < WIN_HEIGHT_ROWS) {
@@ -82,8 +82,8 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   matrix::Matrix<LLR> out(RROWS, N);
   for (size_t r = 0; r < RROWS; ++r) {
     for (size_t c = 0; c < N; ++c) {
-      const float sum = llr_to_float(channel_llr[r][c]) + last_tile_history_llr[r][c];
-      out[r][c] = llr_from_float<LLR>(sum);
+      const float sum = qfloat::llr_to_float(channel_llr[r][c]) + last_tile_history_llr[r][c];
+      out[r][c] = qfloat::llr_from_float<LLR>(sum);
     }
   }
 
@@ -92,7 +92,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
     matrix::Matrix<float> work_float(RROWS, N);
     for (size_t r = 0; r < RROWS; ++r)
       for (size_t c = 0; c < N; ++c)
-        work_float[r][c] = llr_to_float(work_llr[r][c]);
+        work_float[r][c] = qfloat::llr_to_float(work_llr[r][c]);
 
     DecodeRequest dump_req{
         .label = "work_llr",

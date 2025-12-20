@@ -4,7 +4,7 @@
 #include <limits>
 #include <type_traits>
 
-namespace newcode {
+namespace qfloat {
 
 template <typename LLR>
 inline float llr_to_float(LLR x)
@@ -28,5 +28,5 @@ inline LLR llr_from_float(float x)
   }
 }
 
-} // namespace newcode
+} // namespace qfloat
 

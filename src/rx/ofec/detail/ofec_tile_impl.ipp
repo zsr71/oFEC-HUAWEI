@@ -5,7 +5,7 @@
 #include "newcode/rx/ofec/chase/chase256.hpp" // 保留 Chase 头；本文档内有三参前向声明
 #include "newcode/ofec_decoder_hard.hpp"
 #include "newcode/rx/ofec/chase/decoder_core.hpp"
-#include "newcode/llr_utils.hpp"
+#include "newcode/common/qfloat/llr_utils.hpp"
 #include "newcode/decoder_api.hpp"
 #include "newcode/ofec/common/lin_matrix_adapters.hpp"
 #include "newcode/ofec/earltstop/tile_early_stop_stats.hpp"

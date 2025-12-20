@@ -68,7 +68,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       const size_t col = Ct * static_cast<size_t>(B) + ct;
       const LLR prior_llr = (*tile_out)[row_local][col];
       const LLR extrinsic_llr =
-          llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+          qfloat::llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
       if (row_produced) {
         (*tile_out)[row_local][col] = extrinsic_llr;
       }
@@ -96,7 +96,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       const size_t col = Ct * static_cast<size_t>(B) + ct;
       const LLR prior_llr = (*tile_out)[row_local][col];
       const LLR extrinsic_llr =
-          llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+           qfloat::llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
       if (row_produced) {
         (*tile_out)[row_local][col] = extrinsic_llr;
       }
@@ -124,7 +124,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       const size_t col = Ct * static_cast<size_t>(B) + ct;
       const LLR prior_llr = (*tile_out)[row_local][col];
       const LLR extrinsic_llr =
-          llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+          qfloat::llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
       if (row_produced) {
         (*tile_out)[row_local][col] = extrinsic_llr;
       }
@@ -163,7 +163,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       if (prep.trace.should_trace(prep.trace.trace_cfg.log_write_mapping, rr_global, cc_global)) {
         std::cout << " WRITE Mapping k=" << k
                   << " to global pos (" << rr_global << "," << cc_global << ")" << '\n';
-        std::cout << "  Value=" << llr_to_float(lout_row[static_cast<size_t>(k)]) << '\n';
+        std::cout << "  Value=" << qfloat::llr_to_float(lout_row[static_cast<size_t>(k)]) << '\n';
       }
 
       const long rr_local2 = rr_global - static_cast<long>(tile_top_row_global);
@@ -180,7 +180,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       const LLR prior_llr =
           (*tile_out)[rr_idx_local][cc_idx_local];
       const LLR extrinsic_llr =
-          llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
+          qfloat::llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
       if (row_produced) {
         (*tile_out)[rr_idx_local][cc_idx_local] = extrinsic_llr;
       }

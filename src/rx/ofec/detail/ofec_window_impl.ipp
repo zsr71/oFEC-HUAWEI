@@ -3,7 +3,7 @@
 #include "ofec_tile_impl.ipp"
 
 #include "newcode/ofec_decoder.hpp"
-#include "newcode/llr_utils.hpp"
+#include "newcode/common/qfloat/llr_utils.hpp"
 
 #include <vector>
 
@@ -67,7 +67,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                 const size_t global_row = tile_top_row + r;
                 if (use_history_input) {
                     const float hist = (*last_tile_history_accum)[global_row][c];
-                    tile_in[r][c] = llr_from_float<LLR>(hist);
+                    tile_in[r][c] = qfloat::llr_from_float<LLR>(hist);
                 } else {
                     tile_in[r][c]  = work_llr[global_row][c];
                 }
@@ -112,9 +112,9 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
         if (trace_mismatch &&
             static_cast<long>(global_row) == trace_row &&
             static_cast<long>(c) == trace_col) {
-          const float existing_val = llr_to_float(work_llr[global_row][c]);
-          const float incoming_val = llr_to_float(incoming);
-          const float channel_val  = llr_to_float(channel_llr[global_row][c]);
+          const float existing_val = qfloat::llr_to_float(work_llr[global_row][c]);
+          const float incoming_val = qfloat::llr_to_float(incoming);
+          const float channel_val  = qfloat::llr_to_float(channel_llr[global_row][c]);
           if (existing_val != incoming_val) {
             std::cout << "Mismatch at work_llr[" << trace_row << "][" << trace_col
                       << "]: tile index " << t
