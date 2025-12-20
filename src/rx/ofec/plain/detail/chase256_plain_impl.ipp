@@ -1,14 +1,14 @@
 #pragma once
 
-namespace newcode {
+namespace chase {
 
 template<typename LLR>
 void chase_decode_256_plain(const LLR* Lin256,
                             const LLR* /*Lch256*/,
                             float* Y2_256,
-                            const Params& p)
+                            const newcode::Params& p)
 {
-    using namespace detail;
+    using namespace newcode::detail;
 
     float beta;  // (20) fallback magnitude scale
     float alpha; // (21) extrinsic scaling (applied by caller)
@@ -175,10 +175,9 @@ void chase_decode_256_plain(const LLR* Lin256,
 
 // ======================== 2-arg wrapper (kept for API parity) ========================
 template<typename LLR>
-void chase_decode_256_plain(const LLR* Y256, float* Y2_256, const Params& p)
+void chase_decode_256_plain(const LLR* Y256, float* Y2_256, const newcode::Params& p)
 {
     chase_decode_256_plain<LLR>(Y256, Y256, Y2_256, p);
 }
 
-} // namespace newcode
-
+} // namespace chase

@@ -13,7 +13,7 @@ namespace detail {
 template <typename LLR>
 void process_window_impl(matrix::Matrix<LLR>& work_llr,
                          const matrix::Matrix<LLR>& channel_llr,
-                         size_t win_start, size_t win_end, const Params& p,
+                         size_t win_start, size_t win_end, const newcode::Params& p,
                          size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
                          std::vector<TileEarlyStopCounter>* tile_stats,
                          bool normalize_extrinsic,
@@ -28,7 +28,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
       trace_cfg.enable && trace_cfg.log_mismatch && trace_has_coords;
   const long trace_row = trace_has_coords ? trace_cfg.row : -1;
   const long trace_col = trace_has_coords ? trace_cfg.col : -1;
-  const size_t N = Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM;
+  const size_t N = newcode::Params::NUM_SUBBLOCK_COLS * newcode::Params::BITS_PER_SUBBLOCK_DIM;
   static size_t chase_invocation_counter = 0;
 
   auto pick_float = [](const std::vector<float>& tbl, size_t idx, float fallback) -> float {
@@ -75,7 +75,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             }
         }
 
-        Params tile_params = p;
+        newcode::Params tile_params = p;
         tile_params.beta = pick_float(p.beta_list, t, p.beta);
         tile_params.ALPHA = pick_float(p.ALPHA_LIST, t, p.ALPHA);
         tile_params.debug_trace.chase_tile_index = static_cast<int>(t);

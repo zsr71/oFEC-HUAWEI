@@ -1,9 +1,10 @@
 #pragma once
 
 #include "newcode/ofec_decoder.hpp"
-#include "newcode/chase256.hpp" // 保留 Chase 头；本文档内有三参前向声明
+#include "newcode/params.hpp"
+#include "newcode/rx/ofec/chase/chase256.hpp" // 保留 Chase 头；本文档内有三参前向声明
 #include "newcode/ofec_decoder_hard.hpp"
-#include "newcode/decoder_core.hpp"
+#include "newcode/rx/ofec/chase/decoder_core.hpp"
 #include "newcode/llr_utils.hpp"
 #include "newcode/decoder_api.hpp"
 #include "newcode/ofec/common/lin_matrix_adapters.hpp"
@@ -25,11 +26,11 @@ namespace newcode {
 namespace detail {
 
 template <typename LLR>
-using CoreFn = DecoderCoreResult<LLR> (*)(const matrix::Matrix<LLR>&,
-                                          const matrix::Matrix<LLR>&,
-                                          bool,
-                                          const Params&,
-                                          const std::vector<bool>* early_stop_row_flags);
+using CoreFn = chase::DecoderCoreResult<LLR> (*)(const matrix::Matrix<LLR>&,
+                                                 const matrix::Matrix<LLR>&,
+                                                 bool,
+                                                 const newcode::Params&,
+                                                 const std::vector<bool>* early_stop_row_flags);
 
 } // namespace detail
 } // namespace newcode
@@ -44,7 +45,7 @@ namespace detail {
 template <typename LLR>
 TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
                                          const matrix::Matrix<LLR>& ch_tile,
-                                         const Params& p,
+                                         const newcode::Params& p,
                                          size_t tile_top_row_global,
                                          bool use_hard_decode,
                                          bool normalize_extrinsic,
@@ -53,8 +54,8 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
                                          matrix::Matrix<float>* last_tile_history_accum,
                                          bool capture_last_tile_history)
 {
-  constexpr int B         = static_cast<int>(Params::BITS_PER_SUBBLOCK_DIM);            // 16
-  constexpr int N         = static_cast<int>(Params::NUM_SUBBLOCK_COLS * B);            // 128
+  constexpr int B         = static_cast<int>(newcode::Params::BITS_PER_SUBBLOCK_DIM);            // 16
+  constexpr int N         = static_cast<int>(newcode::Params::NUM_SUBBLOCK_COLS * B);            // 128
 
   const size_t H = tile_in.rows();
   const size_t W = tile_in.cols();

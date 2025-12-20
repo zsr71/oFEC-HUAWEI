@@ -7,7 +7,7 @@
 #include "newcode/params.hpp"
 #include "newcode/common/qfloat/qfloat.hpp"
 
-namespace newcode {
+namespace chase {
 
 template <typename LLR>
 struct DecoderCoreResult {
@@ -19,43 +19,43 @@ template <typename LLR>
 DecoderCoreResult<LLR> Decoder_Core_plain(const matrix::Matrix<LLR>& lin_matrix,
                                           const matrix::Matrix<LLR>& lch_matrix,
                                           bool use_hard_decode,
-                                          const Params& p,
+                                          const newcode::Params& p,
                                           const std::vector<bool>* early_stop_row_flags);
 
 template <typename LLR>
 DecoderCoreResult<LLR> Decoder_Core_ebchPF(const matrix::Matrix<LLR>& lin_matrix,
                                            const matrix::Matrix<LLR>& lch_matrix,
                                            bool use_hard_decode,
-                                           const Params& p,
+                                           const newcode::Params& p,
                                            const std::vector<bool>* early_stop_row_flags);
 
 extern template DecoderCoreResult<float> Decoder_Core_plain<float>(const matrix::Matrix<float>&,
                                                                    const matrix::Matrix<float>&,
                                                                    bool,
-                                                                   const Params&,
+                                                                   const newcode::Params&,
                                                                    const std::vector<bool>*);
 extern template DecoderCoreResult<int8_t> Decoder_Core_plain<int8_t>(const matrix::Matrix<int8_t>&,
                                                                      const matrix::Matrix<int8_t>&,
                                                                      bool,
-                                                                     const Params&,
+                                                                     const newcode::Params&,
                                                                      const std::vector<bool>*);
 extern template DecoderCoreResult<float> Decoder_Core_ebchPF<float>(const matrix::Matrix<float>&,
                                                                     const matrix::Matrix<float>&,
                                                                     bool,
-                                                                    const Params&,
+                                                                    const newcode::Params&,
                                                                     const std::vector<bool>*);
 extern template DecoderCoreResult<int8_t> Decoder_Core_ebchPF<int8_t>(const matrix::Matrix<int8_t>&,
                                                                       const matrix::Matrix<int8_t>&,
                                                                       bool,
-                                                                      const Params&,
+                                                                      const newcode::Params&,
                                                                       const std::vector<bool>*);
 
 #define DECLARE_DECODER_CORE_QFLOAT(N) \
 extern template DecoderCoreResult<qfloat::qfloat<N>> Decoder_Core_plain<qfloat::qfloat<N>>( \
-    const matrix::Matrix<qfloat::qfloat<N>>& lin_matrix, const matrix::Matrix<qfloat::qfloat<N>>& lch_matrix, bool, const Params&, \
+    const matrix::Matrix<qfloat::qfloat<N>>& lin_matrix, const matrix::Matrix<qfloat::qfloat<N>>& lch_matrix, bool, const newcode::Params&, \
     const std::vector<bool>*); \
 extern template DecoderCoreResult<qfloat::qfloat<N>> Decoder_Core_ebchPF<qfloat::qfloat<N>>( \
-    const matrix::Matrix<qfloat::qfloat<N>>& lin_matrix, const matrix::Matrix<qfloat::qfloat<N>>& lch_matrix, bool, const Params&, \
+    const matrix::Matrix<qfloat::qfloat<N>>& lin_matrix, const matrix::Matrix<qfloat::qfloat<N>>& lch_matrix, bool, const newcode::Params&, \
     const std::vector<bool>*);
 
 DECLARE_DECODER_CORE_QFLOAT(2)

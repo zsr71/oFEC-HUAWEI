@@ -7,8 +7,8 @@ namespace detail {
 
 template <typename LLR>
 void writeback_tile(const TilePrepared<LLR>& prep,
-                    const DecoderCoreResult<typename LinMatrixAdapter<LLR>::core_type>& decoder_res,
-                    const Params& p,
+                    const chase::DecoderCoreResult<typename LinMatrixAdapter<LLR>::core_type>& decoder_res,
+                    const newcode::Params& p,
                     size_t tile_top_row_global,
                     bool capture_last_tile_history,
                     matrix::Matrix<LLR>* tile_out,
@@ -17,12 +17,12 @@ void writeback_tile(const TilePrepared<LLR>& prep,
   using Adapter = LinMatrixAdapter<LLR>;
   using CoreLLR = typename Adapter::core_type;
 
-  constexpr int B         = static_cast<int>(Params::BITS_PER_SUBBLOCK_DIM);            // 16
-  constexpr int N         = static_cast<int>(Params::NUM_SUBBLOCK_COLS * B);            // 128
-  constexpr int K         = static_cast<int>(Params::BCH_K);                            // 239
+  constexpr int B         = static_cast<int>(newcode::Params::BITS_PER_SUBBLOCK_DIM);            // 16
+  constexpr int N         = static_cast<int>(newcode::Params::NUM_SUBBLOCK_COLS * B);            // 128
+  constexpr int K         = static_cast<int>(newcode::Params::BCH_K);                            // 239
   constexpr int TAKE_BITS = K - N;                                                      // 111
-  constexpr int BCH_PAR   = static_cast<int>(Params::BCH_PARITY_BITS);                  // 16
-  constexpr int OVR_IDX   = static_cast<int>(Params::BCH_OVERALL_IDX);                  // 255
+  constexpr int BCH_PAR   = static_cast<int>(newcode::Params::BCH_PARITY_BITS);                  // 16
+  constexpr int OVR_IDX   = static_cast<int>(newcode::Params::BCH_OVERALL_IDX);                  // 255
 
   auto core_to_float = [](const CoreLLR& value) -> float {
     if constexpr (std::is_same_v<CoreLLR, float> || std::is_same_v<CoreLLR, double>) {

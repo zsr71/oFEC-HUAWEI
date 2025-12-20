@@ -11,9 +11,9 @@
 //   • (21): the decoder must output ONLY EXTRINSIC information ω_j; the caller
 //     shall form the next input as y(next) = y(channel) + α·ω, with α being a schedule.
 // -------------------------------------------------------------------------------------
-#include "newcode/chase256.hpp"
-#include "newcode/common/bch/bch_255_239.hpp"
 #include "newcode/params.hpp"
+#include "newcode/rx/ofec/chase/chase256.hpp"
+#include "newcode/common/bch/bch_255_239.hpp"
 #include "newcode/common/qfloat/qfloat.hpp"
 
 #include <filesystem>
@@ -38,19 +38,19 @@
 #include "detail/chase256_plain_trace_csv.ipp"
 #include "detail/chase256_plain_impl.ipp"
 
-namespace newcode {
+namespace chase {
 
 // ======================== explicit instantiations ========================
-template void chase_decode_256_plain<float >(const float*,  const float*,  float*,  const Params&);
-template void chase_decode_256_plain<int8_t>(const int8_t*, const int8_t*, float*, const Params&);
-template void chase_decode_256_plain<float >(const float*,  float*,  const Params&);
-template void chase_decode_256_plain<int8_t>(const int8_t*, float*, const Params&);
+template void chase_decode_256_plain<float >(const float*,  const float*,  float*,  const newcode::Params&);
+template void chase_decode_256_plain<int8_t>(const int8_t*, const int8_t*, float*, const newcode::Params&);
+template void chase_decode_256_plain<float >(const float*,  float*,  const newcode::Params&);
+template void chase_decode_256_plain<int8_t>(const int8_t*, float*, const newcode::Params&);
 
 #define INSTANTIATE_CHASE256_PLAIN_QFLOAT(N) \
 template void chase_decode_256_plain<qfloat::qfloat<N>>( \
-    const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const Params&); \
+    const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const newcode::Params&); \
 template void chase_decode_256_plain<qfloat::qfloat<N>>( \
-    const qfloat::qfloat<N>*, float*, const Params&);
+    const qfloat::qfloat<N>*, float*, const newcode::Params&);
 
 INSTANTIATE_CHASE256_PLAIN_QFLOAT(2)
 INSTANTIATE_CHASE256_PLAIN_QFLOAT(3)
@@ -69,5 +69,4 @@ INSTANTIATE_CHASE256_PLAIN_QFLOAT(15)
 
 #undef INSTANTIATE_CHASE256_PLAIN_QFLOAT
 
-} // namespace newcode
-
+} // namespace chase

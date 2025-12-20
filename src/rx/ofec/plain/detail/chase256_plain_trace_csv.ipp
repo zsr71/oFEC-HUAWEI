@@ -3,7 +3,7 @@
 namespace newcode {
 namespace detail {
 
-static void dump_chase_csv(const Params::DebugTraceConfig& trace,
+static void dump_chase_csv(const newcode::Params::DebugTraceConfig& trace,
                            const float* y,
                            const uint8_t* hard_ch,
                            const uint8_t* ML,
@@ -12,11 +12,11 @@ static void dump_chase_csv(const Params::DebugTraceConfig& trace,
     if (!trace.enable || !trace.dump_chase_csv) return;
     if (trace.chase_tile_index < 0 || trace.chase_invocation < 0) return;
 
-    std::vector<Params::DebugTraceConfig::ChaseTraceEntry> entries =
+    std::vector<newcode::Params::DebugTraceConfig::ChaseTraceEntry> entries =
         trace.active_chase_entries;
     if (entries.empty()) {
         if (trace.chase_decoder_col < 0) return;
-        Params::DebugTraceConfig::ChaseTraceEntry fallback;
+        newcode::Params::DebugTraceConfig::ChaseTraceEntry fallback;
         fallback.row_index = trace.chase_decoder_row;
         fallback.k = trace.chase_decoder_col;
         fallback.global_row = trace.row;

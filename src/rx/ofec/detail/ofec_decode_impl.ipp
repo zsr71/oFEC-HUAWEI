@@ -14,13 +14,13 @@ namespace newcode {
 namespace detail {
 
 template <typename LLR>
-matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, const Params& p,
+matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, const newcode::Params& p,
                                  std::vector<TileEarlyStopCounter>* tile_stats,
                                  bool normalize_extrinsic,
                                  const matrix::Matrix<float>* tx_llr_ref,
                                  CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn)
 {
-  const size_t N = Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM;
+  const size_t N = newcode::Params::NUM_SUBBLOCK_COLS * newcode::Params::BITS_PER_SUBBLOCK_DIM;
 
   const size_t RROWS = llr_mat.rows();
   const size_t CCOLS = llr_mat.cols();

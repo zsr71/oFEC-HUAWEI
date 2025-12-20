@@ -4,7 +4,7 @@ namespace newcode {
 namespace detail {
 
 struct TileTraceContext {
-  Params::DebugTraceConfig trace_cfg;
+  newcode::Params::DebugTraceConfig trace_cfg;
   bool trace_has_coords{false};
   bool trace_has_targets{false};
   bool trace_enabled{false};
@@ -25,7 +25,7 @@ struct TilePrepared {
   matrix::Matrix<CoreLLR> lch_matrix;
   std::vector<size_t> row_local_lookup;
   std::vector<size_t> row_global_lookup;
-  Params params_for_core;
+  newcode::Params params_for_core;
   std::shared_ptr<std::vector<std::vector<int8_t>>> expected_bits;
   TileTraceContext trace;
 };
@@ -33,19 +33,19 @@ struct TilePrepared {
 template <typename LLR>
 TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
                                       const matrix::Matrix<LLR>& ch_tile,
-                                      const Params& p,
+                                      const newcode::Params& p,
                                       size_t tile_top_row_global,
                                       int SBR,
                                       size_t rows_to_decode,
                                       const matrix::Matrix<float>* tx_llr_ref)
 {
   using Adapter = typename TilePrepared<LLR>::Adapter;
-  constexpr int B         = static_cast<int>(Params::BITS_PER_SUBBLOCK_DIM);            // 16
-  constexpr int N         = static_cast<int>(Params::NUM_SUBBLOCK_COLS * B);            // 128
-  constexpr int K         = static_cast<int>(Params::BCH_K);                            // 239
+  constexpr int B         = static_cast<int>(newcode::Params::BITS_PER_SUBBLOCK_DIM);            // 16
+  constexpr int N         = static_cast<int>(newcode::Params::NUM_SUBBLOCK_COLS * B);            // 128
+  constexpr int K         = static_cast<int>(newcode::Params::BCH_K);                            // 239
   constexpr int TAKE_BITS = K - N;                                                      // 111
-  constexpr int BCH_PAR   = static_cast<int>(Params::BCH_PARITY_BITS);                  // 16
-  constexpr int OVR_IDX   = static_cast<int>(Params::BCH_OVERALL_IDX);                  // 255
+  constexpr int BCH_PAR   = static_cast<int>(newcode::Params::BCH_PARITY_BITS);                  // 16
+  constexpr int OVR_IDX   = static_cast<int>(newcode::Params::BCH_OVERALL_IDX);                  // 255
 
   const size_t H = tile_in.rows();
   const size_t W = tile_in.cols();
@@ -61,7 +61,7 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
   trace_ctx.trace_row = trace_ctx.trace_has_coords ? trace_ctx.trace_cfg.row : -1;
   trace_ctx.trace_col = trace_ctx.trace_has_coords ? trace_ctx.trace_cfg.col : -1;
 
-  Params params_for_core = p;
+  newcode::Params params_for_core = p;
   params_for_core.debug_trace.active_chase_entries.clear();
   if (params_for_core.debug_trace.chase_expected_bits) {
     params_for_core.debug_trace.chase_expected_bits.reset();

@@ -16,7 +16,7 @@ inline std::string sanitize_label(const std::string& label) {
   return safe;
 }
 
-inline void log_target_history(const Params& params,
+inline void log_target_history(const newcode::Params& params,
                                const matrix::Matrix<float>& lout,
                                const std::vector<bool>& produced_rows) {
   const auto& trace = params.debug_trace;
@@ -63,11 +63,11 @@ inline void log_target_history(const Params& params,
 }
 
 template <typename LLR>
-DecoderCoreResult<typename LinMatrixAdapter<LLR>::core_type>
+chase::DecoderCoreResult<typename LinMatrixAdapter<LLR>::core_type>
 decode_tile(const TilePrepared<LLR>& prep,
             bool use_hard_decode,
             bool normalize_extrinsic,
-            const Params& p,
+            const newcode::Params& p,
             const std::vector<bool>* early_stop_row_flags,
             CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn)
 {

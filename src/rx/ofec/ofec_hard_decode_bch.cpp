@@ -13,20 +13,20 @@ template <typename LLR>
 bool perform_hard_decode(const std::array<LLR, 256>& Lin256,
                          const std::array<LLR, 256>& Lch256,
                          std::array<float, 256>& Y2,
-                         const Params& p)
+                         const newcode::Params& p)
 {
   std::array<uint8_t, 256> hard_in{};
   for (int i = 0; i < 256; ++i) {
     hard_in[static_cast<size_t>(i)] = (llr_to_float(Lin256[static_cast<size_t>(i)]) < 0.f) ? 1u : 0u;
   }
 
-  std::array<uint8_t, Params::BCH_N - 1> decoded{};
+  std::array<uint8_t, newcode::Params::BCH_N - 1> decoded{};
   if (!bch::bch_255_239_decode_hiho_cw_255(hard_in.data(), decoded.data())) {
     return false;
   }
 
-  std::array<uint8_t, Params::BCH_N> cw{};
-  const int parity_len = static_cast<int>(Params::BCH_N) - 1;
+  std::array<uint8_t, newcode::Params::BCH_N> cw{};
+  const int parity_len = static_cast<int>(newcode::Params::BCH_N) - 1;
   for (int i = 0; i < parity_len; ++i) {
     cw[static_cast<size_t>(i)] = decoded[static_cast<size_t>(i)];
   }
@@ -35,10 +35,10 @@ bool perform_hard_decode(const std::array<LLR, 256>& Lin256,
   for (int i = 0; i < parity_len; ++i) {
     parity ^= cw[static_cast<size_t>(i)];
   }
-  cw[static_cast<size_t>(Params::BCH_OVERALL_IDX)] = parity;
+  cw[static_cast<size_t>(newcode::Params::BCH_OVERALL_IDX)] = parity;
 
   const float hard_mag = std::fabs(p.HARD_LLR_MAG);
-  for (int i = 0; i < static_cast<int>(Params::BCH_N); ++i) {
+  for (int i = 0; i < static_cast<int>(newcode::Params::BCH_N); ++i) {
     const float sign = cw[static_cast<size_t>(i)] ? -1.f : 1.f;
     const float Lpost = sign * hard_mag;
     const float Lch = llr_to_float(Lin256[static_cast<size_t>(i)]);
@@ -51,18 +51,18 @@ bool perform_hard_decode(const std::array<LLR, 256>& Lin256,
 template bool perform_hard_decode<float>(const std::array<float, 256>&,
                                          const std::array<float, 256>&,
                                          std::array<float, 256>&,
-                                         const Params&);
+                                         const newcode::Params&);
 template bool perform_hard_decode<int8_t>(const std::array<int8_t, 256>&,
                                           const std::array<int8_t, 256>&,
                                           std::array<float, 256>&,
-                                          const Params&);
+                                          const newcode::Params&);
 
 #define INSTANTIATE_HARD_DECODE_QFLOAT(N) \
 template bool perform_hard_decode<qfloat::qfloat<N>>( \
     const std::array<qfloat::qfloat<N>, 256>&, \
     const std::array<qfloat::qfloat<N>, 256>&, \
     std::array<float, 256>&, \
-    const Params&);
+    const newcode::Params&);
 
 INSTANTIATE_HARD_DECODE_QFLOAT(2)
 INSTANTIATE_HARD_DECODE_QFLOAT(3)

@@ -11,9 +11,9 @@
 //   • (21): the decoder must output ONLY EXTRINSIC information ω_j; the caller
 //     shall form the next input as y(next) = y(channel) + α·ω, with α being a schedule.
 // -------------------------------------------------------------------------------------
-#include "newcode/chase256.hpp"
-#include "newcode/common/bch/bch_255_239.hpp"
 #include "newcode/params.hpp"
+#include "newcode/rx/ofec/chase/chase256.hpp"
+#include "newcode/common/bch/bch_255_239.hpp"
 #include "newcode/common/qfloat/qfloat.hpp"
 
 #include <filesystem>
@@ -28,7 +28,7 @@
 #include <type_traits>
 #include <array>
 
-namespace newcode {
+namespace chase {
 namespace detail {
 
 constexpr int BCH_N_TOTAL = 256; // 255 core + 1 overall parity (extended code)
@@ -55,8 +55,8 @@ inline LLR llr_from_float(float x)
 template<typename LLR, typename std::enable_if<!std::is_arithmetic<LLR>::value, int>::type = 0>
 inline LLR llr_from_float(float x) { return LLR::from_float(x); }
 
-// ----- select coefficients from Params -----
-static inline void pick_cp(const Params& p, float& beta, float& alpha)
+// ----- select coefficients from newcode::Params -----
+static inline void pick_cp(const newcode::Params& p, float& beta, float& alpha)
 {
     // p.beta is reused as the fallback magnitude scale for L0 in (20)
     beta = p.beta;
@@ -121,7 +121,7 @@ inline uint8_t parity256_from255(const uint8_t* cw255) {
     return acc;
 }
 
-static void dump_chase_csv(const Params::DebugTraceConfig& trace,
+static void dump_chase_csv(const newcode::Params::DebugTraceConfig& trace,
                            const float* y,
                            const uint8_t* hard_ch,
                            const uint8_t* ML,
@@ -130,11 +130,11 @@ static void dump_chase_csv(const Params::DebugTraceConfig& trace,
     if (!trace.enable || !trace.dump_chase_csv) return;
     if (trace.chase_tile_index < 0 || trace.chase_invocation < 0) return;
 
-    std::vector<Params::DebugTraceConfig::ChaseTraceEntry> entries =
+    std::vector<newcode::Params::DebugTraceConfig::ChaseTraceEntry> entries =
         trace.active_chase_entries;
     if (entries.empty()) {
         if (trace.chase_decoder_col < 0) return;
-        Params::DebugTraceConfig::ChaseTraceEntry fallback;
+        newcode::Params::DebugTraceConfig::ChaseTraceEntry fallback;
         fallback.row_index = trace.chase_decoder_row;
         fallback.k = trace.chase_decoder_col;
         fallback.global_row = trace.row;
@@ -214,7 +214,7 @@ template<typename LLR>
 void chase_decode_256_ebchPF(const LLR* Lin256,
                             const LLR* /*Lch256*/,
                             float* Y2_256,
-                            const Params& p)
+                            const newcode::Params& p)
 {
     using namespace detail;
 
@@ -391,22 +391,22 @@ void chase_decode_256_ebchPF(const LLR* Lin256,
 
 // ======================== 2-arg wrapper (kept for API parity) ========================
 template<typename LLR>
-void chase_decode_256_ebchPF(const LLR* Y256, float* Y2_256, const Params& p)
+void chase_decode_256_ebchPF(const LLR* Y256, float* Y2_256, const newcode::Params& p)
 {
     chase_decode_256_ebchPF<LLR>(Y256, Y256, Y2_256, p);
 }
 
 // ======================== explicit instantiations ========================
-template void chase_decode_256_ebchPF<float >(const float*,  const float*,  float*,  const Params&);
-template void chase_decode_256_ebchPF<int8_t>(const int8_t*, const int8_t*, float*, const Params&);
-template void chase_decode_256_ebchPF<float >(const float*,  float*,  const Params&);
-template void chase_decode_256_ebchPF<int8_t>(const int8_t*, float*, const Params&);
+template void chase_decode_256_ebchPF<float >(const float*,  const float*,  float*,  const newcode::Params&);
+template void chase_decode_256_ebchPF<int8_t>(const int8_t*, const int8_t*, float*, const newcode::Params&);
+template void chase_decode_256_ebchPF<float >(const float*,  float*,  const newcode::Params&);
+template void chase_decode_256_ebchPF<int8_t>(const int8_t*, float*, const newcode::Params&);
 
 #define INSTANTIATE_CHASE256_ebchPF_QFLOAT(N) \
 template void chase_decode_256_ebchPF<qfloat::qfloat<N>>( \
-    const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const Params&); \
+    const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const newcode::Params&); \
 template void chase_decode_256_ebchPF<qfloat::qfloat<N>>( \
-    const qfloat::qfloat<N>*, float*, const Params&);
+    const qfloat::qfloat<N>*, float*, const newcode::Params&);
 
 INSTANTIATE_CHASE256_ebchPF_QFLOAT(2)
 INSTANTIATE_CHASE256_ebchPF_QFLOAT(3)
@@ -425,4 +425,4 @@ INSTANTIATE_CHASE256_ebchPF_QFLOAT(15)
 
 #undef INSTANTIATE_CHASE256_ebchPF_QFLOAT
 
-} // namespace newcode
+} // namespace chase
