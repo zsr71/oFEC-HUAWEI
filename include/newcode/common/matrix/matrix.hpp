@@ -5,7 +5,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace newcode {
+namespace matrix {
 
 template<typename T>
 class Matrix {

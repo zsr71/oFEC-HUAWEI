@@ -1,10 +1,10 @@
-// path: newcode/qam_llr.hpp
+// path: newcode/rx/demod/qam_llr.hpp
 #pragma once
 #include <vector>
 #include <complex>
 #include <cstdint>
 
-namespace newcode {
+namespace demod {
 
 
 

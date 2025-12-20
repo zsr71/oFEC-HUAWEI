@@ -5,8 +5,8 @@
 #include <type_traits>
 #include <vector>
 #include <limits>
-#include "newcode/matrix.hpp"
-namespace newcode {
+#include "newcode/common/matrix/matrix.hpp"
+namespace qfloat {
 
 // 线性量化的“类浮点”类型：NBITS ∈ [2,15]，mid-tread 对称量化到 [-Q,+Q]
 // 内部存码值（整型），对外提供 + - * /、比较、与 float 互转。
@@ -114,10 +114,10 @@ using float_10 = qfloat<10>;
 template<typename T> class Matrix;
 
 template<int NBITS>
-Matrix< qfloat<NBITS> > quantize_matrix_to_qfloat(const Matrix<float>& in,
+matrix::Matrix< qfloat<NBITS> > quantize_matrix_to_qfloat(const matrix::Matrix<float>& in,
                                                   float clip = qfloat<NBITS>::current_clip())
 {
-    Matrix< qfloat<NBITS> > out(in.rows(), in.cols());
+    matrix::Matrix< qfloat<NBITS> > out(in.rows(), in.cols());
     for (size_t r=0; r<in.rows(); ++r)
         for (size_t c=0; c<in.cols(); ++c)
             out[r][c] = qfloat<NBITS>::from_float(in[r][c], clip);
@@ -125,11 +125,11 @@ Matrix< qfloat<NBITS> > quantize_matrix_to_qfloat(const Matrix<float>& in,
 }
 
 template<int NBITS>
-Matrix<float> dequantize_matrix_from_qfloat(const Matrix< qfloat<NBITS> >& in,
+matrix::Matrix<float> dequantize_matrix_from_qfloat(const matrix::Matrix< qfloat<NBITS> >& in,
                                             float clip_unused = qfloat<NBITS>::current_clip())
 {
     (void)clip_unused;
-    Matrix<float> out(in.rows(), in.cols());
+    matrix::Matrix<float> out(in.rows(), in.cols());
     for (size_t r=0; r<in.rows(); ++r)
         for (size_t c=0; c<in.cols(); ++c)
             out[r][c] = in[r][c].to_float();
@@ -138,9 +138,9 @@ Matrix<float> dequantize_matrix_from_qfloat(const Matrix< qfloat<NBITS> >& in,
 
 // 仅类型转换为 float（直接用码值，不做幅度缩放；阈值仍是 0）
 template<int NBITS>
-Matrix<float> cast_matrix_from_qfloat(const Matrix< qfloat<NBITS> >& in)
+matrix::Matrix<float> cast_matrix_from_qfloat(const matrix::Matrix< qfloat<NBITS> >& in)
 {
-    Matrix<float> out(in.rows(), in.cols());
+    matrix::Matrix<float> out(in.rows(), in.cols());
     for (size_t r=0; r<in.rows(); ++r)
         for (size_t c=0; c<in.cols(); ++c)
             out[r][c] = static_cast<float>(static_cast<int>(in[r][c]));

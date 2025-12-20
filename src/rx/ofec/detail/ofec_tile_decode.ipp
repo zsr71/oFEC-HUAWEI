@@ -17,7 +17,7 @@ inline std::string sanitize_label(const std::string& label) {
 }
 
 inline void log_target_history(const Params& params,
-                               const Matrix<float>& lout,
+                               const matrix::Matrix<float>& lout,
                                const std::vector<bool>& produced_rows) {
   const auto& trace = params.debug_trace;
   if (!trace.enable || !trace.dump_chase_csv) return;

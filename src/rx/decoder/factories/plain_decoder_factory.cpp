@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 #include "newcode/llr_qpack.hpp"
-#include "newcode/qfloat.hpp"
+#include "newcode/common/qfloat/qfloat.hpp"
 #include "newcode/quantized_llr_dump.hpp"
 
 namespace newcode {
@@ -13,16 +13,16 @@ namespace {
 
 template <int NBITS>
 void decode_plain_qfloat(const DecodeRequest& request, DecodeResult& result) {
-  using Q = qfloat<NBITS>;
+  using Q = qfloat::qfloat<NBITS>;
 
   const float clip = (request.quant_clip > 0.0f) ? request.quant_clip : request.params.LLR_CLIP;
   Q::set_clip(clip);
 
   if (!request.quiet) {
-    std::cout << "[INFO] (" << request.label << ") Plain decoder running in qfloat<"
+    std::cout << "[INFO] (" << request.label << ") Plain decoder running in qfloat::qfloat<"
               << NBITS << ">\n";
   }
-  auto quantized = quantize_matrix_to_qfloat<NBITS>(request.channel_llr, clip); //对channel_llr量化
+  auto quantized = qfloat::quantize_matrix_to_qfloat<NBITS>(request.channel_llr, clip); //对channel_llr量化
   if (!request.quiet) {
     std::cout << "[INFO] (" << request.label << ") Quant clip=" << clip
               << " levels ±" << Q::Q() << "\n";
@@ -32,10 +32,10 @@ void decode_plain_qfloat(const DecodeRequest& request, DecodeResult& result) {
   result.pre_decoder_llr = request.channel_llr;
   auto decoded = ofec_decode_llr_plain(quantized, request.params, &result.tile_stats,
                                        request.normalize_extrinsic, request.tx_llr_ref);//对量化后的LLR进行解码
-  result.post_decoder_llr = dequantize_matrix_from_qfloat(decoded, clip); //对解码后的量化LLR矩阵反量化，得到post_decoder_llr
+  result.post_decoder_llr = qfloat::dequantize_matrix_from_qfloat(decoded, clip); //对解码后的量化LLR矩阵反量化，得到post_decoder_llr
 
   if (request.dump_quantized_codes) {
-    auto codes_mat = cast_matrix_from_qfloat(quantized);
+    auto codes_mat = qfloat::cast_matrix_from_qfloat(quantized);
     result.quantized_codes_path = dump_quantized_llr(codes_mat, request, request.dump_quantized_codes,request.quantized_codes_output_path, "_quantized_codes");
     result.dequantized_llr_path = dump_quantized_llr(result.pre_decoder_llr, request, request.dump_quantized_llr,request.quantized_llr_output_path, "_dequantized");
     result.float_llr_path = dump_quantized_llr(request.channel_llr, request, request.dump_float_llr,request.float_llr_output_path, "_float");

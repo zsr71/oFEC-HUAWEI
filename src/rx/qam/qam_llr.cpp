@@ -1,6 +1,6 @@
 // path: newcode/qam_llr.cpp
-#include "newcode/qam_llr.hpp"
-#include "newcode/qam.hpp"
+#include "newcode/rx/demod/qam_llr.hpp"
+#include "newcode/tx/mod/qam.hpp"
 #include "newcode/channel/awgn.hpp"
 #include <cmath>
 #include <limits>
@@ -8,7 +8,7 @@
 #include <vector>
 #include <complex>
 
-namespace newcode {
+namespace demod {
 
 // 与原来一致：用现有映射构造星座
 static std::vector<std::complex<float>>
@@ -26,7 +26,7 @@ build_constellation(unsigned n_bps)
         for (unsigned b = 0; b < n_bps; ++b)
             bits.push_back( (j >> b) & 1u ); // LSB=bit0
 
-    return qam_modulate(bits, n_bps); // size=M
+    return mod::qam_modulate(bits, n_bps); // size=M
 }
 
 // ===== 精确（log-sum-exp）版 =====

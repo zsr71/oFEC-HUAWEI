@@ -2,10 +2,10 @@
 
 #include <cstdint>
 
-#include "newcode/matrix.hpp"
+#include "newcode/common/matrix/matrix.hpp"
 
-namespace newcode {
+namespace matrix {
 
 Matrix<float> hard_bits_to_llr_matrix(const Matrix<uint8_t>& bits_mat, float A = 50.0f);
 
-} // namespace newcode
+} // namespace matrix

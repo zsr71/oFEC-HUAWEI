@@ -8,7 +8,7 @@
 
 namespace ofecencoder {
 
-newcode::Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const newcode::Params& p)
+matrix::Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const newcode::Params& p)
 {
     // 基本尺寸
     const int B  = static_cast<int>(p.BITS_PER_SUBBLOCK_DIM);                         // 16
@@ -38,7 +38,7 @@ newcode::Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const new
     std::copy(bits.begin(), bits.end(), u.begin() + ZERO_PREFIX);
 
     // 将 V(R,C,r,c) 展开为二维：行 = R*B + r，列 = C*B + c
-    newcode::Matrix<uint8_t> mat = newcode::Matrix<uint8_t>::zero(p.tile_height_rows(), N);
+    matrix::Matrix<uint8_t> mat = matrix::Matrix<uint8_t>::zero(p.tile_height_rows(), N);
 
     // —— 左半历史位读取（按你给的式子，带 -2*(N/B) 项）——
     auto read_hist_bit = [&](long R, int r, int k) -> uint8_t {

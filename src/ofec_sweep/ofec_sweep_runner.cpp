@@ -1,6 +1,6 @@
 #include "ofec_sweep_detail.hpp"
-#include "newcode/ensure_dir.hpp"
-#include "newcode/now_stamp.hpp"
+#include "newcode/io/ensure_dir.hpp"
+#include "newcode/utils/now_stamp.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -268,8 +268,8 @@ int run_sweep(const SweepParameterConfig& config) {
   using namespace detail;
 
   const std::filesystem::path data_dir = "data";
-  newcode::ensure_dir(data_dir);
-  const std::string run_id = newcode::now_stamp();
+  io::ensure_dir(data_dir);
+  const std::string run_id = utils::now_stamp();
   const std::string log_path = (data_dir / ("run_" + run_id + ".log")).string();
   const bool mirror_console = !config.quiet_logs;
   DualOut out(std::cout, log_path, mirror_console);
@@ -376,7 +376,7 @@ int run_sweep(const SweepParameterConfig& config) {
     out << summary.str() << "\n";
 
     write_csv_row(csv,
-                  newcode::now_stamp(),
+                  utils::now_stamp(),
                   run_id,
                   "" /*stage*/,
                   0 /*num_bits*/,

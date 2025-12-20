@@ -14,8 +14,8 @@ public:
       mapping_[i] = static_cast<int>(i);
   }
 
-  void interleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const override { out = in; }
-  void deinterleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const override { out = in; }
+  void interleave(const matrix::Matrix<float>& in, matrix::Matrix<float>& out) const override { out = in; }
+  void deinterleave(const matrix::Matrix<float>& in, matrix::Matrix<float>& out) const override { out = in; }
 
   const std::vector<int>& forward_mapping() const override { return mapping_; }
   const std::vector<int>& inverse_mapping() const override { return mapping_; }

@@ -6,13 +6,13 @@
 namespace newcode {
 
 template <typename LLR>
-void process_window_plain(Matrix<LLR>& work_llr,
-                          const Matrix<LLR>& channel_llr,
+void process_window_plain(matrix::Matrix<LLR>& work_llr,
+                          const matrix::Matrix<LLR>& channel_llr,
                           size_t win_start, size_t win_end, const Params& p,
                           size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
                           std::vector<TileEarlyStopCounter>* tile_stats,
                           bool normalize_extrinsic,
-                          const Matrix<float>* tx_llr_ref)
+                          const matrix::Matrix<float>* tx_llr_ref)
 {
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   detail::process_window_impl(work_llr, channel_llr, win_start, win_end, p,
@@ -23,13 +23,13 @@ void process_window_plain(Matrix<LLR>& work_llr,
 }
 
 template <typename LLR>
-void process_window_ebchPF(Matrix<LLR>& work_llr,
-                           const Matrix<LLR>& channel_llr,
-                           size_t win_start, size_t win_end, const Params& p,
-                           size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
-                           std::vector<TileEarlyStopCounter>* tile_stats,
-                           bool normalize_extrinsic,
-                           const Matrix<float>* tx_llr_ref)
+void process_window_ebchPF(matrix::Matrix<LLR>& work_llr,
+                           const matrix::Matrix<LLR>& channel_llr,
+                          size_t win_start, size_t win_end, const Params& p,
+                          size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
+                          std::vector<TileEarlyStopCounter>* tile_stats,
+                          bool normalize_extrinsic,
+                          const matrix::Matrix<float>* tx_llr_ref)
 {
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   detail::process_window_impl(work_llr, channel_llr, win_start, win_end, p,
@@ -40,40 +40,38 @@ void process_window_ebchPF(Matrix<LLR>& work_llr,
 }
 
 // ===== 显式实例化 =====
-template void process_window_plain<float >(Matrix<float>&,  const Matrix<float>&,  size_t, size_t, const Params&,
+template void process_window_plain<float >(matrix::Matrix<float>&,  const matrix::Matrix<float>&,  size_t, size_t, const Params&,
                                            size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool,
-                                           const Matrix<float>*);
+                                           const matrix::Matrix<float>*);
 
-template void process_window_ebchPF<float >(Matrix<float>&,  const Matrix<float>&,  size_t, size_t, const Params&,
+template void process_window_ebchPF<float >(matrix::Matrix<float>&,  const matrix::Matrix<float>&,  size_t, size_t, const Params&,
                                            size_t, size_t, size_t, std::vector<TileEarlyStopCounter>*, bool,
-                                           const Matrix<float>*);
+                                           const matrix::Matrix<float>*);
 
 
-template void process_window<float >(Matrix<float>&,  const Matrix<float>&,
+template void process_window<float >(matrix::Matrix<float>&,  const matrix::Matrix<float>&,
                                      std::size_t, std::size_t, const Params&,
                                      std::size_t, std::size_t, std::size_t,
                                      std::vector<TileEarlyStopCounter>*, bool,
-                                     const Matrix<float>*);
-
+                                     const matrix::Matrix<float>*);
 
 #define INSTANTIATE_WINDOW_QFLOAT(N) \
-template void process_window_plain<newcode::qfloat<N>>( \
-    Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
+template void process_window_plain<qfloat::qfloat<N>>( \
+    matrix::Matrix<qfloat::qfloat<N>>&, const matrix::Matrix<qfloat::qfloat<N>>&, \
     size_t, size_t, const Params&, \
     size_t, size_t, size_t, \
-    std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*); \
-template void process_window_ebchPF<newcode::qfloat<N>>( \
-    Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
+    std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*); \
+template void process_window_ebchPF<qfloat::qfloat<N>>( \
+    matrix::Matrix<qfloat::qfloat<N>>&, const matrix::Matrix<qfloat::qfloat<N>>&, \
     size_t, size_t, const Params&, \
     size_t, size_t, size_t, \
-    std::vector<TileEarlyStopCounter>*, bool, const Matrix<float>*); \
-template void process_window<newcode::qfloat<N>>( \
-    Matrix<newcode::qfloat<N>>&, const Matrix<newcode::qfloat<N>>&, \
+    std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*); \
+template void process_window<qfloat::qfloat<N>>( \
+    matrix::Matrix<qfloat::qfloat<N>>&, const matrix::Matrix<qfloat::qfloat<N>>&, \
     std::size_t, std::size_t, const Params&, \
     std::size_t, std::size_t, std::size_t, \
     std::vector<TileEarlyStopCounter>*, bool, \
-    const Matrix<float>*);
-
+    const matrix::Matrix<float>*);
 INSTANTIATE_WINDOW_QFLOAT(2)
 INSTANTIATE_WINDOW_QFLOAT(3)
 INSTANTIATE_WINDOW_QFLOAT(4)

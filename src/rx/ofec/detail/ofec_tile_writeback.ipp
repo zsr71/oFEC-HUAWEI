@@ -11,8 +11,8 @@ void writeback_tile(const TilePrepared<LLR>& prep,
                     const Params& p,
                     size_t tile_top_row_global,
                     bool capture_last_tile_history,
-                    Matrix<LLR>* tile_out,
-                    Matrix<float>* last_tile_history_accum)
+                    matrix::Matrix<LLR>* tile_out,
+                    matrix::Matrix<float>* last_tile_history_accum)
 {
   using Adapter = LinMatrixAdapter<LLR>;
   using CoreLLR = typename Adapter::core_type;
@@ -39,7 +39,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
                            const LLR& extrinsic,
                            const LLR& prior) -> float {
     if constexpr (history_needs_dequant) {
-      // For quantized LLR (e.g., qfloat<N>), combined is in code domain.
+      // For quantized LLR (e.g., qfloat::qfloat<N>), combined is in code domain.
       // Sum dequantized values so history stores real amplitudes.
       return llr_to_float(extrinsic) + llr_to_float(prior);
     } else {

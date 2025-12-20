@@ -18,16 +18,16 @@ LinMatrixAdapter<LLR, Enable>::channel(const LLR& v)
 }
 
 template <int NBITS, typename Store>
-typename LinMatrixAdapter<qfloat<NBITS, Store>>::core_type
-LinMatrixAdapter<qfloat<NBITS, Store>>::combine(const qfloat<NBITS, Store>& Lch,
-                                                const qfloat<NBITS, Store>& La)
+typename LinMatrixAdapter<qfloat::qfloat<NBITS, Store>>::core_type
+LinMatrixAdapter<qfloat::qfloat<NBITS, Store>>::combine(const qfloat::qfloat<NBITS, Store>& Lch,
+                                                const qfloat::qfloat<NBITS, Store>& La)
 {
   return static_cast<float>(Lch.code() + La.code());
 }
 
 template <int NBITS, typename Store>
-typename LinMatrixAdapter<qfloat<NBITS, Store>>::core_type
-LinMatrixAdapter<qfloat<NBITS, Store>>::channel(const qfloat<NBITS, Store>& v)
+typename LinMatrixAdapter<qfloat::qfloat<NBITS, Store>>::core_type
+LinMatrixAdapter<qfloat::qfloat<NBITS, Store>>::channel(const qfloat::qfloat<NBITS, Store>& v)
 {
   return static_cast<float>(v.code());
 }
@@ -39,14 +39,14 @@ float ExtrinsicQuantizer<LLR, Enable>::quantize(float value)
 }
 
 template <int NBITS, typename Store>
-float ExtrinsicQuantizer<qfloat<NBITS, Store>>::quantize(float value)
+float ExtrinsicQuantizer<qfloat::qfloat<NBITS, Store>>::quantize(float value)
 {
   int code = static_cast<int>(std::lrint(value));
-  const int lo = qfloat<NBITS, Store>::LO();
-  const int hi = qfloat<NBITS, Store>::HI();
+  const int lo = qfloat::qfloat<NBITS, Store>::LO();
+  const int hi = qfloat::qfloat<NBITS, Store>::HI();
   if (code < lo) code = lo;
   if (code > hi) code = hi;
-  qfloat<NBITS, Store> q;
+  qfloat::qfloat<NBITS, Store> q;
   q.set_code(code);
   return llr_to_float(q);
 }

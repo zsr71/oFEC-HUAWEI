@@ -11,9 +11,9 @@
 #include <string>
 #include <vector>
 
-#include "newcode/ensure_dir.hpp"
+#include "newcode/io/ensure_dir.hpp"
 #include "newcode/utils/linspace.hpp"
-#include "newcode/now_stamp.hpp"
+#include "newcode/utils/now_stamp.hpp"
 #include "newcode/ofec_sweep_runner.hpp"
 #include "ofec_sweep_detail.hpp"
 
@@ -221,7 +221,7 @@ std::vector<Evaluation> run_stage(const std::vector<ofec_sweep::ExplicitAlphaBet
         << " (errs=" << result.post_fec.errors << "/" << result.post_fec.total << ")\n";
 
     ofec_sweep::detail::write_csv_row(csv,
-                                      newcode::now_stamp(),
+                                      utils::now_stamp(),
                                       run_id,
                                       stage_tag,
                                       num_bits,
@@ -279,8 +279,8 @@ void print_final_summary(const Evaluation& best,
 
 int main() {
   const std::filesystem::path data_dir = "data";
-  newcode::ensure_dir(data_dir);
-  const std::string run_id = newcode::now_stamp();
+  io::ensure_dir(data_dir);
+  const std::string run_id = utils::now_stamp();
   const std::string log_path = (data_dir / ("run_" + run_id + "_sweep2.log")).string();
   ofec_sweep::detail::DualOut log(std::cout, log_path);
   const std::string csv_path =

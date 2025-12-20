@@ -10,20 +10,20 @@
 #include <mutex>
 #include <streambuf>
 
-#include "newcode/matrix.hpp"
+#include "newcode/common/matrix/matrix.hpp"
 #include "newcode/channel/awgn.hpp"
 #include "newcode/tx/bitgen/bitgen.hpp"
 #include "newcode/decoder_api.hpp"
-#include "newcode/hard_bits_to_llr_matrix.hpp"
+#include "newcode/common/matrix/hard_bits_to_llr_matrix.hpp"
 #include "newcode/info_extract.hpp"
 #include "newcode/llr_known_prefix.hpp"
 #include "newcode/llr_qpack.hpp"
 #include "newcode/ofec_decoder.hpp"
 #include "newcode/tx/ofecencoder/ofec_encoder.hpp"
 #include "newcode/ofec_llr_matrix.hpp"
-#include "newcode/qam.hpp"
-#include "newcode/qam_llr.hpp"
-#include "newcode/qfloat.hpp"
+#include "newcode/tx/mod/qam.hpp"
+#include "newcode/rx/demod/qam_llr.hpp"
+#include "newcode/common/qfloat/qfloat.hpp"
 #include "newcode/common/interleaver/interleaver.hpp"
 
 namespace newcode {
@@ -121,7 +121,7 @@ PipelineResult run_pipeline(const Params& params,
 
   //抽取Tx发射参考信息
   const float TX_REF_LLR = 50.0f; // 任意足够大的幅度即可
-  Matrix<float> tx_llr_mat = hard_bits_to_llr_matrix(code_matrix, TX_REF_LLR);
+  matrix::Matrix<float> tx_llr_mat = hard_bits_to_llr_matrix(code_matrix, TX_REF_LLR);
   auto tx_info_bits_ref = rx_info_from_bit_llr(tx_llr_mat, params);
   if (verbose) {
     log << "[INFO] (" << label << ") tx_info_bits_ref (by extractor): "
@@ -158,7 +158,7 @@ PipelineResult run_pipeline(const Params& params,
     throw std::invalid_argument("[ERROR] bits_per_symbol must be 1 or a positive even number.");
   }
 
-  auto tx_syms = qam_modulate(coded_bits_itlv, n_bps);
+  auto tx_syms = mod::qam_modulate(coded_bits_itlv, n_bps);
   if (verbose) {
     log << "[INFO] (" << label << ") Modulation: " << modulation_name
         << " (n_bps=" << n_bps << ")\n";
@@ -185,7 +185,7 @@ PipelineResult run_pipeline(const Params& params,
   }
 
   // qam解调计算信道 LLR
-  auto llr = qam_llr_from_ebn0(rx_syms, n_bps, ebn0_dB, code_rate);
+  auto llr = demod::qam_llr_from_ebn0(rx_syms, n_bps, ebn0_dB, code_rate);
   if (verbose) {
     log << "[INFO] (" << label << ") LLR count: " << llr.size()
         << " (should be tx_syms.size()*n_bps)\n";
@@ -198,7 +198,7 @@ PipelineResult run_pipeline(const Params& params,
   auto llr_deint = interleaver.deinterleave_chunks(llr);
 
   // 转换为矩阵形式
-  Matrix<float> llr_mat = llr_to_matrix_row_major(llr_deint, code_matrix.rows(), code_matrix.cols());
+  matrix::Matrix<float> llr_mat = llr_to_matrix_row_major(llr_deint, code_matrix.rows(), code_matrix.cols());
 
   // 已知前缀置零处理以及信道llr归一化
   apply_known_zero_prefix(llr_mat, params);

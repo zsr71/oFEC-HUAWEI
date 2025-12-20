@@ -1,11 +1,11 @@
-#include "newcode/now_stamp.hpp"
+#include "newcode/utils/now_stamp.hpp"
 
 #include <chrono>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
 
-namespace newcode {
+namespace utils {
 
 std::string now_stamp() {
   using clock = std::chrono::system_clock;
@@ -21,4 +21,4 @@ std::string now_stamp() {
   return oss.str();
 }
 
-}  // namespace newcode
+}  // namespace utils

@@ -2,8 +2,8 @@
 
 #include <filesystem>
 
-namespace newcode {
+namespace io {
 
 void ensure_dir(const std::filesystem::path& path);
 
-}  // namespace newcode
+}  // namespace io

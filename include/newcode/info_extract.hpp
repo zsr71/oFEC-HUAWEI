@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <stdexcept>
 
-#include "newcode/matrix.hpp"
+#include "newcode/common/matrix/matrix.hpp"
 #include "newcode/params.hpp"
 
 namespace newcode {
@@ -23,6 +23,6 @@ namespace newcode {
  * 硬判决：LLR >= 0 → 0；LLR < 0 → 1。
  * 返回：按行主序拼接的“真实信息行”的信息比特。
  */
-std::vector<uint8_t> rx_info_from_bit_llr(const Matrix<float>& bit_llr_mat, const Params& p);
+std::vector<uint8_t> rx_info_from_bit_llr(const matrix::Matrix<float>& bit_llr_mat, const Params& p);
 
 } // namespace newcode

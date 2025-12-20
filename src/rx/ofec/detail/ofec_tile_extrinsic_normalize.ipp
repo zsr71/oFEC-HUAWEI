@@ -9,7 +9,7 @@ namespace newcode {
 namespace detail {
 
 template <typename Float>
-void normalize_extrinsic_lout(Matrix<Float>& lout,
+void normalize_extrinsic_lout(matrix::Matrix<Float>& lout,
                               const std::vector<bool>& produced_rows,
                               Float beta)
 {

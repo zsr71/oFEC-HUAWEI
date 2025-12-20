@@ -2,7 +2,7 @@
 
 namespace interleaver {
 
-void Interleaver::Handle::interleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const {
+void Interleaver::Handle::interleave(const matrix::Matrix<float>& in, matrix::Matrix<float>& out) const {
   if (impl) {
     impl->interleave(in, out);
   } else {
@@ -10,7 +10,7 @@ void Interleaver::Handle::interleave(const newcode::Matrix<float>& in, newcode::
   }
 }
 
-void Interleaver::Handle::deinterleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const {
+void Interleaver::Handle::deinterleave(const matrix::Matrix<float>& in, matrix::Matrix<float>& out) const {
   if (impl) {
     impl->deinterleave(in, out);
   } else {

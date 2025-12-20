@@ -1,5 +1,5 @@
 #include "newcode/llr_qpack.hpp"
-#include "newcode/matrix.hpp"
+#include "newcode/common/matrix/matrix.hpp"
 #include "newcode/params.hpp"
 #include <algorithm>
 #include <cmath>
@@ -10,8 +10,8 @@ static inline float clampf(float x, float lo, float hi) {
     return std::max(lo, std::min(hi, x));
 }
 
-Matrix<float> dequantize_llr_to_float(const Matrix<int8_t>& in, const Params& p) {
-    Matrix<float> out(in.rows(), in.cols());
+matrix::Matrix<float> dequantize_llr_to_float(const matrix::Matrix<int8_t>& in, const Params& p) {
+    matrix::Matrix<float> out(in.rows(), in.cols());
     const std::size_t llr_bits = p.LLR_BITS;
     const float clip = p.LLR_CLIP;
 
@@ -32,8 +32,8 @@ Matrix<float> dequantize_llr_to_float(const Matrix<int8_t>& in, const Params& p)
     return out;
 }
 
-Matrix<float> cast_qllr_to_float(const Matrix<int8_t>& in) {
-    Matrix<float> out(in.rows(), in.cols());
+matrix::Matrix<float> cast_qllr_to_float(const matrix::Matrix<int8_t>& in) {
+    matrix::Matrix<float> out(in.rows(), in.cols());
     for (size_t r = 0; r < in.rows(); ++r)
         for (size_t c = 0; c < in.cols(); ++c)
             out[r][c] = static_cast<float>(in[r][c]);

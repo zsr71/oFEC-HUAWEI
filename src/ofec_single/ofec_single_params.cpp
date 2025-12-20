@@ -17,7 +17,7 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.DUMP_WORK_LLR = cfg.dump_work_llr;
   params.WORK_LLR_OUTPUT_PATH = cfg.work_llr_output_path;
   if (cfg.llr_bits < 2 || cfg.llr_bits > 16) {
-    log << "[ERROR] LLR_BITS 必须在 [2,16]，16 表示浮点，其余使用 qfloat<N>\n";
+    log << "[ERROR] LLR_BITS 必须在 [2,16]，16 表示浮点，其余使用 qfloat::qfloat<N>\n";
     return std::nullopt;
   }
   params.LLR_CLIP_RATIO = std::clamp(cfg.quant_clip_ratio, 0.0f, 1.0f);

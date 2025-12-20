@@ -1,9 +1,8 @@
-#include "newcode/qam.hpp"
+#include "newcode/tx/mod/qam.hpp"
 #include <stdexcept>
 #include <cmath>
 
-namespace newcode {
-
+namespace mod {
 static inline std::complex<float>
 bits_to_symbol_gray_qam(const uint8_t* b, unsigned n_bps)
 {
@@ -65,4 +64,4 @@ qam_modulate(const std::vector<uint8_t>& bits, unsigned n_bps)
     return syms;
 }
 
-} // namespace newcode
+} // namespace mod

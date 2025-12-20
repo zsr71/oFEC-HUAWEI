@@ -1,8 +1,8 @@
 #pragma once
 
 #include "newcode/llr_utils.hpp"
-#include "newcode/matrix.hpp"
-#include "newcode/qfloat.hpp"
+#include "newcode/common/matrix/matrix.hpp"
+#include "newcode/common/qfloat/qfloat.hpp"
 
 #include <cmath>
 
@@ -17,12 +17,12 @@ struct LinMatrixAdapter {
 };
 
 template <int NBITS, typename Store>
-struct LinMatrixAdapter<qfloat<NBITS, Store>> {
+struct LinMatrixAdapter<qfloat::qfloat<NBITS, Store>> {
   using core_type = float;
 
-  static core_type combine(const qfloat<NBITS, Store>& Lch,
-                           const qfloat<NBITS, Store>& La);
-  static core_type channel(const qfloat<NBITS, Store>& v);
+  static core_type combine(const qfloat::qfloat<NBITS, Store>& Lch,
+                           const qfloat::qfloat<NBITS, Store>& La);
+  static core_type channel(const qfloat::qfloat<NBITS, Store>& v);
 };
 
 template <typename LLR, typename Enable = void>
@@ -31,7 +31,7 @@ struct ExtrinsicQuantizer {
 };
 
 template <int NBITS, typename Store>
-struct ExtrinsicQuantizer<qfloat<NBITS, Store>> {
+struct ExtrinsicQuantizer<qfloat::qfloat<NBITS, Store>> {
   static float quantize(float value);
 };
 

@@ -1,6 +1,6 @@
-#include "newcode/qfloat.hpp"
+#include "newcode/common/qfloat/qfloat.hpp"
 
-namespace newcode {
+namespace qfloat {
 
 // 为 2..15 位做显式实例化（Store=int16_t），可按需删减
 template class qfloat<2,  int16_t>;
@@ -18,4 +18,4 @@ template class qfloat<13, int16_t>;
 template class qfloat<14, int16_t>;
 template class qfloat<15, int16_t>;
 
-} // namespace newcode
+} // namespace qfloat

@@ -25,8 +25,8 @@ struct DecodeStats {
 
 struct DecodeRequest {
   std::string_view label;
-  const Matrix<float>& channel_llr;
-  const Matrix<float>* tx_llr_ref = nullptr;
+  const matrix::Matrix<float>& channel_llr;
+  const matrix::Matrix<float>* tx_llr_ref = nullptr;
   const Params& params;
   LlrFormat format = LlrFormat::Float;
   std::size_t quant_bits = 16;
@@ -44,8 +44,8 @@ struct DecodeRequest {
 };
 
 struct DecodeResult {
-  Matrix<float> pre_decoder_llr;
-  Matrix<float> post_decoder_llr;
+  matrix::Matrix<float> pre_decoder_llr;
+  matrix::Matrix<float> post_decoder_llr;
   std::vector<TileEarlyStopCounter> tile_stats;
   DecodeStats stats;
   std::string dequantized_llr_path;

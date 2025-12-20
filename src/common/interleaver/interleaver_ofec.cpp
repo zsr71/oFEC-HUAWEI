@@ -79,14 +79,14 @@ void apply_permutation(const std::vector<T>& src, std::vector<T>& dst, const Per
 }
 
 void matrix_from_flat(const std::vector<float>& flat, std::size_t rows, std::size_t cols,
-                      newcode::Matrix<float>& out) {
-  out = newcode::Matrix<float>(rows, cols);
+                      matrix::Matrix<float>& out) {
+  out = matrix::Matrix<float>(rows, cols);
   for (std::size_t r = 0; r < rows; ++r)
     for (std::size_t c = 0; c < cols; ++c)
       out[r][c] = flat[r * cols + c];
 }
 
-void matrix_to_flat(const newcode::Matrix<float>& in, std::vector<float>& flat) {
+void matrix_to_flat(const matrix::Matrix<float>& in, std::vector<float>& flat) {
   flat.resize(in.rows() * in.cols());
   for (std::size_t r = 0; r < in.rows(); ++r)
     for (std::size_t c = 0; c < in.cols(); ++c)
@@ -103,7 +103,7 @@ public:
     cols_ = C * W;
   }
 
-  void interleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const override {
+  void interleave(const matrix::Matrix<float>& in, matrix::Matrix<float>& out) const override {
     if (forward_.empty()) { out = in; return; }
     std::vector<float> flat;
     matrix_to_flat(in, flat);
@@ -112,7 +112,7 @@ public:
     matrix_from_flat(perm, in.rows(), in.cols(), out);
   }
 
-  void deinterleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const override {
+  void deinterleave(const matrix::Matrix<float>& in, matrix::Matrix<float>& out) const override {
     if (inverse_.empty()) { out = in; return; }
     std::vector<float> flat;
     matrix_to_flat(in, flat);

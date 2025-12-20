@@ -3,7 +3,7 @@
 #include <complex>
 #include <cstdint>
 
-namespace newcode {
+namespace mod {
 
 // 将 0/1 比特流按 n_bps 分组做调制：
 // - n_bps = 1 时执行 BPSK（实轴 ±1）；

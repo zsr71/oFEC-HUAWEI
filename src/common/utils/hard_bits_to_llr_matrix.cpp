@@ -1,6 +1,6 @@
-#include "newcode/hard_bits_to_llr_matrix.hpp"
+#include "newcode/common/matrix/hard_bits_to_llr_matrix.hpp"
 
-namespace newcode {
+namespace matrix {
 
 Matrix<float> hard_bits_to_llr_matrix(const Matrix<uint8_t>& bits_mat, float A)
 {
@@ -11,4 +11,4 @@ Matrix<float> hard_bits_to_llr_matrix(const Matrix<uint8_t>& bits_mat, float A)
   return m;
 }
 
-} // namespace newcode
+} // namespace matrix

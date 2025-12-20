@@ -10,7 +10,7 @@ namespace newcode {
 namespace {
 
 template <typename T>
-std::vector<T> flatten_matrix(const Matrix<T>& matrix) {
+std::vector<T> flatten_matrix(const  matrix::Matrix<T>& matrix) {
   std::vector<T> out;
   out.reserve(matrix.rows() * matrix.cols());
   for (size_t r = 0; r < matrix.rows(); ++r)
@@ -21,7 +21,7 @@ std::vector<T> flatten_matrix(const Matrix<T>& matrix) {
 
 } // namespace
 
-std::string dump_quantized_llr(const Matrix<float>& llr_mat,
+std::string dump_quantized_llr(const matrix::Matrix<float>& llr_mat,
                                const DecodeRequest& request,
                                bool enable,
                                const std::string& path_override,

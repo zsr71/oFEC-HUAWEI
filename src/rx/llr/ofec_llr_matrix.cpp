@@ -2,7 +2,7 @@
 
 namespace newcode {
 
-Matrix<float> llr_to_matrix_row_major(const std::vector<float>& llr,
+matrix::Matrix<float> llr_to_matrix_row_major(const std::vector<float>& llr,
                                       size_t rows,
                                       size_t cols)
 {
@@ -13,7 +13,7 @@ Matrix<float> llr_to_matrix_row_major(const std::vector<float>& llr,
             + std::to_string(llr.size()) + ", expected=" + std::to_string(need));
     }
 
-    Matrix<float> M(rows, cols);
+    matrix::Matrix<float> M(rows, cols);
     size_t idx = 0;
     for (size_t r = 0; r < rows; ++r) {
         for (size_t c = 0; c < cols; ++c) {
@@ -24,7 +24,7 @@ Matrix<float> llr_to_matrix_row_major(const std::vector<float>& llr,
 }
 
 void fill_llr_matrix_row_major(const std::vector<float>& llr,
-                               Matrix<float>& M)
+                               matrix::Matrix<float>& M)
 {
     const size_t rows = M.rows();
     const size_t cols = M.cols();

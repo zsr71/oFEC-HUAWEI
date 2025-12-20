@@ -25,8 +25,8 @@ namespace newcode {
 namespace detail {
 
 template <typename LLR>
-using CoreFn = DecoderCoreResult<LLR> (*)(const Matrix<LLR>&,
-                                          const Matrix<LLR>&,
+using CoreFn = DecoderCoreResult<LLR> (*)(const matrix::Matrix<LLR>&,
+                                          const matrix::Matrix<LLR>&,
                                           bool,
                                           const Params&,
                                           const std::vector<bool>* early_stop_row_flags);
@@ -42,15 +42,15 @@ namespace newcode {
 namespace detail {
 
 template <typename LLR>
-TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
-                                         const Matrix<LLR>& ch_tile,
+TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
+                                         const matrix::Matrix<LLR>& ch_tile,
                                          const Params& p,
                                          size_t tile_top_row_global,
                                          bool use_hard_decode,
                                          bool normalize_extrinsic,
-                                         const Matrix<float>* tx_llr_ref,
+                                         const matrix::Matrix<float>* tx_llr_ref,
                                          CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn,
-                                         Matrix<float>* last_tile_history_accum,
+                                         matrix::Matrix<float>* last_tile_history_accum,
                                          bool capture_last_tile_history)
 {
   constexpr int B         = static_cast<int>(Params::BITS_PER_SUBBLOCK_DIM);            // 16
@@ -61,7 +61,7 @@ TileProcessResult<LLR> process_tile_impl(const Matrix<LLR>& tile_in,
   assert(W == static_cast<size_t>(N));
   assert(ch_tile.rows() == H && ch_tile.cols() == W);
 
-  Matrix<LLR> tile_out = tile_in;
+  matrix::Matrix<LLR> tile_out = tile_in;
 
   const int SBR = p.CHASE_SBR;
   if (SBR != 1 && SBR != 2)

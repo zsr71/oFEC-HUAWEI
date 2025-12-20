@@ -6,7 +6,7 @@
 
 namespace newcode {
 
-void apply_known_zero_prefix(Matrix<float>& llr_mat, const Params& p)
+void apply_known_zero_prefix(matrix::Matrix<float>& llr_mat, const Params& p)
 {
     const size_t R = llr_mat.rows();
     const size_t C = llr_mat.cols();

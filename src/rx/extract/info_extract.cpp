@@ -6,7 +6,7 @@ namespace newcode {
 
 static inline uint8_t hard_decide(float L) noexcept { return (L >= 0.f) ? 0u : 1u; }
 
-std::vector<uint8_t> rx_info_from_bit_llr(const Matrix<float>& bit_llr_mat, const Params& p)
+std::vector<uint8_t> rx_info_from_bit_llr(const matrix::Matrix<float>& bit_llr_mat, const Params& p)
 {
     // 基本参数
     const int B = static_cast<int>(p.BITS_PER_SUBBLOCK_DIM);

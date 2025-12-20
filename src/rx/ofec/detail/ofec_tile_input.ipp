@@ -21,8 +21,8 @@ struct TilePrepared {
   using Adapter = LinMatrixAdapter<LLR>;
   using CoreLLR = typename Adapter::core_type;
 
-  Matrix<CoreLLR> lin_matrix;
-  Matrix<CoreLLR> lch_matrix;
+  matrix::Matrix<CoreLLR> lin_matrix;
+  matrix::Matrix<CoreLLR> lch_matrix;
   std::vector<size_t> row_local_lookup;
   std::vector<size_t> row_global_lookup;
   Params params_for_core;
@@ -31,13 +31,13 @@ struct TilePrepared {
 };
 
 template <typename LLR>
-TilePrepared<LLR> prepare_tile_inputs(const Matrix<LLR>& tile_in,
-                                      const Matrix<LLR>& ch_tile,
+TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
+                                      const matrix::Matrix<LLR>& ch_tile,
                                       const Params& p,
                                       size_t tile_top_row_global,
                                       int SBR,
                                       size_t rows_to_decode,
-                                      const Matrix<float>* tx_llr_ref)
+                                      const matrix::Matrix<float>* tx_llr_ref)
 {
   using Adapter = typename TilePrepared<LLR>::Adapter;
   constexpr int B         = static_cast<int>(Params::BITS_PER_SUBBLOCK_DIM);            // 16
@@ -74,9 +74,9 @@ TilePrepared<LLR> prepare_tile_inputs(const Matrix<LLR>& tile_in,
         rows_to_decode, std::vector<int8_t>(static_cast<size_t>(2 * N), -1));
   }
 
-  Matrix<typename LinMatrixAdapter<LLR>::core_type> lin_matrix(rows_to_decode,
+  matrix::Matrix<typename LinMatrixAdapter<LLR>::core_type> lin_matrix(rows_to_decode,
                                                                static_cast<size_t>(2 * N));
-  Matrix<typename LinMatrixAdapter<LLR>::core_type> lch_matrix(rows_to_decode,
+  matrix::Matrix<typename LinMatrixAdapter<LLR>::core_type> lch_matrix(rows_to_decode,
                                                                static_cast<size_t>(2 * N));
   std::vector<size_t> row_local_lookup(rows_to_decode, 0);
   std::vector<size_t> row_global_lookup(rows_to_decode, 0);

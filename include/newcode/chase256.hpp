@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include "newcode/params.hpp"
-#include "newcode/qfloat.hpp"
+#include "newcode/common/qfloat/qfloat.hpp"
 
 namespace newcode {
 
@@ -33,10 +33,10 @@ extern template void chase_decode_256_plain<float >(const float*,  const float*,
 extern template void chase_decode_256_plain<float >(const float*,  float*,  const Params&);
 
 #define DECLARE_CHASE256_QFLOAT(N) \
-extern template void chase_decode_256_plain<qfloat<N>>(const qfloat<N>*, const qfloat<N>*, float*, const Params&); \
-extern template void chase_decode_256_plain<qfloat<N>>(const qfloat<N>*, float*, const Params&); \
-extern template void chase_decode_256_ebchPF<qfloat<N>>(const qfloat<N>*, const qfloat<N>*, float*, const Params&); \
-extern template void chase_decode_256_ebchPF<qfloat<N>>(const qfloat<N>*, float*, const Params&);
+extern template void chase_decode_256_plain<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const Params&); \
+extern template void chase_decode_256_plain<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, float*, const Params&); \
+extern template void chase_decode_256_ebchPF<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const Params&); \
+extern template void chase_decode_256_ebchPF<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, float*, const Params&);
 
 DECLARE_CHASE256_QFLOAT(2)
 DECLARE_CHASE256_QFLOAT(3)

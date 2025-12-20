@@ -14,10 +14,10 @@ namespace newcode {
 namespace detail {
 
 template <typename LLR>
-Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
+matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, const Params& p,
                                  std::vector<TileEarlyStopCounter>* tile_stats,
                                  bool normalize_extrinsic,
-                                 const Matrix<float>* tx_llr_ref,
+                                 const matrix::Matrix<float>* tx_llr_ref,
                                  CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn)
 {
   const size_t N = Params::NUM_SUBBLOCK_COLS * Params::BITS_PER_SUBBLOCK_DIM;
@@ -35,13 +35,13 @@ Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
   const size_t POP_PUSH_ROWS    = p.pop_push_rows();
   const size_t TILES_PER_WIN    = p.TILES_PER_WIN;
 
-  
-  Matrix<LLR> channel_llr = llr_mat;
-  Matrix<LLR> work_llr(RROWS, N);
+
+  matrix::Matrix<LLR> channel_llr = llr_mat;
+  matrix::Matrix<LLR> work_llr(RROWS, N);
   for (size_t r = 0; r < RROWS; ++r)
       for (size_t c = 0; c < N; ++c)
           work_llr[r][c] = llr_from_float<LLR>(0.0f);
-  Matrix<float> last_tile_history_llr(RROWS, N);
+  matrix::Matrix<float> last_tile_history_llr(RROWS, N);
 
   if (RROWS < WIN_HEIGHT_ROWS) {
     if (tile_stats) {
@@ -79,7 +79,7 @@ Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
     *tile_stats = std::move(local_tile_stats);
   }
 
-  Matrix<LLR> out(RROWS, N);
+  matrix::Matrix<LLR> out(RROWS, N);
   for (size_t r = 0; r < RROWS; ++r) {
     for (size_t c = 0; c < N; ++c) {
       const float sum = llr_to_float(channel_llr[r][c]) + last_tile_history_llr[r][c];
@@ -89,7 +89,7 @@ Matrix<LLR> ofec_decode_llr_impl(const Matrix<LLR>& llr_mat, const Params& p,
 
   // 可选：保存窗口累积后的 work_llr（解码前）
   if (p.DUMP_WORK_LLR) {
-    Matrix<float> work_float(RROWS, N);
+    matrix::Matrix<float> work_float(RROWS, N);
     for (size_t r = 0; r < RROWS; ++r)
       for (size_t c = 0; c < N; ++c)
         work_float[r][c] = llr_to_float(work_llr[r][c]);

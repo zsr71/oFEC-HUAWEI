@@ -11,15 +11,15 @@ namespace newcode {
 namespace detail {
 
 template <typename LLR>
-void process_window_impl(Matrix<LLR>& work_llr,
-                         const Matrix<LLR>& channel_llr,
+void process_window_impl(matrix::Matrix<LLR>& work_llr,
+                         const matrix::Matrix<LLR>& channel_llr,
                          size_t win_start, size_t win_end, const Params& p,
                          size_t tile_height_rows, size_t tile_stride_rows, size_t TILES_PER_WIN,
                          std::vector<TileEarlyStopCounter>* tile_stats,
                          bool normalize_extrinsic,
-                         const Matrix<float>* tx_llr_ref,
+                         const matrix::Matrix<float>* tx_llr_ref,
                          CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn,
-                         Matrix<float>* last_tile_history_accum)
+                         matrix::Matrix<float>* last_tile_history_accum)
 {
   (void)win_start;
   const auto& trace_cfg = p.debug_trace;
@@ -53,8 +53,8 @@ void process_window_impl(Matrix<LLR>& work_llr,
         const size_t tile_top_row    = tile_bottom_row + 1 - tile_height_rows;
 
         const size_t tile_height_rows_actual = tile_bottom_row - tile_top_row + 1;
-        Matrix<LLR> tile_in(tile_height_rows_actual, N);
-        Matrix<LLR> ch_tile(tile_height_rows_actual, N);
+        matrix::Matrix<LLR> tile_in(tile_height_rows_actual, N);
+        matrix::Matrix<LLR> ch_tile(tile_height_rows_actual, N);
 
         const bool use_hard = hard_tile_mask[t];
         const bool use_history_input =

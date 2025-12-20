@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace newcode {
+namespace utils {
 
 std::string now_stamp();
 

@@ -14,7 +14,7 @@
 #include "newcode/chase256.hpp"
 #include "newcode/common/bch/bch_255_239.hpp"
 #include "newcode/params.hpp"
-#include "newcode/qfloat.hpp"
+#include "newcode/common/qfloat/qfloat.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -47,10 +47,10 @@ template void chase_decode_256_plain<float >(const float*,  float*,  const Param
 template void chase_decode_256_plain<int8_t>(const int8_t*, float*, const Params&);
 
 #define INSTANTIATE_CHASE256_PLAIN_QFLOAT(N) \
-template void chase_decode_256_plain<newcode::qfloat<N>>( \
-    const newcode::qfloat<N>*, const newcode::qfloat<N>*, float*, const Params&); \
-template void chase_decode_256_plain<newcode::qfloat<N>>( \
-    const newcode::qfloat<N>*, float*, const Params&);
+template void chase_decode_256_plain<qfloat::qfloat<N>>( \
+    const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const Params&); \
+template void chase_decode_256_plain<qfloat::qfloat<N>>( \
+    const qfloat::qfloat<N>*, float*, const Params&);
 
 INSTANTIATE_CHASE256_PLAIN_QFLOAT(2)
 INSTANTIATE_CHASE256_PLAIN_QFLOAT(3)

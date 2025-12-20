@@ -4,7 +4,7 @@
 #include <cstdint>
 
 #include "newcode/params.hpp"
-#include "newcode/qfloat.hpp"
+#include "newcode/common/qfloat/qfloat.hpp"
 
 namespace newcode {
 
@@ -24,9 +24,9 @@ extern template bool perform_hard_decode<int8_t>(const std::array<int8_t, 256>&,
                                                  const Params&);
 
 #define DECLARE_HARD_DECODE_QFLOAT(N) \
-extern template bool perform_hard_decode<qfloat<N>>( \
-    const std::array<qfloat<N>, 256>&, \
-    const std::array<qfloat<N>, 256>&, \
+extern template bool perform_hard_decode<qfloat::qfloat<N>>( \
+    const std::array<qfloat::qfloat<N>, 256>&, \
+    const std::array<qfloat::qfloat<N>, 256>&, \
     std::array<float, 256>&, \
     const Params&);
 

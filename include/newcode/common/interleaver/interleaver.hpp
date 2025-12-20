@@ -13,8 +13,8 @@ namespace interleaver {
 // 统一接口：矩阵版交织
 struct IInterleaver {
   virtual ~IInterleaver() = default;
-  virtual void interleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const = 0;
-  virtual void deinterleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const = 0;
+  virtual void interleave(const matrix::Matrix<float>& in, matrix::Matrix<float>& out) const = 0;
+  virtual void deinterleave(const matrix::Matrix<float>& in, matrix::Matrix<float>& out) const = 0;
   virtual const std::vector<int>& forward_mapping() const = 0; // y[i] = x[forward_mapping()[i]]
   virtual const std::vector<int>& inverse_mapping() const = 0; // inverse permutation
 };
@@ -47,8 +47,8 @@ struct Interleaver {
     std::vector<T> deinterleave_chunks(const std::vector<T>& v) const;
 
     // 矩阵版交织：直接委托给实现；若 impl 为空则直通
-    void interleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const;
-    void deinterleave(const newcode::Matrix<float>& in, newcode::Matrix<float>& out) const;
+    void interleave(const matrix::Matrix<float>& in, matrix::Matrix<float>& out) const;
+    void deinterleave(const matrix::Matrix<float>& in, matrix::Matrix<float>& out) const;
 
     std::size_t size() const;
     bool has_mapping() const;
