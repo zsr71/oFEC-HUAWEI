@@ -12,8 +12,12 @@
 namespace newcode {
 
 template <typename LLR>
-TileEarlyStopResult tile_early_stop_stats(const matrix::Matrix<LLR>& lin_matrix);
+TileEarlyStopResult tile_early_stop_stats1(const matrix::Matrix<LLR>& lin_matrix);
+
+template <typename LLR>
+TileEarlyStopResult tile_early_stop_stats2(const matrix::Matrix<LLR>& lin_matrix);
 
 } // namespace newcode
 
 #include "ofec/earltstop/tile_early_stop_stats.ipp"
+#include "ofec/earltstop/tile_early_stop_stats2.ipp"

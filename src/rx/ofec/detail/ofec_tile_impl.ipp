@@ -79,7 +79,7 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
                                                rows_to_decode,
                                                tx_llr_ref);
 
-  TileEarlyStopResult early_stop_stats = tile_early_stop_stats(prep.lin_matrix);
+  TileEarlyStopResult early_stop_stats = tile_early_stop_stats1(prep.lin_matrix);
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
 
   auto decoder_res = decode_tile<LLR>(prep,
