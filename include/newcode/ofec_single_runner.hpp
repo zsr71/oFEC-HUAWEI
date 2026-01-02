@@ -57,6 +57,6 @@ void log_run_overview(const Config& cfg,
 void log_pipeline_results(const newcode::PipelineResult& result,
                           io::DualWriter& log);
 
-}  // namespace detail
+} 
 
-}  // namespace ofec_single
+}  
