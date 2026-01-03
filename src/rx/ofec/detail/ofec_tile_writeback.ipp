@@ -73,21 +73,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
         (*tile_out)[row_local][col] = extrinsic_llr;
       }
 
-      if (capture_last_tile_history && last_tile_history_accum) {
-        const long rr_global = static_cast<long>(row_global);
-        const long cc_global = static_cast<long>(col);
-        if (rr_global >= 0 && cc_global >= 0) {
-          const size_t rr_idx_global = static_cast<size_t>(rr_global);
-          const size_t cc_idx_global = static_cast<size_t>(cc_global);
-          if (rr_idx_global < last_tile_history_accum->rows() &&
-              cc_idx_global < last_tile_history_accum->cols()) {
-            const CoreLLR combined =
-                Adapter::combine(extrinsic_llr, prior_llr);
-            (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
-                history_value(combined, extrinsic_llr, prior_llr);
-          }
-        }
-      }
+
     }
     for (int j = 0; j < BCH_PAR; ++j) {
       const int k = K + j;
@@ -101,21 +87,6 @@ void writeback_tile(const TilePrepared<LLR>& prep,
         (*tile_out)[row_local][col] = extrinsic_llr;
       }
 
-      if (capture_last_tile_history && last_tile_history_accum) {
-        const long rr_global = static_cast<long>(row_global);
-        const long cc_global = static_cast<long>(col);
-        if (rr_global >= 0 && cc_global >= 0) {
-          const size_t rr_idx_global = static_cast<size_t>(rr_global);
-          const size_t cc_idx_global = static_cast<size_t>(cc_global);
-          if (rr_idx_global < last_tile_history_accum->rows() &&
-              cc_idx_global < last_tile_history_accum->cols()) {
-            const CoreLLR combined =
-                Adapter::combine(extrinsic_llr, prior_llr);
-            (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
-                history_value(combined, extrinsic_llr, prior_llr);
-          }
-        }
-      }
     }
     {
       const int k = OVR_IDX;
@@ -129,21 +100,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
         (*tile_out)[row_local][col] = extrinsic_llr;
       }
 
-      if (capture_last_tile_history && last_tile_history_accum) {
-        const long rr_global = static_cast<long>(row_global);
-        const long cc_global = static_cast<long>(col);
-        if (rr_global >= 0 && cc_global >= 0) {
-          const size_t rr_idx_global = static_cast<size_t>(rr_global);
-          const size_t cc_idx_global = static_cast<size_t>(cc_global);
-          if (rr_idx_global < last_tile_history_accum->rows() &&
-              cc_idx_global < last_tile_history_accum->cols()) {
-            const CoreLLR combined =
-                Adapter::combine(extrinsic_llr, prior_llr);
-            (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
-                history_value(combined, extrinsic_llr, prior_llr);
-          }
-        }
-      }
+
     }
 
     const long R = static_cast<long>(row_global / static_cast<size_t>(B));

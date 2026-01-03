@@ -62,7 +62,6 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
 
   while (win_start <= last_ws) {
     const size_t win_end = win_start + WIN_HEIGHT_ROWS - 1;
-
     process_window_impl<LLR>(work_llr, channel_llr,
                              win_start, win_end, p,
                              TILE_HEIGHT_ROWS, TILE_STRIDE_ROWS, TILES_PER_WIN,

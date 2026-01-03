@@ -8,17 +8,17 @@
 //发射端参数
 static constexpr const char* kLabel             = "debug_L6";   // 运行标签：日志/输出文件标识
 static constexpr int         kChaseL_override   = 6;            // Chase L，-1 表示使用默认
-static constexpr int         kBitgenSeed        = 115988;    // 比特生成随机种子
+static constexpr int         kBitgenSeed        = 115948;    // 比特生成随机种子
 static constexpr bool        kGenerateRandomBits = false;             // true=随机比特，false=全 0
 
 //信道相关参数
 static constexpr float       kEbN0_db           = 3.17f;        // 信道 Eb/N0 (dB)
-static constexpr int         kChannelSeed       = 1481898;   // 信道噪声随机种子
+static constexpr int         kChannelSeed       = 1481598;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
 //量化相关参数
-static constexpr std::size_t kLlrBits =6;                           // LLR 位宽：16=浮点，2~15=qfloat
-static constexpr float       kQuantClipRatio = 0.5f;                 // 动态裁剪比例，0=禁用
+static constexpr std::size_t kLlrBits =16;                           // LLR 位宽：16=浮点，2~15=qfloat
+static constexpr float       kQuantClipRatio = 0.0f;                 // 动态裁剪比例，0=禁用
 
 //解码相关参数
 static constexpr const char* kInterleaverName = "identity";          // 交织器名称
@@ -26,24 +26,24 @@ static constexpr const char* kDecoderName     = "plain";             // 解码�
 static constexpr bool        kNormalizeExtrinsic = false;       // 是否对外信息做归一化
 static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_prefix 外是否归一化
 
-    // 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
-    static constexpr float kAlpha_fill = 1.0f;   // extrinsic 缩放系数 α（统一填充）
-    static constexpr float kBeta_fill  = 0.40f;  // fallback 可靠度 β（统一填充）
+  // 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
+  static constexpr float kAlpha_fill = 1.0f;   // extrinsic 缩放系数 α（统一填充）
+  static constexpr float kBeta_fill  = 0.40f;  // fallback 可靠度 β（统一填充）
 
-    // 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
-    static const std::vector<float> kAlpha_explicit = {
-      0.320000,0.349468,0.405692,0.480000
-      //0.4f,1.0f
-      //0.6f
-      //0.606316
-    };
-    static const std::vector<float> kBeta_explicit = {
-      3.000000,4.322813,12.873823,35.000000
-      //1.4f
-      //24.0f,1.0f
-      //1.4f
-      //1.794872*31
-    };
+  // 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
+  static const std::vector<float> kAlpha_explicit = {
+    0.2,0.4,0.8,1
+    //0.4f,1.0f
+    //0.6f
+    //0.606316
+  };
+  static const std::vector<float> kBeta_explicit = {
+    0.2,0.4,0.6,0.8
+    //1.4f
+    //24.0f,1.0f
+    //1.4f
+    //1.794872*31
+  };
 
 
 //调试相关参数
@@ -62,13 +62,12 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = {
-    {1209168, "bit1209168"},
-    {1209187, "bit1209187"},
-    {1493533, "bit1493533"},
-    {2598162, "bit2598162"},
-
-
-
+    {704369, "bit704369"},
+    {727555, "bit727555"},
+    {981571, "bit981571"},
+    {1369219, "bit1369219"},
+    {2403048, "bit2403048"},
+    {2634830, "bit2634830"},
 };
 } // namespace
 
