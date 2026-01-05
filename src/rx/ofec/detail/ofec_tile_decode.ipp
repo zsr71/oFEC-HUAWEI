@@ -82,7 +82,7 @@ decode_tile(const TilePrepared<LLR>& prep,
     normalize_extrinsic_lout(decoder_res.lout, decoder_res.produced_rows, p.beta);
   }
   {
-    // Apply global α scaling on extrinsic outputs (moved from Chase decoder).
+    // 对外部输出应用全局 α 缩放（从 Chase 解码器移出）。
     const std::size_t Rcnt = decoder_res.lout.rows();
     const std::size_t Ccnt = decoder_res.lout.cols();
     for (std::size_t r = 0; r < Rcnt; ++r)
@@ -96,7 +96,7 @@ decode_tile(const TilePrepared<LLR>& prep,
   }
 
   {
-    // Quantize extrinsics back to the target LLR precision before writing out.
+    // 在写出之前将外部量化回目标 LLR 精度。
     const std::size_t Rcnt = decoder_res.lout.rows();
     const std::size_t Ccnt = decoder_res.lout.cols();
     for (std::size_t r = 0; r < Rcnt; ++r)
@@ -116,5 +116,5 @@ decode_tile(const TilePrepared<LLR>& prep,
   return decoder_res;
 }
 
-} // namespace detail
-} // namespace newcode
+} // 命名空间 detail
+} // 命名空间 newcode

@@ -12,8 +12,8 @@ static constexpr int         kBitgenSeed        = 115948;    // 比特生成随�
 static constexpr bool        kGenerateRandomBits = false;             // true=随机比特，false=全 0
 
 //信道相关参数
-static constexpr float       kEbN0_db           = 3.17f;        // 信道 Eb/N0 (dB)
-static constexpr int         kChannelSeed       = 1481598;   // 信道噪声随机种子
+static constexpr float       kEbN0_db           = 3.07f;        // 信道 Eb/N0 (dB)
+static constexpr int         kChannelSeed       = 148;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
 //量化相关参数
@@ -32,13 +32,13 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
 
   // 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
   static const std::vector<float> kAlpha_explicit = {
-    0.2,0.4,0.8,1
+   0.2,0.4,0.6,0.8
     //0.4f,1.0f
     //0.6f
     //0.606316
   };
   static const std::vector<float> kBeta_explicit = {
-    0.2,0.4,0.6,0.8
+    0.333333,0.397483,0.514777,0.8
     //1.4f
     //24.0f,1.0f
     //1.4f
@@ -62,12 +62,14 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = {
-    {704369, "bit704369"},
-    {727555, "bit727555"},
-    {981571, "bit981571"},
-    {1369219, "bit1369219"},
-    {2403048, "bit2403048"},
-    {2634830, "bit2634830"},
+    {625220, "bit625220"},
+    {625389, "bit625389"},
+    {625392, "bit625392"},
+    {625431, "bit625431"},
+    {625439, "bit625439"},
+    {625464, "bit625464"},
+    {626055, "bit626055"},
+    {626436, "bit626436"},
 };
 } // namespace
 

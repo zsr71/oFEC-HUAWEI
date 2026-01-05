@@ -136,7 +136,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       const size_t cc_idx_local = static_cast<size_t>(cc_local2);
       const LLR prior_llr =
           (*tile_out)[rr_idx_local][cc_idx_local];
-      const LLR extrinsic_llr =
+      LLR extrinsic_llr =
           qfloat::llr_from_float<LLR>(lout_row[static_cast<size_t>(k)]);
       if (row_produced) {
         (*tile_out)[rr_idx_local][cc_idx_local] = extrinsic_llr;
@@ -146,6 +146,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
         if (rr_global >= 0 && cc_global >= 0) {
           const size_t rr_idx_global = static_cast<size_t>(rr_global);
           const size_t cc_idx_global = static_cast<size_t>(cc_global);
+          extrinsic_llr=extrinsic_llr/p.ALPHA;
           if (rr_idx_global < last_tile_history_accum->rows() &&
               cc_idx_global < last_tile_history_accum->cols()) {
             const CoreLLR combined = Adapter::combine(extrinsic_llr, prior_llr);
