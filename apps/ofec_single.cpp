@@ -52,13 +52,7 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = {
-    {625374, "bit625374"},
-    {626055, "bit625389"},
-    {626065, "bit625392"},
-    {626663, "bit625431"},
-    {626874, "bit625439"},
-    {628679, "bit625464"},
-
+    {2529488, "bit2529488"},
 };
 } 
 

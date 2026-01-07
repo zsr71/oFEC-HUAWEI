@@ -36,12 +36,12 @@ void writeback_tile(const TilePrepared<LLR>& prep,
       !std::is_floating_point_v<LLR> &&
       !std::is_integral_v<LLR>;
   auto history_value = [&](const CoreLLR& combined,
-                           const LLR& extrinsic,
+                           float extrinsic,
                            const LLR& prior) -> float {
     if constexpr (history_needs_dequant) {
       // For quantized LLR (e.g., qfloat::qfloat<N>), combined is in code domain.
       // Sum dequantized values so history stores real amplitudes.
-      return llr_to_float(extrinsic) + llr_to_float(prior);
+      return extrinsic + llr_to_float(prior);
     } else {
       return core_to_float(combined);
     }
@@ -146,12 +146,12 @@ void writeback_tile(const TilePrepared<LLR>& prep,
         if (rr_global >= 0 && cc_global >= 0) {
           const size_t rr_idx_global = static_cast<size_t>(rr_global);
           const size_t cc_idx_global = static_cast<size_t>(cc_global);
-          extrinsic_llr=extrinsic_llr/p.ALPHA;
+          float extrinsic_llr_last_tile=lout_row[static_cast<size_t>(k)]/p.ALPHA;
           if (rr_idx_global < last_tile_history_accum->rows() &&
               cc_idx_global < last_tile_history_accum->cols()) {
             const CoreLLR combined = Adapter::combine(extrinsic_llr, prior_llr);
             (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
-                history_value(combined, extrinsic_llr, prior_llr);
+                history_value(combined, extrinsic_llr_last_tile, prior_llr);
           }
         }
       }

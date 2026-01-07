@@ -118,12 +118,20 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const matrix::Matrix<LLR>& lin_matrix,
     } else {
       // 使用软解码
       // 检查是否需要提前终止当前行解码（当前代码被注释掉）
+
+      
+      //1.加不加else会影响ber
+      //2.加不加produced=true会影响ber
+      //1.不早停
+      //2.早停但不改变外信息
+      //3.早停且改变外信息
+
       if (early_stop_row_flags &&
           row < early_stop_row_flags->size() &&
           (*early_stop_row_flags)[row]) {
         newcode::row_early_stop_process(LinVec.data(), Y2.data(), row_params);
         produced = true;
-      }else{
+      }else {
         // 调用具体的Chase解码函数
         chase_fn(LinVec.data(), LchVec.data(), Y2.data(), row_params);
         produced = true;
