@@ -9,4 +9,4 @@ bool tile_should_early_stop(const Matrix<LLR>& lin_matrix);
 
 } // namespace newcode
 
-#include "ofec/earltstop/tile_should_early_stop.ipp"
+#include "ofec/earlystop/tile_should_early_stop.ipp"

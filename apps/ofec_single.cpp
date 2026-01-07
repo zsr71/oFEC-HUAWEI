@@ -12,13 +12,13 @@ static constexpr int         kBitgenSeed        = 115948;    // 比特生成随�
 static constexpr bool        kGenerateRandomBits = false;             // true=随机比特，false=全 0
 
 //信道相关参数
-static constexpr float       kEbN0_db           = 3.07f;        // 信道 Eb/N0 (dB)
-static constexpr int         kChannelSeed       = 148;   // 信道噪声随机种子
+static constexpr float       kEbN0_db           = 3.27f;        // 信道 Eb/N0 (dB)
+static constexpr int         kChannelSeed       = 1489;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
 //量化相关参数
-static constexpr std::size_t kLlrBits =16;                           // LLR 位宽：16=浮点，2~15=qfloat
-static constexpr float       kQuantClipRatio = 0.0f;                 // 动态裁剪比例，0=禁用
+static constexpr std::size_t kLlrBits =6;                           // LLR 位宽：16=浮点，2~15=qfloat
+static constexpr float       kQuantClipRatio = 0.5f;                 // 动态裁剪比例，0=禁用
 
 //解码相关参数
 static constexpr const char* kInterleaverName = "identity";          // 交织器名称
@@ -32,21 +32,11 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
 
   // 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
   static const std::vector<float> kAlpha_explicit = {
-   0.2,0.4,0.6,0.8
-    //0.4f,1.0f
-    //0.6f
-    //0.606316
+   0.32,0.349468,0.405692,0.480000
   };
   static const std::vector<float> kBeta_explicit = {
-    0.333333,0.397483,0.514777,0.8
-    //1.4f
-    //24.0f,1.0f
-    //1.4f
-    //1.794872*31
+    3.000000, 4.322813, 12.873823, 35.000000
   };
-
-
-//调试相关参数
 
 //llr导出相关
   static constexpr bool        kDumpQuantizedLlr = true;               // 是否导出量化后 LLR
@@ -62,16 +52,15 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = {
-    {625220, "bit625220"},
-    {625389, "bit625389"},
-    {625392, "bit625392"},
-    {625431, "bit625431"},
-    {625439, "bit625439"},
-    {625464, "bit625464"},
-    {626055, "bit626055"},
-    {626436, "bit626436"},
+    {625374, "bit625374"},
+    {626055, "bit625389"},
+    {626065, "bit625392"},
+    {626663, "bit625431"},
+    {626874, "bit625439"},
+    {628679, "bit625464"},
+
 };
-} // namespace
+} 
 
 static const std::vector<newcode::Params::DebugTraceConfig::TraceTarget>
     kDecoderTraceTargets = []() {
@@ -86,6 +75,7 @@ static const std::vector<newcode::Params::DebugTraceConfig::TraceTarget>
       }
       return targets;
     }();
+
 // Decoder 调试跟踪配置
 // 用于定位单个比特的映射/写回问题：row/col 为全局 work_llr 坐标（0-based）
 // enable 与 row/col 同时满足才会输出日志
@@ -95,6 +85,7 @@ static const std::vector<newcode::Params::DebugTraceConfig::TraceTarget>
 // log_chase_detail   追踪对应比特在 Chase 内部（plain/ebchPF）的输入/输出
 // dump_chase_csv     每次进入 Chase 时导出 256 码字的 LLR/ω/ML/硬判决到 CSV
 // chase_csv_dir      CSV 导出目录（可直接用 Excel 打开）
+
 static constexpr bool kDecoderTraceEnable        = true;
 static constexpr bool kDecoderTraceLogRead       = true;
 static constexpr bool kDecoderTraceLogWrite      = true;

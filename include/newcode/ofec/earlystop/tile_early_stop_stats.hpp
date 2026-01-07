@@ -19,5 +19,5 @@ TileEarlyStopResult tile_early_stop_stats2(const matrix::Matrix<LLR>& lin_matrix
 
 } // namespace newcode
 
-#include "ofec/earltstop/tile_early_stop_stats.ipp"
-#include "ofec/earltstop/tile_early_stop_stats2.ipp"
+#include "ofec/earlystop/tile_early_stop_stats.ipp"
+#include "ofec/earlystop/tile_early_stop_stats2.ipp"

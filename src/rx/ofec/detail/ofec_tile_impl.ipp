@@ -8,7 +8,7 @@
 #include "newcode/common/qfloat/llr_utils.hpp"
 #include "newcode/decoder_api.hpp"
 #include "newcode/ofec/common/lin_matrix_adapters.hpp"
-#include "newcode/ofec/earltstop/tile_early_stop_stats.hpp"
+#include "newcode/ofec/earlystop/tile_early_stop_stats.hpp"
 
 #include <filesystem>
 #include <fstream>
