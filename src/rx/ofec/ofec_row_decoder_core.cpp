@@ -1,7 +1,8 @@
 #include "newcode/params.hpp"
 #include "newcode/rx/ofec/chase/decoder_core.hpp"
 #include "newcode/rx/ofec/chase/chase256.hpp"
-#include "newcode/ofec/earlystop/row_early_stop_process.hpp"
+#include "newcode/ofec/earlystop/row_early_stop_process_1.hpp"
+#include "newcode/ofec/earlystop/row_early_stop_process_2.hpp"
 #include "newcode/ofec_decoder_hard.hpp"
 
 #include <array>
@@ -129,7 +130,9 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const matrix::Matrix<LLR>& lin_matrix,
       if (early_stop_row_flags &&
           row < early_stop_row_flags->size() &&
           (*early_stop_row_flags)[row]) {
-        newcode::row_early_stop_process(LinVec.data(), Y2.data(), row_params);
+        newcode::row_early_stop_process_1(LinVec.data(), Y2.data(), row_params);
+        //newcode::row_early_stop_process_2(LinVec.data(),LchVec.data(), Y2.data(), row_params);
+
         produced = true;
       }else {
         // 调用具体的Chase解码函数

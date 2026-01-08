@@ -8,9 +8,9 @@
 namespace newcode {
 
 template <typename LLR>
-void row_early_stop_process(const LLR* lin256,
-                            float* y2_256,
-                            const newcode::Params& p)
+void row_early_stop_process_1(const LLR* lin256,
+                              float* y2_256,
+                              const newcode::Params& p)
 {
   const float mag = p.beta;
   for (size_t j = 0; j < newcode::Params::BCH_N; ++j) {
