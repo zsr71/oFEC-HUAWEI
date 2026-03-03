@@ -1,5 +1,6 @@
 #include "newcode/ofec_single_runner.hpp"
 #include "newcode/io/dualwriter.hpp"
+#include "newcode/ofec/mux/mux_config_validate.hpp"
 #include <algorithm>
 
 namespace ofec_single {
@@ -52,6 +53,16 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   }
   if (!params.beta_list.empty()) {
     params.beta = params.beta_list.front();
+  }
+
+  if (!cfg.siso_active_list.empty()) {
+    params.SISO_ACTIVE_LIST = cfg.siso_active_list;
+  }
+  const auto mux_ok =
+      newcode::mux::validate_siso_active_list(params.SISO_ACTIVE_LIST, tiles);
+  if (!mux_ok.ok) {
+    log << "[ERROR] " << mux_ok.error << "\n";
+    return std::nullopt;
   }
 
   return params;

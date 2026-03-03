@@ -12,7 +12,7 @@ static constexpr int         kBitgenSeed        = 115948;    // 比特生成随�
 static constexpr bool        kGenerateRandomBits = false;             // true=随机比特，false=全 0
 
 //信道相关参数
-static constexpr float       kEbN0_db           = 3.27f;        // 信道 Eb/N0 (dB)
+static constexpr float       kEbN0_db           = 3.47f;        // 信道 Eb/N0 (dB)
 static constexpr int         kChannelSeed       = 1489;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
@@ -37,6 +37,7 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
   static const std::vector<float> kBeta_explicit = {
     3.000000, 4.322813, 12.873823, 35.000000
   };
+  static const std::vector<int> kSisoActiveList = {32, 32, 32, 16}; // 每轮 SISO 活跃迭代数，长度必须等于 TILES_PER_WIN
 
 //llr导出相关
   static constexpr bool        kDumpQuantizedLlr = true;               // 是否导出量化后 LLR
@@ -104,6 +105,7 @@ int main() {
     .beta_fill = kBeta_fill,
     .alpha_explicit = kAlpha_explicit,
     .beta_explicit = kBeta_explicit,
+    .siso_active_list = kSisoActiveList,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,
     .generate_random_bits = kGenerateRandomBits,

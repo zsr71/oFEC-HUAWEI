@@ -4,6 +4,7 @@
 
 #include "newcode/ofec_decoder.hpp"
 #include "newcode/common/qfloat/llr_utils.hpp"
+#include "newcode/ofec/mux/mux_siso_budget.hpp"
 
 #include <vector>
 
@@ -81,6 +82,8 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
         tile_params.debug_trace.chase_tile_index = static_cast<int>(t);
         tile_params.debug_trace.chase_invocation =
             static_cast<int>(++chase_invocation_counter);
+        const int siso_active_for_tile =
+            newcode::mux::pick_siso_active_for_tile(p.SISO_ACTIVE_LIST, t);
 
         const bool capture_history =
             last_tile_history_accum &&
@@ -88,6 +91,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
 
     TileProcessResult<LLR> tile_result = process_tile_impl<LLR>(tile_in, ch_tile, tile_params,
                                                                 /*tile_top_row_global=*/tile_top_row,
+                                                                siso_active_for_tile,
                                                                 /*use_hard_decode=*/use_hard,
                                                                 /*normalize_extrinsic=*/normalize_extrinsic,
                                                                 tx_llr_ref,

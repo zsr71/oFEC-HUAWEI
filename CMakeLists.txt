@@ -88,6 +88,9 @@ add_library(newcode_frontend STATIC
   ${RX_LLR_SRCS}
   ${RX_EXTRACT_SRCS}
   ${RX_BER_SRCS}
+  src/rx/ofec/mux/mux_state_builder.cpp
+  src/rx/ofec/mux/mux_siso_budget.cpp
+  src/rx/ofec/mux/mux_config_validate.cpp
 )
 target_include_directories(newcode_frontend PUBLIC ${NEWCODE_INCLUDE})
 target_include_directories(newcode_frontend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/ofec_sweep)

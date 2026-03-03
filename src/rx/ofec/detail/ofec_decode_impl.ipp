@@ -4,6 +4,7 @@
 
 #include "newcode/decoder_api.hpp"
 #include "newcode/common/qfloat/llr_utils.hpp"
+#include "newcode/ofec/mux/mux_config_validate.hpp"
 #include "newcode/quantized_llr_dump.hpp"
 
 #include <string>
@@ -28,6 +29,11 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
       throw std::invalid_argument("ofec_decode_llr: llr_mat cols != N.");
 
   assert(p.valid());
+  const auto mux_ok =
+      newcode::mux::validate_siso_active_list(p.SISO_ACTIVE_LIST, p.TILES_PER_WIN);
+  if (!mux_ok.ok) {
+    throw std::invalid_argument("ofec_decode_llr: " + mux_ok.error);
+  }
 
   const size_t TILE_HEIGHT_ROWS = p.tile_height_rows();
   const size_t TILE_STRIDE_ROWS = p.tile_stride_rows();

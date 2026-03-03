@@ -1,5 +1,6 @@
 #include "newcode/ofec_decoder.hpp"
 #include "newcode/params.hpp"
+#include "newcode/ofec/mux/mux_siso_budget.hpp"
 #include "newcode/rx/ofec/chase/decoder_core.hpp"
 
 #include "detail/ofec_tile_impl.ipp"
@@ -16,7 +17,10 @@ TileProcessResult<LLR> process_tile_plain(const matrix::Matrix<LLR>& tile_in,
                                           const matrix::Matrix<float>* tx_llr_ref)
 {
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
+  const int siso_active_for_tile =
+      newcode::mux::pick_siso_active_for_tile(p.SISO_ACTIVE_LIST, 0);
   return detail::process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
+                                   siso_active_for_tile,
                                    use_hard_decode, normalize_extrinsic,
                                    tx_llr_ref,
                                    &chase::Decoder_Core_plain<CoreLLR>,
@@ -34,7 +38,10 @@ TileProcessResult<LLR> process_tile_ebchPF(const matrix::Matrix<LLR>& tile_in,
                                            const matrix::Matrix<float>* tx_llr_ref)
 {
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
+  const int siso_active_for_tile =
+      newcode::mux::pick_siso_active_for_tile(p.SISO_ACTIVE_LIST, 0);
   return detail::process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
+                                   siso_active_for_tile,
                                    use_hard_decode, normalize_extrinsic,
                                    tx_llr_ref,
                                    &chase::Decoder_Core_ebchPF<CoreLLR>,

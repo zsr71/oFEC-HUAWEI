@@ -3,6 +3,8 @@
 #include "ofec_tile_input.ipp"
 #include "ofec_tile_extrinsic_normalize.ipp"
 
+#include <cstdint>
+
 namespace newcode {
 namespace detail {
 
@@ -69,13 +71,15 @@ decode_tile(const TilePrepared<LLR>& prep,
             bool normalize_extrinsic,
             const newcode::Params& p,
             const std::vector<bool>* early_stop_row_flags,
+            const std::vector<uint8_t>* mux_state,
             CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn)
 {
   auto decoder_res = core_fn(prep.lin_matrix,
                              prep.lch_matrix,
                              use_hard_decode,
                              prep.params_for_core,
-                             early_stop_row_flags);
+                             early_stop_row_flags,
+                             mux_state);
 
   if (normalize_extrinsic && !use_hard_decode)
   {

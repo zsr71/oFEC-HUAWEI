@@ -9,6 +9,8 @@
 #include "newcode/decoder_api.hpp"
 #include "newcode/ofec/common/lin_matrix_adapters.hpp"
 #include "newcode/ofec/earlystop/tile_early_stop_stats.hpp"
+#include "newcode/ofec/mux/mux_siso_budget.hpp"
+#include "newcode/ofec/mux/mux_state_builder.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -30,7 +32,8 @@ using CoreFn = chase::DecoderCoreResult<LLR> (*)(const matrix::Matrix<LLR>&,
                                                  const matrix::Matrix<LLR>&,
                                                  bool,
                                                  const newcode::Params&,
-                                                 const std::vector<bool>* early_stop_row_flags);
+                                                 const std::vector<bool>* early_stop_row_flags,
+                                                 const std::vector<uint8_t>* mux_state);
 
 } // namespace detail
 } // namespace newcode
@@ -47,6 +50,7 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
                                          const matrix::Matrix<LLR>& ch_tile,
                                          const newcode::Params& p,
                                          size_t tile_top_row_global,
+                                         int siso_active_for_tile,
                                          bool use_hard_decode,
                                          bool normalize_extrinsic,
                                          const matrix::Matrix<float>* tx_llr_ref,
@@ -81,12 +85,16 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
 
   TileEarlyStopResult early_stop_stats = tile_early_stop_stats1(prep.lin_matrix);
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
+  std::vector<uint8_t> mux_state =
+      newcode::mux::build_state_from_early_stop(early_stop_stats);
+  newcode::mux::apply_siso_budget_g1(mux_state, siso_active_for_tile);
 
   auto decoder_res = decode_tile<LLR>(prep,
                                       use_hard_decode,
                                       normalize_extrinsic,
                                       p,
                                       &early_stop_stats.row_passed_flags,
+                                      &mux_state,
                                       core_fn);
 
   writeback_tile(prep,

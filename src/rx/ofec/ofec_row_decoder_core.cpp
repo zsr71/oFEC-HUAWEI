@@ -35,7 +35,8 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const matrix::Matrix<LLR>& lin_matrix,
                                          bool use_hard_decode,
                                          const newcode::Params& p,
                                          ChaseFn<LLR> chase_fn,
-                                         const std::vector<bool>* early_stop_row_flags)
+                                         const std::vector<bool>* early_stop_row_flags,
+                                         const std::vector<uint8_t>* mux_state)
 {
   const size_t rows = lin_matrix.rows();
   const size_t cols = lin_matrix.cols();
@@ -112,29 +113,38 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const matrix::Matrix<LLR>& lin_matrix,
       row_params.debug_trace.chase_decoder_col = -1;
     }
 
+    const bool has_mux_state = mux_state &&
+                               row < mux_state->size();
+    const uint8_t mux_tag =
+        has_mux_state ? (*mux_state)[row] : static_cast<uint8_t>(0xFF);
+
     // 根据配置选择解码模式
-    if (use_hard_decode) {
+    if (has_mux_state && mux_tag == 2u) {
+      // 本轮未分配到 SISO：保持未产生输出（不更新）
+      produced = false;
+    } else if (use_hard_decode) {
       // 使用硬解码
       produced = newcode::perform_hard_decode<LLR>(LinVec, LchVec, Y2, p);
     } else {
       // 使用软解码
-      // 检查是否需要提前终止当前行解码（当前代码被注释掉）
-
-      
-      //1.加不加else会影响ber
-      //2.加不加produced=true会影响ber
-      //1.不早停
-      //2.早停但不改变外信息
-      //3.早停且改变外信息
-
-      if (early_stop_row_flags &&
-          row < early_stop_row_flags->size() &&
-          (*early_stop_row_flags)[row]) {
-        newcode::row_early_stop_process_1(LinVec.data(), Y2.data(), row_params);
-        //newcode::row_early_stop_process_2(LinVec.data(),LchVec.data(), Y2.data(), row_params);
-
+      if (has_mux_state) {
+        if (mux_tag == 1u) {
+          //newcode::row_early_stop_process_2(LinVec.data(),LchVec.data(),Y2.data(),row_params);
+          newcode::row_early_stop_process_1(LinVec.data(),Y2.data(),row_params);
+          produced = true;
+        } else {
+          chase_fn(LinVec.data(), LchVec.data(), Y2.data(), row_params);
+          produced = true;
+        }
+      } else if (early_stop_row_flags &&
+                 row < early_stop_row_flags->size() &&
+                 (*early_stop_row_flags)[row]) {
+        newcode::row_early_stop_process_2(LinVec.data(),
+                                          LchVec.data(),
+                                          Y2.data(),
+                                          row_params);
         produced = true;
-      }else {
+      } else {
         // 调用具体的Chase解码函数
         chase_fn(LinVec.data(), LchVec.data(), Y2.data(), row_params);
         produced = true;
@@ -164,11 +174,13 @@ DecoderCoreResult<LLR> Decoder_Core_plain(const matrix::Matrix<LLR>& lin_matrix,
                                           const matrix::Matrix<LLR>& lch_matrix,
                                           bool use_hard_decode,
                                           const newcode::Params& p,
-                                          const std::vector<bool>* early_stop_row_flags)
+                                          const std::vector<bool>* early_stop_row_flags,
+                                          const std::vector<uint8_t>* mux_state)
 {
   return Decoder_Core_impl(lin_matrix, lch_matrix, use_hard_decode, p,
                            &chase_decode_256_plain<LLR>,
-                           early_stop_row_flags);
+                           early_stop_row_flags,
+                           mux_state);
 }
 
 // ebchPF版本的Chase解码器实现
@@ -179,11 +191,13 @@ DecoderCoreResult<LLR> Decoder_Core_ebchPF(const matrix::Matrix<LLR>& lin_matrix
                                            const matrix::Matrix<LLR>& lch_matrix,
                                            bool use_hard_decode,
                                            const newcode::Params& p,
-                                           const std::vector<bool>* early_stop_row_flags)
+                                           const std::vector<bool>* early_stop_row_flags,
+                                           const std::vector<uint8_t>* mux_state)
 {
   return Decoder_Core_impl(lin_matrix, lch_matrix, use_hard_decode, p,
                            &chase_decode_256_ebchPF<LLR>,
-                           early_stop_row_flags);
+                           early_stop_row_flags,
+                           mux_state);
 }
 
 // 模板实例化：针对float类型的普通Chase解码器
@@ -191,38 +205,42 @@ template DecoderCoreResult<float> Decoder_Core_plain<float>(const matrix::Matrix
                                                             const matrix::Matrix<float>&,
                                                             bool,
                                                             const newcode::Params&,
-                                                            const std::vector<bool>*);
+                                                            const std::vector<bool>*,
+                                                            const std::vector<uint8_t>*);
 
 // 模板实例化：针对int8_t类型的普通Chase解码器
 template DecoderCoreResult<int8_t> Decoder_Core_plain<int8_t>(const matrix::Matrix<int8_t>&,
                                                               const matrix::Matrix<int8_t>&,
                                                               bool,
                                                               const newcode::Params&,
-                                                              const std::vector<bool>*);
+                                                              const std::vector<bool>*,
+                                                              const std::vector<uint8_t>*);
 
 // 模板实例化：针对float类型的ebchPF Chase解码器
 template DecoderCoreResult<float> Decoder_Core_ebchPF<float>(const matrix::Matrix<float>&,
                                                              const matrix::Matrix<float>&,
                                                              bool,
                                                              const newcode::Params&,
-                                                             const std::vector<bool>*);
+                                                             const std::vector<bool>*,
+                                                             const std::vector<uint8_t>*);
 
 // 模板实例化：针对int8_t类型的ebchPF Chase解码器
 template DecoderCoreResult<int8_t> Decoder_Core_ebchPF<int8_t>(const matrix::Matrix<int8_t>&,
                                                                const matrix::Matrix<int8_t>&,
                                                                bool,
                                                                const newcode::Params&,
-                                                               const std::vector<bool>*);
+                                                               const std::vector<bool>*,
+                                                               const std::vector<uint8_t>*);
 
 // 定义量化浮点数类型的模板实例化宏
 // N: 量化位数
 #define INSTANTIATE_DECODER_CORE_QFLOAT(N) \
 template DecoderCoreResult<qfloat::qfloat<N>> Decoder_Core_plain<qfloat::qfloat<N>>( \
     const matrix::Matrix<qfloat::qfloat<N>>& lin_matrix, const matrix::Matrix<qfloat::qfloat<N>>& lch_matrix, bool, const newcode::Params&, \
-    const std::vector<bool>*); \
+    const std::vector<bool>*, const std::vector<uint8_t>*); \
 template DecoderCoreResult<qfloat::qfloat<N>> Decoder_Core_ebchPF<qfloat::qfloat<N>>( \
     const matrix::Matrix<qfloat::qfloat<N>>& lin_matrix, const matrix::Matrix<qfloat::qfloat<N>>& lch_matrix, bool, const newcode::Params&, \
-    const std::vector<bool>*);
+    const std::vector<bool>*, const std::vector<uint8_t>*);
 
 // 为不同量化位数（2-15位）的qfloat类型实例化解码器
 // 这些实例化允许解码器处理各种精度的量化输入

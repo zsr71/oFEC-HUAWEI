@@ -1,5 +1,6 @@
 #include "ofec_sweep_detail.hpp"
 #include "newcode/io/ensure_dir.hpp"
+#include "newcode/ofec/mux/mux_config_validate.hpp"
 #include "newcode/utils/now_stamp.hpp"
 
 #include <algorithm>
@@ -266,12 +267,24 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
 
 int run_sweep(const SweepParameterConfig& config) {
   using namespace detail;
+  SweepParameterConfig resolved = config;
+  if (!resolved.siso_active_list.empty()) {
+    resolved.base_params.SISO_ACTIVE_LIST = resolved.siso_active_list;
+  }
+  const auto mux_ok = newcode::mux::validate_siso_active_list(
+      resolved.base_params.SISO_ACTIVE_LIST,
+      resolved.base_params.TILES_PER_WIN);
+  if (!mux_ok.ok) {
+    std::cerr << "[ERROR] " << mux_ok.error << "\n";
+    return 1;
+  }
+  const SweepParameterConfig& cfg = resolved;
 
   const std::filesystem::path data_dir = "data";
   io::ensure_dir(data_dir);
   const std::string run_id = utils::now_stamp();
   const std::string log_path = (data_dir / ("run_" + run_id + ".log")).string();
-  const bool mirror_console = !config.quiet_logs;
+  const bool mirror_console = !cfg.quiet_logs;
   DualOut out(std::cout, log_path, mirror_console);
 
   const std::string csv_path =
@@ -279,16 +292,16 @@ int run_sweep(const SweepParameterConfig& config) {
   ensure_csv_header(csv_path);
 
   std::vector<int> bitgen_seeds =
-      resolve_seeds(config.bitgen_seed_candidates,
-                    config.bitgen_seed_count,
-                    config.base_params.BITGEN_SEED);
+      resolve_seeds(cfg.bitgen_seed_candidates,
+                    cfg.bitgen_seed_count,
+                    cfg.base_params.BITGEN_SEED);
   std::vector<int> channel_seeds =
-      resolve_seeds(config.channel_seed_candidates,
-                    config.channel_seed_count,
-                    config.base_params.CHANNEL_SEED);
-  const std::vector<float> ebn0_values = build_ebn0_values(config);
+      resolve_seeds(cfg.channel_seed_candidates,
+                    cfg.channel_seed_count,
+                    cfg.base_params.CHANNEL_SEED);
+  const std::vector<float> ebn0_values = build_ebn0_values(cfg);
 
-  auto scenarios = build_scenarios(config, ebn0_values, bitgen_seeds, channel_seeds);
+  auto scenarios = build_scenarios(cfg, ebn0_values, bitgen_seeds, channel_seeds);
   const std::size_t scenario_count = scenarios.size();
   std::cout << "[INFO] total scenarios = " << scenario_count << "\n";
   if (scenario_count == 0) {
@@ -296,9 +309,9 @@ int run_sweep(const SweepParameterConfig& config) {
     return 1;
   }
 
-  const unsigned max_workers = resolve_worker_count(config);
+  const unsigned max_workers = resolve_worker_count(cfg);
   std::cout << "[INFO] using up to " << max_workers << " workers\n";
-  auto results = run_scenarios_parallel(scenarios, config, max_workers, "", &out);
+  auto results = run_scenarios_parallel(scenarios, cfg, max_workers, "", &out);
   if (results.empty()) {
     return 1;
   }
@@ -319,10 +332,10 @@ int run_sweep(const SweepParameterConfig& config) {
   float best_alpha_step = 0.0f;
   float best_beta_start = 0.0f;
   float best_beta_step = 0.0f;
-  int best_chase_L = config.base_params.CHASE_L;
-  int best_chase_n_test = 1 << config.base_params.CHASE_L;
-  int best_bitgen_seed = config.base_params.BITGEN_SEED;
-  int best_channel_seed = config.base_params.CHANNEL_SEED;
+  int best_chase_L = cfg.base_params.CHASE_L;
+  int best_chase_n_test = 1 << cfg.base_params.CHASE_L;
+  int best_bitgen_seed = cfg.base_params.BITGEN_SEED;
+  int best_channel_seed = cfg.base_params.CHANNEL_SEED;
   float best_ebn0_db = !ebn0_values.empty() ? ebn0_values.front() : newcode::DEFAULT_EBN0_DB;
 
   for (const auto& pack : results) {

@@ -53,6 +53,8 @@ struct Params {
   // —— 可按 tile 覆盖的系数表（索引 0..TILES_PER_WIN-1）——
   std::vector<float> ALPHA_LIST = {0.3f, 0.4f, 0.5f, 0.6f};    // 由起点+步进生成的默认列表
   std::vector<float> beta_list  = {0.9f, 1.0f, 1.1f, 1.2f};    // 由起点+步进生成的默认列表
+  // 每级 tile 的可用 SISO 数（索引 t 按 bottom->top）
+  std::vector<int> SISO_ACTIVE_LIST = {32, 30, 24, 16};
 
   // —— 每个 tile 是否切换到硬判决译码 —— //
   bool HARD_DECODE_DEFAULT = false;                               // 默认仍使用软判决

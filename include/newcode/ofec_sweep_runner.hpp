@@ -27,6 +27,7 @@ struct SweepParameterConfig {
   std::vector<float> alpha_step_candidates;
   std::vector<float> beta_start_candidates;
   std::vector<float> beta_step_candidates;
+  std::vector<int> siso_active_list;
   std::vector<int> chase_l_candidates;
 
   int bitgen_seed_count = 0;

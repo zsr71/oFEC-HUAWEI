@@ -13,6 +13,7 @@ static constexpr bool kNormalizeKnownPrefixTail  = false;
 static constexpr float kQuantClipRatio           = 0.5f; // 0 表示禁用动态 clip
 static constexpr std::size_t kLlrBits            = 6;
 static constexpr bool kQuietConsole              = false;
+static const std::vector<int> kSisoActiveList    = {32, 30, 24, 16};
 
 // Alpha/Beta 扫描候选
 static const std::vector<float> kAlphaStartCandidates = utils::linspace(0.0f, 0.2f, 2);
@@ -58,6 +59,7 @@ int main() {
   config.alpha_step_candidates = kAlphaStepCandidates;
   config.beta_start_candidates = kBetaStartCandidates;
   config.beta_step_candidates = kBetaStepCandidates;
+  config.siso_active_list = kSisoActiveList;
   config.chase_l_candidates = kChaseLCandidates;
 
   config.bitgen_seed_count = kBitgenSeedCount;
@@ -91,6 +93,7 @@ int main() {
   config.base_params.NORMALIZE_KNOWN_PREFIX_TAIL = kNormalizeKnownPrefixTail;
   config.base_params.LLR_CLIP_RATIO = kQuantClipRatio;
   config.base_params.LLR_BITS = kLlrBits;
+  config.base_params.SISO_ACTIVE_LIST = kSisoActiveList;
 
   return ofec_sweep::run_sweep(config);
 }
