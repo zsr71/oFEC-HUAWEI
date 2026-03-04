@@ -19,7 +19,7 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     =  64 * 110 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     =  32 * 110 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 56456;                 // 随机种子
   int    CHANNEL_SEED      = BITGEN_SEED + 656;    // 信道噪声随机种子
   bool   BITGEN_RANDOM_BITS = true;             // true=随机比特，false=全 0
@@ -55,6 +55,8 @@ struct Params {
   std::vector<float> beta_list  = {0.9f, 1.0f, 1.1f, 1.2f};    // 由起点+步进生成的默认列表
   // 每级 tile 的可用 SISO 数（索引 t 按 bottom->top）
   std::vector<int> SISO_ACTIVE_LIST = {32, 30, 24, 16};
+  // MUX 分组数：1=现有 max 全局池化，>1=按组预算裁剪
+  int MUX_GROUP_G = 1;
 
   // —— 每个 tile 是否切换到硬判决译码 —— //
   bool HARD_DECODE_DEFAULT = false;                               // 默认仍使用软判决

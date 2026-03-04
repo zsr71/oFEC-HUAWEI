@@ -12,7 +12,7 @@ static constexpr int         kBitgenSeed        = 1521867291;    // 比特生成
 static constexpr bool        kGenerateRandomBits = false;             // true=随机比特，false=全 0
 
 //信道相关参数
-static constexpr float       kEbN0_db           = 3.4f;        // 信道 Eb/N0 (dB)
+static constexpr float       kEbN0_db           = 3.27f;        // 信道 Eb/N0 (dB)
 static constexpr int         kChannelSeed       = 998258255;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 
@@ -37,7 +37,8 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
   static const std::vector<float> kBeta_explicit = {
     8.571428,10.037715,16.865997,31.428572
   };
-  static const std::vector<int> kSisoActiveList = {32, 32, 32, 32}; // 每轮 SISO 活跃迭代数，长度必须等于 TILES_PER_WIN
+  static const std::vector<int> kSisoActiveList = {32, 32, 32, 16}; // 每轮 SISO 活跃迭代数，长度必须等于 TILES_PER_WIN
+  static constexpr int kMuxGroupG = 2; // 1=全局池化（max），>1=分组预算
 
 //llr导出相关
   static constexpr bool        kDumpQuantizedLlr = true;               // 是否导出量化后 LLR
@@ -106,6 +107,7 @@ int main() {
     .alpha_explicit = kAlpha_explicit,
     .beta_explicit = kBeta_explicit,
     .siso_active_list = kSisoActiveList,
+    .mux_group_g = kMuxGroupG,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,
     .generate_random_bits = kGenerateRandomBits,

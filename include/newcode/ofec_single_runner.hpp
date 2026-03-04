@@ -25,6 +25,7 @@ struct Config {
   std::vector<float> alpha_explicit;
   std::vector<float> beta_explicit;
   std::vector<int> siso_active_list;
+  int mux_group_g = 1;
   std::string interleaver_name;
   std::string decoder_name;
   bool generate_random_bits = true;

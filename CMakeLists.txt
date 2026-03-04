@@ -91,6 +91,8 @@ add_library(newcode_frontend STATIC
   src/rx/ofec/mux/mux_state_builder.cpp
   src/rx/ofec/mux/mux_siso_budget.cpp
   src/rx/ofec/mux/mux_config_validate.cpp
+  src/rx/ofec/mux/mux_group_budget.cpp
+  src/rx/ofec/mux/mux_group_config_validate.cpp
 )
 target_include_directories(newcode_frontend PUBLIC ${NEWCODE_INCLUDE})
 target_include_directories(newcode_frontend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/ofec_sweep)

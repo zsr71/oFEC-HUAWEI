@@ -9,7 +9,7 @@
 #include "newcode/decoder_api.hpp"
 #include "newcode/ofec/common/lin_matrix_adapters.hpp"
 #include "newcode/ofec/earlystop/tile_early_stop_stats.hpp"
-#include "newcode/ofec/mux/mux_siso_budget.hpp"
+#include "newcode/ofec/mux/mux_group_budget.hpp"
 #include "newcode/ofec/mux/mux_state_builder.hpp"
 
 #include <filesystem>
@@ -87,7 +87,8 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
   std::vector<uint8_t> mux_state =
       newcode::mux::build_state_from_early_stop(early_stop_stats);
-  newcode::mux::apply_siso_budget_g1(mux_state, siso_active_for_tile);
+  newcode::mux::apply_siso_budget_grouped(
+      mux_state, siso_active_for_tile, p.MUX_GROUP_G);
 
   auto decoder_res = decode_tile<LLR>(prep,
                                       use_hard_decode,

@@ -1,6 +1,7 @@
 #include "ofec_sweep_detail.hpp"
 #include "newcode/io/ensure_dir.hpp"
 #include "newcode/ofec/mux/mux_config_validate.hpp"
+#include "newcode/ofec/mux/mux_group_config_validate.hpp"
 #include "newcode/utils/now_stamp.hpp"
 
 #include <algorithm>
@@ -271,11 +272,22 @@ int run_sweep(const SweepParameterConfig& config) {
   if (!resolved.siso_active_list.empty()) {
     resolved.base_params.SISO_ACTIVE_LIST = resolved.siso_active_list;
   }
+  resolved.base_params.MUX_GROUP_G = resolved.mux_group_g;
   const auto mux_ok = newcode::mux::validate_siso_active_list(
       resolved.base_params.SISO_ACTIVE_LIST,
       resolved.base_params.TILES_PER_WIN);
   if (!mux_ok.ok) {
     std::cerr << "[ERROR] " << mux_ok.error << "\n";
+    return 1;
+  }
+  const std::size_t rows_to_decode =
+      static_cast<std::size_t>(resolved.base_params.CHASE_SBR) *
+      newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  const auto group_ok = newcode::mux::validate_mux_group_g(
+      resolved.base_params.MUX_GROUP_G,
+      rows_to_decode);
+  if (!group_ok.ok) {
+    std::cerr << "[ERROR] " << group_ok.error << "\n";
     return 1;
   }
   const SweepParameterConfig& cfg = resolved;

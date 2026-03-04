@@ -14,6 +14,7 @@ static constexpr float kQuantClipRatio           = 0.5f; // 0 表示禁用动态
 static constexpr std::size_t kLlrBits            = 6;
 static constexpr bool kQuietConsole              = false;
 static const std::vector<int> kSisoActiveList    = {32, 32, 32, 32};
+static constexpr int kMuxGroupG                  = 1; // 1=全局池化（max）
 
 // Alpha/Beta 扫描候选
 static const std::vector<float> kAlphaStartCandidates = utils::linspace(0.0f, 0.2f, 2);
@@ -60,6 +61,7 @@ int main() {
   config.beta_start_candidates = kBetaStartCandidates;
   config.beta_step_candidates = kBetaStepCandidates;
   config.siso_active_list = kSisoActiveList;
+  config.mux_group_g = kMuxGroupG;
   config.chase_l_candidates = kChaseLCandidates;
 
   config.bitgen_seed_count = kBitgenSeedCount;

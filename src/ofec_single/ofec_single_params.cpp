@@ -1,6 +1,7 @@
 #include "newcode/ofec_single_runner.hpp"
 #include "newcode/io/dualwriter.hpp"
 #include "newcode/ofec/mux/mux_config_validate.hpp"
+#include "newcode/ofec/mux/mux_group_config_validate.hpp"
 #include <algorithm>
 
 namespace ofec_single {
@@ -58,10 +59,20 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   if (!cfg.siso_active_list.empty()) {
     params.SISO_ACTIVE_LIST = cfg.siso_active_list;
   }
+  params.MUX_GROUP_G = cfg.mux_group_g;
   const auto mux_ok =
       newcode::mux::validate_siso_active_list(params.SISO_ACTIVE_LIST, tiles);
   if (!mux_ok.ok) {
     log << "[ERROR] " << mux_ok.error << "\n";
+    return std::nullopt;
+  }
+  const std::size_t rows_to_decode =
+      static_cast<std::size_t>(params.CHASE_SBR) *
+      newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  const auto group_ok =
+      newcode::mux::validate_mux_group_g(params.MUX_GROUP_G, rows_to_decode);
+  if (!group_ok.ok) {
+    log << "[ERROR] " << group_ok.error << "\n";
     return std::nullopt;
   }
 
