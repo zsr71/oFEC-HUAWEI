@@ -130,7 +130,10 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const matrix::Matrix<LLR>& lin_matrix,
       if (has_mux_state) {
         if (mux_tag == 1u) {
           //newcode::row_early_stop_process_2(LinVec.data(),LchVec.data(),Y2.data(),row_params);
-          newcode::row_early_stop_process_1(LinVec.data(),Y2.data(),row_params);
+          newcode::row_early_stop_process_1(LinVec.data(),
+                                            LchVec.data(),
+                                            Y2.data(),
+                                            row_params);
           produced = true;
         } else {
           chase_fn(LinVec.data(), LchVec.data(), Y2.data(), row_params);

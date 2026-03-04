@@ -13,7 +13,7 @@ static constexpr bool kNormalizeKnownPrefixTail  = false;
 static constexpr float kQuantClipRatio           = 0.5f; // 0 表示禁用动态 clip
 static constexpr std::size_t kLlrBits            = 6;
 static constexpr bool kQuietConsole              = false;
-static const std::vector<int> kSisoActiveList    = {32, 30, 24, 16};
+static const std::vector<int> kSisoActiveList    = {32, 32, 32, 32};
 
 // Alpha/Beta 扫描候选
 static const std::vector<float> kAlphaStartCandidates = utils::linspace(0.0f, 0.2f, 2);
@@ -23,8 +23,8 @@ static const std::vector<float> kBetaStepCandidates   = utils::linspace(0.0f, 0.
 static const std::vector<int>   kChaseLCandidates     = {6};
 
 // 随机种子（为空则自动生成 bitgen/channel seeds 数量）
-static constexpr int kBitgenSeedCount  =2;
-static constexpr int kChannelSeedCount = 2;
+static constexpr int kBitgenSeedCount  =1;
+static constexpr int kChannelSeedCount = 1;
 
 // Eb/N0 设置
 static constexpr float kEbN0Start = 3.07f;
