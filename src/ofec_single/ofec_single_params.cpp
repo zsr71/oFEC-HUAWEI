@@ -14,6 +14,7 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.CHANNEL_SEED = cfg.channel_seed;
   params.BITGEN_RANDOM_BITS = cfg.generate_random_bits;
   params.NORMALIZE_KNOWN_PREFIX_TAIL = cfg.normalize_known_prefix_tail;
+  params.ENABLE_EARLY_STOP = cfg.enable_early_stop;
   params.debug_trace = cfg.debug_trace;
   params.LLR_BITS = cfg.llr_bits;
   params.DUMP_WORK_LLR = cfg.dump_work_llr;

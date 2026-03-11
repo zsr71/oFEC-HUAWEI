@@ -6,6 +6,7 @@
 // ======== 用户可调参数区域 ========
 static constexpr const char* kInterleaverName = "identity";
 static constexpr const char* kDecoderName = "plain";
+static constexpr bool        kEnableEarlyStop = true;
 static constexpr unsigned    kBitsPerSymbol = 1; // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
 static constexpr bool        kNormalizeExtrinsic = false;
 static constexpr bool kGenerateRandomBits        = true;
@@ -58,6 +59,7 @@ int main() {
   ofec_sweep::SweepParameterConfig config;
   config.interleaver_name = kInterleaverName;
   config.decoder_name = kDecoderName;
+  config.enable_early_stop = kEnableEarlyStop;
   config.bits_per_symbol = kBitsPerSymbol;
   config.normalize_extrinsic = kNormalizeExtrinsic;
   config.quiet_pipeline = kQuietConsole;
@@ -102,6 +104,7 @@ int main() {
   };
   config.base_params.BITGEN_RANDOM_BITS = kGenerateRandomBits;
   config.base_params.NORMALIZE_KNOWN_PREFIX_TAIL = kNormalizeKnownPrefixTail;
+  config.base_params.ENABLE_EARLY_STOP = kEnableEarlyStop;
   config.base_params.LLR_CLIP_RATIO = kQuantClipRatio;
   config.base_params.LLR_BITS = kLlrBits;
   config.base_params.SISO_ACTIVE_LIST = kSisoActiveList;

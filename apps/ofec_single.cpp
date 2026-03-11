@@ -15,6 +15,7 @@ static constexpr bool        kGenerateRandomBits = false;             // true=�
 static constexpr float       kEbN0_db           = 3.17f;        // 信道 Eb/N0 (dB)
 static constexpr int         kChannelSeed       = 998258255;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
+static constexpr bool        kEnableEarlyStop   = true;         // true=启用早停，false=关闭早停
 
 //量化相关参数
 static constexpr std::size_t kLlrBits =6;                           // LLR 位宽：16=浮点，2~15=qfloat
@@ -37,9 +38,9 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
   static const std::vector<float> kBeta_explicit = {
     8.571428,10.037715,16.865997,31.428572
   };
-  static const std::vector<int> kSisoActiveList = {32, 32, 32, 16}; // 每轮 SISO 活跃迭代数，长度必须等于 TILES_PER_WIN
-  static constexpr int kMuxGroupG = 4; // 1=全局池化（max），>1=分组预算
-  static constexpr bool kMuxEnableReconfig = true; // false=原 grouped budget，true=scheme B 两阶段重排
+  static const std::vector<int> kSisoActiveList = {32, 32, 32, 32}; // 每轮 SISO 活跃迭代数，长度必须等于 TILES_PER_WIN
+  static constexpr int kMuxGroupG = 1; // 1=全局池化（max），>1=分组预算
+  static constexpr bool kMuxEnableReconfig = false; // false=原 grouped budget，true=scheme C 顺序式两阶段调度
   static const std::vector<newcode::mux::MuxEdge> kMuxExtraBypassEdges = {
       {6, 11},  {6, 15},  {7, 11},  {7, 15},
       {14, 11}, {14, 15}, {15, 11}, {15, 15},
@@ -109,6 +110,7 @@ int main() {
     .bits_per_symbol = kBitsPerSymbol,
     .bitgen_seed = kBitgenSeed,
     .channel_seed = kChannelSeed,
+    .enable_early_stop = kEnableEarlyStop,
     .alpha_fill = kAlpha_fill,
     .beta_fill = kBeta_fill,
     .alpha_explicit = kAlpha_explicit,

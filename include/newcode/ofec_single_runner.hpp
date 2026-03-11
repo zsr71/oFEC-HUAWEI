@@ -20,6 +20,7 @@ struct Config {
   unsigned bits_per_symbol;
   int bitgen_seed;
   int channel_seed;
+  bool enable_early_stop = true;
   float alpha_fill;
   float beta_fill;
   std::vector<float> alpha_explicit;

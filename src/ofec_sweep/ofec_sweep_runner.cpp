@@ -272,6 +272,7 @@ int run_sweep(const SweepParameterConfig& config) {
   if (!resolved.siso_active_list.empty()) {
     resolved.base_params.SISO_ACTIVE_LIST = resolved.siso_active_list;
   }
+  resolved.base_params.ENABLE_EARLY_STOP = resolved.enable_early_stop;
   resolved.base_params.MUX_GROUP_G = resolved.mux_group_g;
   resolved.base_params.MUX_ENABLE_RECONFIG = resolved.mux_enable_reconfig;
   resolved.base_params.MUX_EXTRA_BYPASS_EDGES =

@@ -85,7 +85,15 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
                                                rows_to_decode,
                                                tx_llr_ref);
 
-  TileEarlyStopResult early_stop_stats = tile_early_stop_stats1(prep.lin_matrix);
+  TileEarlyStopResult early_stop_stats;
+  if (p.ENABLE_EARLY_STOP) {
+    early_stop_stats = tile_early_stop_stats1(prep.lin_matrix);
+  } else {
+    early_stop_stats.row_passed_flags.assign(rows_to_decode, false);
+    early_stop_stats.rows_passed = 0;
+    early_stop_stats.rows_total = static_cast<int>(rows_to_decode);
+    early_stop_stats.all_rows_passed = false;
+  }
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
   std::vector<uint8_t> mux_state =
       newcode::mux::build_state_from_early_stop(early_stop_stats);

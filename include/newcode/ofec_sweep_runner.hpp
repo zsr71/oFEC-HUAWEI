@@ -20,6 +20,7 @@ struct SweepParameterConfig {
   newcode::Params base_params{};
   std::string interleaver_name = "identity";
   std::string decoder_name = "plain";
+  bool enable_early_stop = true;
   bool normalize_extrinsic = true;
   unsigned bits_per_symbol = 2;
 
