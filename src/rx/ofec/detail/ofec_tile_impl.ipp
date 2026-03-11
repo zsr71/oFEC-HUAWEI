@@ -10,7 +10,7 @@
 #include "newcode/ofec/common/lin_matrix_adapters.hpp"
 #include "newcode/ofec/earlystop/tile_early_stop_stats.hpp"
 #include "newcode/ofec/mux/mux_group_budget.hpp"
-#include "newcode/ofec/mux/mux_scheme_b_reconfig.hpp"
+#include "newcode/ofec/mux/mux_scheme_c_staged.hpp"
 #include "newcode/ofec/mux/mux_state_schedule_apply.hpp"
 #include "newcode/ofec/mux/mux_state_builder.hpp"
 
@@ -94,7 +94,7 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
         newcode::mux::collect_active_codes_from_state(mux_state);
     const auto free_siso =
         newcode::mux::build_free_siso_list(siso_active_for_tile);
-    const auto schedule = newcode::mux::schedule_scheme_b_reconfig_cpp(
+    const auto schedule = newcode::mux::schedule_scheme_c_staged_cpp(
         static_cast<int>(mux_state.size()),
         siso_active_for_tile,
         p.MUX_GROUP_G,

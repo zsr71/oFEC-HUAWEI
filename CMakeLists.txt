@@ -96,6 +96,7 @@ add_library(newcode_frontend STATIC
   src/rx/ofec/mux/mux_topology.cpp
   src/rx/ofec/mux/mux_matching.cpp
   src/rx/ofec/mux/mux_scheme_b_reconfig.cpp
+  src/rx/ofec/mux/mux_scheme_c_staged.cpp
   src/rx/ofec/mux/mux_state_schedule_apply.cpp
 )
 target_include_directories(newcode_frontend PUBLIC ${NEWCODE_INCLUDE})
