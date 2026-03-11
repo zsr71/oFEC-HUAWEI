@@ -42,5 +42,35 @@ ValidationResult validate_mux_group_runtime(int group_g,
   return ValidationResult{};
 }
 
-}  // namespace newcode::mux
+ValidationResult validate_mux_reconfig_runtime(int group_g,
+                                               int siso_active_for_tile,
+                                               std::size_t code_count) {
+  const auto runtime_ok =
+      validate_mux_group_runtime(group_g, siso_active_for_tile, code_count);
+  if (!runtime_ok.ok) {
+    return runtime_ok;
+  }
 
+  if (code_count == 0) {
+    return ValidationResult{};
+  }
+
+  if (code_count % static_cast<std::size_t>(group_g) != 0) {
+    std::ostringstream oss;
+    oss << "reconfig mode requires code_count divisible by MUX_GROUP_G, got "
+        << "code_count=" << code_count << ", MUX_GROUP_G=" << group_g;
+    return ValidationResult{false, oss.str()};
+  }
+
+  if (siso_active_for_tile % group_g != 0) {
+    std::ostringstream oss;
+    oss << "reconfig mode requires siso_active_for_tile divisible by "
+           "MUX_GROUP_G, got siso_active_for_tile="
+        << siso_active_for_tile << ", MUX_GROUP_G=" << group_g;
+    return ValidationResult{false, oss.str()};
+  }
+
+  return ValidationResult{};
+}
+
+}  // namespace newcode::mux

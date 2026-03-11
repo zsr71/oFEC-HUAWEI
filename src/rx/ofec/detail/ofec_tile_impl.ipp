@@ -10,6 +10,8 @@
 #include "newcode/ofec/common/lin_matrix_adapters.hpp"
 #include "newcode/ofec/earlystop/tile_early_stop_stats.hpp"
 #include "newcode/ofec/mux/mux_group_budget.hpp"
+#include "newcode/ofec/mux/mux_scheme_b_reconfig.hpp"
+#include "newcode/ofec/mux/mux_state_schedule_apply.hpp"
 #include "newcode/ofec/mux/mux_state_builder.hpp"
 
 #include <filesystem>
@@ -87,8 +89,24 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
   std::vector<uint8_t> mux_state =
       newcode::mux::build_state_from_early_stop(early_stop_stats);
-  newcode::mux::apply_siso_budget_grouped(
-      mux_state, siso_active_for_tile, p.MUX_GROUP_G);
+  if (p.MUX_ENABLE_RECONFIG) {
+    const auto active_codes =
+        newcode::mux::collect_active_codes_from_state(mux_state);
+    const auto free_siso =
+        newcode::mux::build_free_siso_list(siso_active_for_tile);
+    const auto schedule = newcode::mux::schedule_scheme_b_reconfig_cpp(
+        static_cast<int>(mux_state.size()),
+        siso_active_for_tile,
+        p.MUX_GROUP_G,
+        active_codes,
+        free_siso,
+        p.MUX_EXTRA_BYPASS_EDGES);
+    newcode::mux::apply_schedule_result_to_mux_state(
+        mux_state, schedule.final_code_to_siso);
+  } else {
+    newcode::mux::apply_siso_budget_grouped(
+        mux_state, siso_active_for_tile, p.MUX_GROUP_G);
+  }
 
   auto decoder_res = decode_tile<LLR>(prep,
                                       use_hard_decode,

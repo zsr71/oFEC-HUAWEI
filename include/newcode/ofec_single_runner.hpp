@@ -26,6 +26,8 @@ struct Config {
   std::vector<float> beta_explicit;
   std::vector<int> siso_active_list;
   int mux_group_g = 1;
+  bool mux_enable_reconfig = false;
+  std::vector<newcode::mux::MuxEdge> mux_extra_bypass_edges;
   std::string interleaver_name;
   std::string decoder_name;
   bool generate_random_bits = true;

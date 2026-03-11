@@ -29,6 +29,8 @@ struct SweepParameterConfig {
   std::vector<float> beta_step_candidates;
   std::vector<int> siso_active_list;
   int mux_group_g = 1;
+  bool mux_enable_reconfig = false;
+  std::vector<newcode::mux::MuxEdge> mux_extra_bypass_edges;
   std::vector<int> chase_l_candidates;
 
   int bitgen_seed_count = 0;

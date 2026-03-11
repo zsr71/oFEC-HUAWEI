@@ -60,6 +60,8 @@ std::optional<newcode::Params> build_params(const Config& cfg,
     params.SISO_ACTIVE_LIST = cfg.siso_active_list;
   }
   params.MUX_GROUP_G = cfg.mux_group_g;
+  params.MUX_ENABLE_RECONFIG = cfg.mux_enable_reconfig;
+  params.MUX_EXTRA_BYPASS_EDGES = cfg.mux_extra_bypass_edges;
   const auto mux_ok =
       newcode::mux::validate_siso_active_list(params.SISO_ACTIVE_LIST, tiles);
   if (!mux_ok.ok) {
@@ -74,6 +76,16 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   if (!group_ok.ok) {
     log << "[ERROR] " << group_ok.error << "\n";
     return std::nullopt;
+  }
+  if (params.MUX_ENABLE_RECONFIG) {
+    for (std::size_t tile_idx = 0; tile_idx < params.SISO_ACTIVE_LIST.size(); ++tile_idx) {
+      const auto reconfig_ok = newcode::mux::validate_mux_reconfig_runtime(
+          params.MUX_GROUP_G, params.SISO_ACTIVE_LIST[tile_idx], rows_to_decode);
+      if (!reconfig_ok.ok) {
+        log << "[ERROR] tile " << tile_idx << ": " << reconfig_ok.error << "\n";
+        return std::nullopt;
+      }
+    }
   }
 
   return params;

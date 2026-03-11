@@ -43,6 +43,17 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   if (!group_ok.ok) {
     throw std::invalid_argument("ofec_decode_llr: " + group_ok.error);
   }
+  if (p.MUX_ENABLE_RECONFIG) {
+    for (std::size_t tile_idx = 0; tile_idx < p.SISO_ACTIVE_LIST.size(); ++tile_idx) {
+      const auto reconfig_ok = newcode::mux::validate_mux_reconfig_runtime(
+          p.MUX_GROUP_G, p.SISO_ACTIVE_LIST[tile_idx], rows_to_decode);
+      if (!reconfig_ok.ok) {
+        throw std::invalid_argument(
+            "ofec_decode_llr: tile " + std::to_string(tile_idx) + ": " +
+            reconfig_ok.error);
+      }
+    }
+  }
 
   const size_t TILE_HEIGHT_ROWS = p.tile_height_rows();
   const size_t TILE_STRIDE_ROWS = p.tile_stride_rows();

@@ -4,6 +4,8 @@
 #include <string>
 #include <memory>
 
+#include "newcode/ofec/mux/mux_topology.hpp"
+
 namespace newcode {
 
 struct Params {
@@ -57,6 +59,10 @@ struct Params {
   std::vector<int> SISO_ACTIVE_LIST = {32, 30, 24, 16};
   // MUX 分组数：1=现有 max 全局池化，>1=按组预算裁剪
   int MUX_GROUP_G = 1;
+  // 是否启用 scheme B 风格的两阶段重排调度
+  bool MUX_ENABLE_RECONFIG = false;
+  // 额外允许的跨组旁路线
+  std::vector<mux::MuxEdge> MUX_EXTRA_BYPASS_EDGES;
 
   // —— 每个 tile 是否切换到硬判决译码 —— //
   bool HARD_DECODE_DEFAULT = false;                               // 默认仍使用软判决

@@ -273,6 +273,9 @@ int run_sweep(const SweepParameterConfig& config) {
     resolved.base_params.SISO_ACTIVE_LIST = resolved.siso_active_list;
   }
   resolved.base_params.MUX_GROUP_G = resolved.mux_group_g;
+  resolved.base_params.MUX_ENABLE_RECONFIG = resolved.mux_enable_reconfig;
+  resolved.base_params.MUX_EXTRA_BYPASS_EDGES =
+      resolved.mux_extra_bypass_edges;
   const auto mux_ok = newcode::mux::validate_siso_active_list(
       resolved.base_params.SISO_ACTIVE_LIST,
       resolved.base_params.TILES_PER_WIN);
@@ -289,6 +292,21 @@ int run_sweep(const SweepParameterConfig& config) {
   if (!group_ok.ok) {
     std::cerr << "[ERROR] " << group_ok.error << "\n";
     return 1;
+  }
+  if (resolved.base_params.MUX_ENABLE_RECONFIG) {
+    for (std::size_t tile_idx = 0;
+         tile_idx < resolved.base_params.SISO_ACTIVE_LIST.size();
+         ++tile_idx) {
+      const auto reconfig_ok = newcode::mux::validate_mux_reconfig_runtime(
+          resolved.base_params.MUX_GROUP_G,
+          resolved.base_params.SISO_ACTIVE_LIST[tile_idx],
+          rows_to_decode);
+      if (!reconfig_ok.ok) {
+        std::cerr << "[ERROR] tile " << tile_idx << ": "
+                  << reconfig_ok.error << "\n";
+        return 1;
+      }
+    }
   }
   const SweepParameterConfig& cfg = resolved;
 
