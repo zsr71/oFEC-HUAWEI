@@ -22,6 +22,8 @@ struct SweepParameterConfig {
   std::string decoder_name = "plain";
   bool enable_early_stop = true;
   int early_stop_detect_mode = 1;
+  float early_stop_v2_llr_abs_threshold = 0.5f;
+  int early_stop_v2_max_unreliable_bits = 8;
   bool normalize_extrinsic = true;
   unsigned bits_per_symbol = 2;
 

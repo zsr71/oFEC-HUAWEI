@@ -5,8 +5,10 @@
 namespace newcode {
 
 template <typename LLR>
-TileEarlyStopResult detect_tile_early_stop_v1(const matrix::Matrix<LLR>& lin_matrix)
+TileEarlyStopResult detect_tile_early_stop_v1(const matrix::Matrix<LLR>& lin_matrix,
+                                              const Params& p)
 {
+  (void)p;
   TileEarlyStopResult res{};
 
   // Expected columns: 256 = 128 + 111 + 16(BCH parity) + 1(overall parity).

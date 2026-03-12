@@ -9,6 +9,8 @@ static constexpr const char* kInterleaverName = "identity";
 static constexpr const char* kDecoderName = "plain";
 static constexpr bool        kEnableEarlyStop = true;
 static constexpr int kEarlyStopDetectMode     = 1; // 1=v1, 2=v2
+static constexpr float kEarlyStopV2LlrAbsThreshold = 0.5f;
+static constexpr int kEarlyStopV2MaxUnreliableBits = 8;
 static constexpr unsigned    kBitsPerSymbol = 1; // 设为 1 使用 BPSK，>=2 且偶数使用 QAM
 static constexpr bool        kNormalizeExtrinsic = false;
 static constexpr bool kGenerateRandomBits        = true;
@@ -60,6 +62,8 @@ int main() {
   config.decoder_name = kDecoderName;
   config.enable_early_stop = kEnableEarlyStop;
   config.early_stop_detect_mode = kEarlyStopDetectMode;
+  config.early_stop_v2_llr_abs_threshold = kEarlyStopV2LlrAbsThreshold;
+  config.early_stop_v2_max_unreliable_bits = kEarlyStopV2MaxUnreliableBits;
   config.bits_per_symbol = kBitsPerSymbol;
   config.normalize_extrinsic = kNormalizeExtrinsic;
   config.quiet_pipeline = kQuietConsole;

@@ -10,14 +10,16 @@
 static constexpr const char* kLabel             = "debug_L6";   // 运行标签：日志/输出文件标识
 static constexpr int         kChaseL_override   = 6;            // Chase L，-1 表示使用默认
 static constexpr int         kBitgenSeed        = 1521867291;    // 比特生成随机种子
-static constexpr bool        kGenerateRandomBits = false;             // true=随机比特，false=全 0
+static constexpr bool        kGenerateRandomBits = true;             // true=随机比特，false=全 0
 
 //信道相关参数
 static constexpr float       kEbN0_db           = 3.17f;        // 信道 Eb/N0 (dB)
 static constexpr int         kChannelSeed       = 998258255;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 static constexpr bool        kEnableEarlyStop   = true;         // true=启用早停，false=关闭早停
-static constexpr int         kEarlyStopDetectMode = 1;          // 1=v1, 2=v2
+static constexpr int         kEarlyStopDetectMode = 2;          // 1=v1, 2=v2
+static constexpr float       kEarlyStopV2LlrAbsThreshold = 20.0f;
+static constexpr int         kEarlyStopV2MaxUnreliableBits = 10;
 
 //量化相关参数
 static constexpr std::size_t kLlrBits =6;                           // LLR 位宽：16=浮点，2~15=qfloat
@@ -59,7 +61,10 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = {
-    {1084108, "bit1084108"},
+    {1143884, "bit1143884"},
+    {1148431, "bit1148431"},
+    {5544508, "bit5544508"},
+    {5563798, "bit5563798"},
 };
 } 
 
@@ -111,6 +116,8 @@ int main() {
     .channel_seed = kChannelSeed,
     .enable_early_stop = kEnableEarlyStop,
     .early_stop_detect_mode = kEarlyStopDetectMode,
+    .early_stop_v2_llr_abs_threshold = kEarlyStopV2LlrAbsThreshold,
+    .early_stop_v2_max_unreliable_bits = kEarlyStopV2MaxUnreliableBits,
     .alpha_fill = kAlpha_fill,
     .beta_fill = kBeta_fill,
     .alpha_explicit = kAlpha_explicit,

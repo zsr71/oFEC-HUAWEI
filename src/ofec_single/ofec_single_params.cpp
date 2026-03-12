@@ -16,6 +16,8 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.NORMALIZE_KNOWN_PREFIX_TAIL = cfg.normalize_known_prefix_tail;
   params.ENABLE_EARLY_STOP = cfg.enable_early_stop;
   params.EARLY_STOP_DETECT_MODE = cfg.early_stop_detect_mode;
+  params.EARLY_STOP_V2_LLR_ABS_THRESHOLD = cfg.early_stop_v2_llr_abs_threshold;
+  params.EARLY_STOP_V2_MAX_UNRELIABLE_BITS = cfg.early_stop_v2_max_unreliable_bits;
   params.debug_trace = cfg.debug_trace;
   params.LLR_BITS = cfg.llr_bits;
   params.DUMP_WORK_LLR = cfg.dump_work_llr;
@@ -26,6 +28,15 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   }
   if (cfg.early_stop_detect_mode != 1 && cfg.early_stop_detect_mode != 2) {
     log << "[ERROR] early_stop_detect_mode 必须是 1 或 2\n";
+    return std::nullopt;
+  }
+  if (cfg.early_stop_v2_llr_abs_threshold < 0.0f) {
+    log << "[ERROR] early_stop_v2_llr_abs_threshold 必须 >= 0\n";
+    return std::nullopt;
+  }
+  if (cfg.early_stop_v2_max_unreliable_bits < 0 ||
+      cfg.early_stop_v2_max_unreliable_bits > static_cast<int>(newcode::Params::BCH_N)) {
+    log << "[ERROR] early_stop_v2_max_unreliable_bits 必须在 [0, BCH_N] 范围内\n";
     return std::nullopt;
   }
   params.LLR_CLIP_RATIO = std::clamp(cfg.quant_clip_ratio, 0.0f, 1.0f);

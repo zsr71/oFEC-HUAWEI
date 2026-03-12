@@ -275,6 +275,10 @@ int run_sweep(const SweepParameterConfig& config) {
   resolved.base_params.ENABLE_EARLY_STOP = resolved.enable_early_stop;
   resolved.base_params.EARLY_STOP_DETECT_MODE =
       resolved.early_stop_detect_mode;
+  resolved.base_params.EARLY_STOP_V2_LLR_ABS_THRESHOLD =
+      resolved.early_stop_v2_llr_abs_threshold;
+  resolved.base_params.EARLY_STOP_V2_MAX_UNRELIABLE_BITS =
+      resolved.early_stop_v2_max_unreliable_bits;
   resolved.base_params.MUX_GROUP_G = resolved.mux_group_g;
   resolved.base_params.MUX_ENABLE_RECONFIG = resolved.mux_enable_reconfig;
   resolved.base_params.MUX_EXTRA_BYPASS_EDGES =
@@ -282,6 +286,16 @@ int run_sweep(const SweepParameterConfig& config) {
   if (resolved.early_stop_detect_mode != 1 &&
       resolved.early_stop_detect_mode != 2) {
     std::cerr << "[ERROR] early_stop_detect_mode must be 1 or 2\n";
+    return 1;
+  }
+  if (resolved.early_stop_v2_llr_abs_threshold < 0.0f) {
+    std::cerr << "[ERROR] early_stop_v2_llr_abs_threshold must be >= 0\n";
+    return 1;
+  }
+  if (resolved.early_stop_v2_max_unreliable_bits < 0 ||
+      resolved.early_stop_v2_max_unreliable_bits >
+          static_cast<int>(newcode::Params::BCH_N)) {
+    std::cerr << "[ERROR] early_stop_v2_max_unreliable_bits must be in [0, BCH_N]\n";
     return 1;
   }
   const auto mux_ok = newcode::mux::validate_siso_active_list(
