@@ -1,5 +1,6 @@
 #include <vector>
 
+#include "mux_bypass_edges.hpp"
 #include "newcode/utils/linspace.hpp"
 #include "newcode/ofec_sweep_runner.hpp"
 
@@ -17,12 +18,7 @@ static constexpr bool kQuietConsole              = false;
 static const std::vector<int> kSisoActiveList    = {32, 32, 32, 16};
 static constexpr int kMuxGroupG                  = 1; // 1=全局池化（max）
 static constexpr bool kMuxEnableReconfig         = false;
-static const std::vector<newcode::mux::MuxEdge> kMuxExtraBypassEdges = {
-    {6, 11},  {6, 15},  {7, 11},  {7, 15},
-    {14, 11}, {14, 15}, {15, 11}, {15, 15},
-    {22, 3},  {22, 7},  {23, 3},  {23, 7},
-    {30, 3},  {30, 7},  {31, 3},  {31, 7},
-};
+static constexpr int kMuxBypassScheme            = 1; // 1=scheme1, 2=scheme2
 
 // Alpha/Beta 扫描候选
 static const std::vector<float> kAlphaStartCandidates = utils::linspace(0.0f, 0.2f, 2);
@@ -56,6 +52,8 @@ static constexpr bool kDecoderTraceLogMismatch   = false;
 // ==================================
 
 int main() {
+  const auto& selected_mux_bypass_edges =
+      app_mux::bypass_edges_for_scheme(kMuxBypassScheme);
   ofec_sweep::SweepParameterConfig config;
   config.interleaver_name = kInterleaverName;
   config.decoder_name = kDecoderName;
@@ -72,7 +70,7 @@ int main() {
   config.siso_active_list = kSisoActiveList;
   config.mux_group_g = kMuxGroupG;
   config.mux_enable_reconfig = kMuxEnableReconfig;
-  config.mux_extra_bypass_edges = kMuxExtraBypassEdges;
+  config.mux_extra_bypass_edges = selected_mux_bypass_edges;
   config.chase_l_candidates = kChaseLCandidates;
 
   config.bitgen_seed_count = kBitgenSeedCount;

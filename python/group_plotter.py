@@ -51,7 +51,7 @@ def chunk_labels(prefix: str, indices: Sequence[int], chunk_size: int = 8) -> Li
     """把较长的编号列表拆成多行文本，便于放进图中说明区域。"""
     labels = [f"{prefix}{idx + 1}" for idx in indices]
     if not labels:
-        return ["无"]
+        return ["None"]
     return [", ".join(labels[i:i + chunk_size]) for i in range(0, len(labels), chunk_size)]
 
 
@@ -59,7 +59,7 @@ def format_matching_lines(code_to_siso: Dict[int, int], chunk_size: int = 4) -> 
     """把匹配结果格式化成多行，便于图中展示。"""
     pairs = [f"C{code_idx + 1}-S{siso_idx + 1}" for code_idx, siso_idx in sorted(code_to_siso.items())]
     if not pairs:
-        return ["无"]
+        return ["None"]
     return [", ".join(pairs[i:i + chunk_size]) for i in range(0, len(pairs), chunk_size)]
 
 
@@ -166,7 +166,12 @@ def draw_scheme_a_schedule(
     ax.text(
         0.5,
         1.03,
-        f"方案A：全局最大匹配调度  |  活跃Code={len(active_codes)}  空闲SISO={len(free_siso)}  匹配成功={len(match)}/{max_possible}",
+        (
+            "Scheme A: Global Maximum Matching"
+            f" | Active Codes={len(active_codes)}"
+            f" | Free SISOs={len(free_siso)}"
+            f" | Scheduled={len(match)}/{max_possible}"
+        ),
         ha="center",
         va="bottom",
         transform=ax.transAxes,
@@ -174,11 +179,11 @@ def draw_scheme_a_schedule(
     )
 
     legend_items = [
-        Line2D([0], [0], color=base_edge_color, lw=1.2, label="允许连线（拓扑背景）"),
-        Line2D([0], [0], color=matched_edge_color, lw=2.8, label="本轮匹配成功的连线"),
-        Line2D([0], [0], marker="o", color="black", markerfacecolor=code_active_match_face, markersize=8, lw=0, label="活跃且已匹配的 Code"),
-        Line2D([0], [0], marker="o", color="black", markerfacecolor=code_active_wait_face, markersize=8, lw=0, label="活跃但未匹配的 Code"),
-        Line2D([0], [0], marker="o", color="black", markerfacecolor=siso_busy_face, markersize=8, lw=0, label="已被占用的 SISO"),
+        Line2D([0], [0], color=base_edge_color, lw=1.2, label="Allowed edges (topology background)"),
+        Line2D([0], [0], color=matched_edge_color, lw=2.8, label="Matched edges in this round"),
+        Line2D([0], [0], marker="o", color="black", markerfacecolor=code_active_match_face, markersize=8, lw=0, label="Active and matched code"),
+        Line2D([0], [0], marker="o", color="black", markerfacecolor=code_active_wait_face, markersize=8, lw=0, label="Active but unmatched code"),
+        Line2D([0], [0], marker="o", color="black", markerfacecolor=siso_busy_face, markersize=8, lw=0, label="Occupied SISO"),
     ]
     ax.legend(handles=legend_items, loc="upper center", bbox_to_anchor=(0.5, -0.01), ncol=3, frameon=False, fontsize=10)
 
@@ -188,16 +193,16 @@ def draw_scheme_a_schedule(
     match_lines = format_matching_lines(match, chunk_size=4)
 
     info_lines = [
-        "调度输入：",
-        f"  活跃 Code: {active_lines[0]}",
+        "Scheduling input:",
+        f"  Active codes: {active_lines[0]}",
     ]
     info_lines.extend([f"             {line}" for line in active_lines[1:]])
-    info_lines.append(f"  空闲 SISO: {free_siso_lines[0]}")
+    info_lines.append(f"  Free SISOs: {free_siso_lines[0]}")
     info_lines.extend([f"             {line}" for line in free_siso_lines[1:]])
-    info_lines.append(f"  最大匹配数: {len(match)}")
-    info_lines.append(f"  匹配结果: {match_lines[0]}")
+    info_lines.append(f"  Match count: {len(match)}")
+    info_lines.append(f"  Match result: {match_lines[0]}")
     info_lines.extend([f"           {line}" for line in match_lines[1:]])
-    info_lines.append(f"  等待队列: {waiting_lines[0]}")
+    info_lines.append(f"  Waiting queue: {waiting_lines[0]}")
     info_lines.extend([f"           {line}" for line in waiting_lines[1:]])
 
     fig.text(0.07, 0.04, "\n".join(info_lines), ha="left", va="bottom", fontsize=10)
@@ -327,7 +332,11 @@ def draw_scheme_b_schedule(
     ax.text(
         0.5,
         1.03,
-        f"方案B：两阶段 + 可重排  |  阶段1={len(stage1_match)}  最终匹配={len(final_match)}/{max_possible}",
+        (
+            "Scheme B: Two-Stage Reconfigurable Scheduling"
+            f" | Stage 1={len(stage1_match)}"
+            f" | Final={len(final_match)}/{max_possible}"
+        ),
         ha="center",
         va="bottom",
         transform=ax.transAxes,
@@ -335,11 +344,11 @@ def draw_scheme_b_schedule(
     )
 
     legend_items = [
-        Line2D([0], [0], color=base_edge_color, lw=1.2, label="允许连线（拓扑背景）"),
-        Line2D([0], [0], color=stage1_edge_color, lw=2.0, linestyle="--", label="阶段1：组内初始匹配"),
-        Line2D([0], [0], color=final_edge_color, lw=2.8, label="阶段2：最终匹配"),
-        Line2D([0], [0], marker="o", color="black", markerfacecolor=code_active_match_face, markersize=8, lw=0, label="活跃且最终已匹配的 Code"),
-        Line2D([0], [0], marker="o", color="black", markerfacecolor=code_active_wait_face, markersize=8, lw=0, label="活跃但最终未匹配的 Code"),
+        Line2D([0], [0], color=base_edge_color, lw=1.2, label="Allowed edges (topology background)"),
+        Line2D([0], [0], color=stage1_edge_color, lw=2.0, linestyle="--", label="Stage 1: local initial matching"),
+        Line2D([0], [0], color=final_edge_color, lw=2.8, label="Stage 2: final matching"),
+        Line2D([0], [0], marker="o", color="black", markerfacecolor=code_active_match_face, markersize=8, lw=0, label="Active and finally matched code"),
+        Line2D([0], [0], marker="o", color="black", markerfacecolor=code_active_wait_face, markersize=8, lw=0, label="Active but finally unmatched code"),
     ]
     ax.legend(handles=legend_items, loc="upper center", bbox_to_anchor=(0.5, -0.01), ncol=3, frameon=False, fontsize=10)
 
@@ -349,19 +358,19 @@ def draw_scheme_b_schedule(
     final_lines = format_matching_lines(final_match, chunk_size=4)
 
     info_lines = [
-        "调度输入：",
-        f"  活跃 Code: {active_lines[0]}",
+        "Scheduling input:",
+        f"  Active codes: {active_lines[0]}",
     ]
     info_lines.extend([f"             {line}" for line in active_lines[1:]])
-    info_lines.append(f"  阶段1匹配数: {len(stage1_match)}")
-    info_lines.append(f"  阶段1结果: {stage1_lines[0]}")
+    info_lines.append(f"  Stage 1 match count: {len(stage1_match)}")
+    info_lines.append(f"  Stage 1 result: {stage1_lines[0]}")
     info_lines.extend([f"            {line}" for line in stage1_lines[1:]])
-    info_lines.append(f"  最终匹配数: {len(final_match)}")
-    info_lines.append(f"  最终结果: {final_lines[0]}")
+    info_lines.append(f"  Final match count: {len(final_match)}")
+    info_lines.append(f"  Final result: {final_lines[0]}")
     info_lines.extend([f"            {line}" for line in final_lines[1:]])
-    info_lines.append(f"  等待队列: {chunk_labels('C', waiting_codes, chunk_size=8)[0]}")
+    info_lines.append(f"  Waiting queue: {chunk_labels('C', waiting_codes, chunk_size=8)[0]}")
     waiting_lines = chunk_labels("C", waiting_codes, chunk_size=8)
-    info_lines[-1] = f"  等待队列: {waiting_lines[0]}"
+    info_lines[-1] = f"  Waiting queue: {waiting_lines[0]}"
     info_lines.extend([f"           {line}" for line in waiting_lines[1:]])
 
     fig.text(0.07, 0.04, "\n".join(info_lines), ha="left", va="bottom", fontsize=10)

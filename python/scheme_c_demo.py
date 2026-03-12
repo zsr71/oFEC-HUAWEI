@@ -23,7 +23,17 @@ from group_plotter import (
     group_rect_params,
     y_pos,
 )
-from group_scheduler import EXTRA_BYPASS_EDGES, run_scheme_c_with_trace
+from group_scheduler import (
+    DEFAULT_BYPASS_SCHEME_ID,
+    get_bypass_edges,
+    run_scheme_c_with_trace,
+)
+
+
+PLOT_BYPASS_SCHEME_LABELS = {
+    "bypass_scheme_1": "Bypass Scheme 1",
+    "bypass_scheme_2": "Bypass Scheme 2",
+}
 
 
 @dataclass
@@ -45,10 +55,14 @@ def _normal_codes_for_group(n_code: int, g: int, group_g: int) -> List[int]:
     return list(range(code_begin, code_begin + code_per_g - 2))
 
 
-def _bypass_edge_set(n_code: int, n_siso: int) -> Set[Tuple[int, int]]:
+def _bypass_edge_set(
+    n_code: int,
+    n_siso: int,
+    extra_bypass_edges: Sequence[Tuple[int, int]],
+) -> Set[Tuple[int, int]]:
     return {
         (code_idx, siso_idx)
-        for code_idx, siso_idx in EXTRA_BYPASS_EDGES
+        for code_idx, siso_idx in extra_bypass_edges
         if 0 <= code_idx < n_code and 0 <= siso_idx < n_siso
     }
 
@@ -75,6 +89,7 @@ def _draw_scheme_c_stage(
     save: str | None,
     show: bool,
     emphasize_bypass: bool,
+    extra_bypass_edges: Sequence[Tuple[int, int]],
 ) -> None:
     configure_matplotlib_fonts()
 
@@ -84,7 +99,7 @@ def _draw_scheme_c_stage(
     matched_codes = set(match.keys())
     matched_siso = set(match.values())
     waiting_set = set(waiting_codes)
-    bypass_edges = _bypass_edge_set(n_code, n_siso)
+    bypass_edges = _bypass_edge_set(n_code, n_siso, extra_bypass_edges)
 
     x_code = 0.10
     x_siso = 0.90
@@ -220,6 +235,7 @@ def main() -> None:
     g = 4
     free_siso_1based = list(range(1, n_siso + 1))
     show_figure = False
+    scheme_ids = [DEFAULT_BYPASS_SCHEME_ID, "bypass_scheme_2"]
 
     free_siso = [idx - 1 for idx in free_siso_1based]
     scenarios = [
@@ -235,61 +251,69 @@ def main() -> None:
         ),
     ]
 
-    for scenario in scenarios:
-        active_codes = [idx - 1 for idx in scenario.active_codes_1based]
-        stage1_match, final_match, waiting_codes, local_edges, all_edges = run_scheme_c_with_trace(
-            N_code=n_code,
-            N_siso=n_siso,
-            G=g,
-            active_codes=active_codes,
-            free_siso=free_siso,
-        )
-        stage1_waiting = [code_idx for code_idx in active_codes if code_idx not in stage1_match]
+    for scheme_id in scheme_ids:
+        scheme_label = PLOT_BYPASS_SCHEME_LABELS.get(scheme_id, scheme_id)
+        extra_bypass_edges = get_bypass_edges(scheme_id)
 
-        phase1_save_path = f"schemeC_{scenario.name}_phase1_4group.png"
-        phase2_save_path = f"schemeC_{scenario.name}_phase2_4group.png"
+        for scenario in scenarios:
+            active_codes = [idx - 1 for idx in scenario.active_codes_1based]
+            stage1_match, final_match, waiting_codes, local_edges, all_edges = run_scheme_c_with_trace(
+                N_code=n_code,
+                N_siso=n_siso,
+                G=g,
+                active_codes=active_codes,
+                free_siso=free_siso,
+                extra_bypass_edges=extra_bypass_edges,
+            )
+            stage1_waiting = [code_idx for code_idx in active_codes if code_idx not in stage1_match]
 
-        _draw_scheme_c_stage(
-            title=f"Scheme C Phase 1 ({scenario.name}) | scheduled={len(stage1_match)}",
-            subtitle=scenario.description + " Only local SISOs are used in phase 1.",
-            n_code=n_code,
-            n_siso=n_siso,
-            g=g,
-            active_codes=active_codes,
-            free_siso=free_siso,
-            background_edges=local_edges,
-            match=stage1_match,
-            waiting_codes=stage1_waiting,
-            save=phase1_save_path,
-            show=show_figure,
-            emphasize_bypass=False,
-        )
+            phase1_save_path = f"schemeC_{scenario.name}_phase1_4group_{scheme_id}.png"
+            phase2_save_path = f"schemeC_{scenario.name}_phase2_4group_{scheme_id}.png"
 
-        _draw_scheme_c_stage(
-            title=f"Scheme C Phase 2 ({scenario.name}) | scheduled={len(final_match)}",
-            subtitle=scenario.description + " Tail codes can use local free SISOs and bypass edges in phase 2.",
-            n_code=n_code,
-            n_siso=n_siso,
-            g=g,
-            active_codes=active_codes,
-            free_siso=free_siso,
-            background_edges=all_edges,
-            match=final_match,
-            waiting_codes=waiting_codes,
-            save=phase2_save_path,
-            show=show_figure,
-            emphasize_bypass=True,
-        )
+            _draw_scheme_c_stage(
+                title=f"Scheme C Phase 1 ({scenario.name}, {scheme_label}) | scheduled={len(stage1_match)}",
+                subtitle=scenario.description + " Only local SISOs are used in phase 1.",
+                n_code=n_code,
+                n_siso=n_siso,
+                g=g,
+                active_codes=active_codes,
+                free_siso=free_siso,
+                background_edges=local_edges,
+                match=stage1_match,
+                waiting_codes=stage1_waiting,
+                save=phase1_save_path,
+                show=show_figure,
+                emphasize_bypass=False,
+                extra_bypass_edges=extra_bypass_edges,
+            )
 
-        print(f"Scheme C demo completed for scenario: {scenario.name}")
-        print(f"Description: {scenario.description}")
-        print("Active Codes:", [f"C{i + 1}" for i in active_codes])
-        print("Phase 1:", [f"C{code_idx + 1}->S{siso_idx + 1}" for code_idx, siso_idx in sorted(stage1_match.items())])
-        print("Final   :", [f"C{code_idx + 1}->S{siso_idx + 1}" for code_idx, siso_idx in sorted(final_match.items())])
-        print("Waiting :", [f"C{i + 1}" for i in waiting_codes])
-        print(f"Saved figure to: {phase1_save_path}")
-        print(f"Saved figure to: {phase2_save_path}")
-        print()
+            _draw_scheme_c_stage(
+                title=f"Scheme C Phase 2 ({scenario.name}, {scheme_label}) | scheduled={len(final_match)}",
+                subtitle=scenario.description + " Tail codes can use local free SISOs and bypass edges in phase 2.",
+                n_code=n_code,
+                n_siso=n_siso,
+                g=g,
+                active_codes=active_codes,
+                free_siso=free_siso,
+                background_edges=all_edges,
+                match=final_match,
+                waiting_codes=waiting_codes,
+                save=phase2_save_path,
+                show=show_figure,
+                emphasize_bypass=True,
+                extra_bypass_edges=extra_bypass_edges,
+            )
+
+            print(f"Scheme C demo completed for scenario: {scenario.name}")
+            print(f"Bypass scheme: {scheme_label}")
+            print(f"Description: {scenario.description}")
+            print("Active Codes:", [f"C{i + 1}" for i in active_codes])
+            print("Phase 1:", [f"C{code_idx + 1}->S{siso_idx + 1}" for code_idx, siso_idx in sorted(stage1_match.items())])
+            print("Final   :", [f"C{code_idx + 1}->S{siso_idx + 1}" for code_idx, siso_idx in sorted(final_match.items())])
+            print("Waiting :", [f"C{i + 1}" for i in waiting_codes])
+            print(f"Saved figure to: {phase1_save_path}")
+            print(f"Saved figure to: {phase2_save_path}")
+            print()
 
 
 if __name__ == "__main__":

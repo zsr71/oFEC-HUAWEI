@@ -1,5 +1,6 @@
 #include <vector>
 
+#include "mux_bypass_edges.hpp"
 #include "newcode/ofec_single_runner.hpp"
 
 // ======== 用户可改区域 ========
@@ -41,12 +42,7 @@ static constexpr bool        kNormalizeKnownPrefixTail = false;      // known_pr
   static const std::vector<int> kSisoActiveList = {32, 32, 32, 32}; // 每轮 SISO 活跃迭代数，长度必须等于 TILES_PER_WIN
   static constexpr int kMuxGroupG = 1; // 1=全局池化（max），>1=分组预算
   static constexpr bool kMuxEnableReconfig = false; // false=原 grouped budget，true=scheme C 顺序式两阶段调度
-  static const std::vector<newcode::mux::MuxEdge> kMuxExtraBypassEdges = {
-      {6, 11},  {6, 15},  {7, 11},  {7, 15},
-      {14, 11}, {14, 15}, {15, 11}, {15, 15},
-      {22, 3},  {22, 7},  {23, 3},  {23, 7},
-      {30, 3},  {30, 7},  {31, 3},  {31, 7},
-  };
+  static constexpr int kMuxBypassScheme = 1; // 1=scheme1, 2=scheme2
 
 //llr导出相关
   static constexpr bool        kDumpQuantizedLlr = true;               // 是否导出量化后 LLR
@@ -102,6 +98,8 @@ static constexpr const char* kDecoderTraceCsvDir = "data/chase_csv";
 // =============================
 
 int main() {
+  const auto& selected_mux_bypass_edges =
+      app_mux::bypass_edges_for_scheme(kMuxBypassScheme);
   ofec_single::Config config{
     .label = kLabel,
     .ebn0_db = kEbN0_db,
@@ -118,7 +116,7 @@ int main() {
     .siso_active_list = kSisoActiveList,
     .mux_group_g = kMuxGroupG,
     .mux_enable_reconfig = kMuxEnableReconfig,
-    .mux_extra_bypass_edges = kMuxExtraBypassEdges,
+    .mux_extra_bypass_edges = selected_mux_bypass_edges,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,
     .generate_random_bits = kGenerateRandomBits,

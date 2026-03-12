@@ -9,8 +9,10 @@ group_scheduler.py
 from typing import Dict, List, Sequence, Set, Tuple
 
 
-# 额外开放的跨组旁路线，采用 0-based 索引。
-EXTRA_BYPASS_EDGES = [
+DEFAULT_BYPASS_SCHEME_ID = "bypass_scheme_1"
+
+# 旁支路方案一：现有方案，采用 0-based 索引。
+BYPASS_SCHEME_1_EDGES = [
     (6, 11),   # C7  -> S12
     (6, 15),   # C7  -> S16
     (7, 11),   # C8  -> S12
@@ -29,6 +31,54 @@ EXTRA_BYPASS_EDGES = [
     (31, 7),   # C32 -> S8
 ]
 
+# 旁支路方案二：在方案一基础上新增 8 条旁路线。
+BYPASS_SCHEME_2_EDGES = BYPASS_SCHEME_1_EDGES + [
+    (6, 7),
+    (7, 7),
+    (14, 3),
+    (15, 3),
+    (22, 15),
+    (23, 15),
+    (30, 11),
+    (31, 11),
+]
+
+BYPASS_SCHEME_LABELS = {
+    "bypass_scheme_1": "旁支路方案一",
+    "bypass_scheme_2": "旁支路方案二",
+}
+
+BYPASS_SCHEMES = {
+    "bypass_scheme_1": tuple(BYPASS_SCHEME_1_EDGES),
+    "bypass_scheme_2": tuple(BYPASS_SCHEME_2_EDGES),
+}
+
+# 兼容旧脚本：默认旁路线仍指向原方案。
+EXTRA_BYPASS_EDGES = list(BYPASS_SCHEME_1_EDGES)
+
+
+def get_bypass_edges(scheme_id: str = DEFAULT_BYPASS_SCHEME_ID) -> List[Tuple[int, int]]:
+    """按方案名返回旁路线列表副本。"""
+    if scheme_id not in BYPASS_SCHEMES:
+        raise ValueError(f"未知旁支路方案: {scheme_id}")
+    return list(BYPASS_SCHEMES[scheme_id])
+
+
+def get_bypass_scheme_label(scheme_id: str = DEFAULT_BYPASS_SCHEME_ID) -> str:
+    """返回方案展示名。"""
+    if scheme_id not in BYPASS_SCHEME_LABELS:
+        raise ValueError(f"未知旁支路方案: {scheme_id}")
+    return BYPASS_SCHEME_LABELS[scheme_id]
+
+
+def resolve_bypass_edges(
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None,
+) -> List[Tuple[int, int]]:
+    """把可选入参规整成边列表；默认回退到旁支路方案一。"""
+    if extra_bypass_edges is None:
+        return get_bypass_edges(DEFAULT_BYPASS_SCHEME_ID)
+    return list(extra_bypass_edges)
+
 
 def _validate_group_shape(N_code: int, N_siso: int, G: int) -> Tuple[int, int]:
     """检查组划分是否合法，并返回每组的 code / siso 数量。"""
@@ -39,10 +89,16 @@ def _validate_group_shape(N_code: int, N_siso: int, G: int) -> Tuple[int, int]:
     return N_code // G, N_siso // G
 
 
-def build_allowed_edges(N_code: int, N_siso: int, G: int) -> List[Tuple[int, int]]:
+def build_allowed_edges(
+    N_code: int,
+    N_siso: int,
+    G: int,
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None = None,
+) -> List[Tuple[int, int]]:
     """构造当前拓扑允许的全部边：组内边 + 额外旁路线。"""
     code_per_g, siso_per_g = _validate_group_shape(N_code, N_siso, G)
     edges: Set[Tuple[int, int]] = set()
+    bypass_edges = resolve_bypass_edges(extra_bypass_edges)
 
     for i in range(N_code):
         g = i // code_per_g
@@ -51,7 +107,7 @@ def build_allowed_edges(N_code: int, N_siso: int, G: int) -> List[Tuple[int, int
         for j in range(s_start, s_end):
             edges.add((i, j))
 
-    for code_idx, siso_idx in EXTRA_BYPASS_EDGES:
+    for code_idx, siso_idx in bypass_edges:
         if 0 <= code_idx < N_code and 0 <= siso_idx < N_siso:
             edges.add((code_idx, siso_idx))
 
@@ -165,6 +221,7 @@ def schedule_scheme_b_reconfig(
     G: int,
     active_codes: Sequence[int],
     free_siso: Sequence[int],
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None = None,
 ) -> Tuple[Dict[int, int], Dict[int, int], List[int]]:
     """
     方案 B：两阶段 + 可重排。
@@ -175,7 +232,7 @@ def schedule_scheme_b_reconfig(
     - waiting_codes: 最终仍未匹配的活跃 code
     """
     local_edges = build_local_edges(N_code, N_siso, G)
-    all_edges = build_allowed_edges(N_code, N_siso, G)
+    all_edges = build_allowed_edges(N_code, N_siso, G, extra_bypass_edges=extra_bypass_edges)
 
     local_adjacency = build_adjacency(local_edges, N_code)
     all_adjacency = build_adjacency(all_edges, N_code)
@@ -206,6 +263,7 @@ def schedule_scheme_c_staged(
     G: int,
     active_codes: Sequence[int],
     free_siso: Sequence[int],
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None = None,
 ) -> Tuple[Dict[int, int], List[int]]:
     """方案 C：返回最终结果的简化接口。"""
     stage1_match, final_match, waiting_codes = schedule_scheme_c_staged_with_trace(
@@ -214,6 +272,7 @@ def schedule_scheme_c_staged(
         G=G,
         active_codes=active_codes,
         free_siso=free_siso,
+        extra_bypass_edges=extra_bypass_edges,
     )
     _ = stage1_match
     return final_match, waiting_codes
@@ -225,6 +284,7 @@ def schedule_scheme_c_staged_with_trace(
     G: int,
     active_codes: Sequence[int],
     free_siso: Sequence[int],
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None = None,
 ) -> Tuple[Dict[int, int], Dict[int, int], List[int]]:
     """
     方案 C：顺序式两阶段调度。
@@ -245,7 +305,7 @@ def schedule_scheme_c_staged_with_trace(
     free_siso_set = set(free_siso)
     code_to_siso: Dict[int, int] = {}
     used_siso: Set[int] = set()
-    bypass_map = _build_bypass_map(N_code, N_siso, EXTRA_BYPASS_EDGES)
+    bypass_map = _build_bypass_map(N_code, N_siso, resolve_bypass_edges(extra_bypass_edges))
 
     def try_assign(code_idx: int, candidates: Sequence[int]) -> bool:
         for siso_idx in candidates:
@@ -299,11 +359,12 @@ def run_scheme_a(
     G: int,
     active_codes: Sequence[int],
     free_siso: Sequence[int],
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None = None,
 ) -> Tuple[Dict[int, int], List[int], List[Tuple[int, int]]]:
     """方案 A：全局最大匹配。"""
     active_codes = sorted(set(active_codes))
     free_siso = sorted(set(free_siso))
-    all_edges = build_allowed_edges(N_code, N_siso, G)
+    all_edges = build_allowed_edges(N_code, N_siso, G, extra_bypass_edges=extra_bypass_edges)
     adjacency = build_adjacency(all_edges, N_code)
     match, waiting_codes = maximum_bipartite_matching(active_codes, adjacency, free_siso)
     return match, waiting_codes, all_edges
@@ -315,17 +376,19 @@ def run_scheme_b(
     G: int,
     active_codes: Sequence[int],
     free_siso: Sequence[int],
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None = None,
 ) -> Tuple[Dict[int, int], Dict[int, int], List[int], List[Tuple[int, int]]]:
     """方案 B：两阶段 + 可重排。"""
     active_codes = sorted(set(active_codes))
     free_siso = sorted(set(free_siso))
-    all_edges = build_allowed_edges(N_code, N_siso, G)
+    all_edges = build_allowed_edges(N_code, N_siso, G, extra_bypass_edges=extra_bypass_edges)
     stage1_match, final_match, waiting_codes = schedule_scheme_b_reconfig(
         N_code=N_code,
         N_siso=N_siso,
         G=G,
         active_codes=active_codes,
         free_siso=free_siso,
+        extra_bypass_edges=extra_bypass_edges,
     )
     return stage1_match, final_match, waiting_codes, all_edges
 
@@ -336,17 +399,19 @@ def run_scheme_c(
     G: int,
     active_codes: Sequence[int],
     free_siso: Sequence[int],
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None = None,
 ) -> Tuple[Dict[int, int], List[int], List[Tuple[int, int]]]:
     """方案 C：顺序式两阶段调度。"""
     active_codes = sorted(set(active_codes))
     free_siso = sorted(set(free_siso))
-    all_edges = build_allowed_edges(N_code, N_siso, G)
+    all_edges = build_allowed_edges(N_code, N_siso, G, extra_bypass_edges=extra_bypass_edges)
     final_match, waiting_codes = schedule_scheme_c_staged(
         N_code=N_code,
         N_siso=N_siso,
         G=G,
         active_codes=active_codes,
         free_siso=free_siso,
+        extra_bypass_edges=extra_bypass_edges,
     )
     return final_match, waiting_codes, all_edges
 
@@ -357,17 +422,19 @@ def run_scheme_c_with_trace(
     G: int,
     active_codes: Sequence[int],
     free_siso: Sequence[int],
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None = None,
 ) -> Tuple[Dict[int, int], Dict[int, int], List[int], List[Tuple[int, int]], List[Tuple[int, int]]]:
     """方案 C：返回阶段1结果、最终结果和可视化所需边集。"""
     active_codes = sorted(set(active_codes))
     free_siso = sorted(set(free_siso))
     local_edges = build_local_edges(N_code, N_siso, G)
-    all_edges = build_allowed_edges(N_code, N_siso, G)
+    all_edges = build_allowed_edges(N_code, N_siso, G, extra_bypass_edges=extra_bypass_edges)
     stage1_match, final_match, waiting_codes = schedule_scheme_c_staged_with_trace(
         N_code=N_code,
         N_siso=N_siso,
         G=G,
         active_codes=active_codes,
         free_siso=free_siso,
+        extra_bypass_edges=extra_bypass_edges,
     )
     return stage1_match, final_match, waiting_codes, local_edges, all_edges

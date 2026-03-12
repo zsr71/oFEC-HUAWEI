@@ -16,9 +16,18 @@ import csv
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import Dict, Iterable, List, Sequence, Tuple
 
-from group_scheduler import schedule_scheme_b_reconfig, schedule_scheme_c_staged
+from group_scheduler import (
+    DEFAULT_BYPASS_SCHEME_ID,
+    get_bypass_edges,
+    get_bypass_scheme_label,
+    schedule_scheme_b_reconfig,
+    schedule_scheme_c_staged,
+)
+
+
+COMPARE_BYPASS_SCHEME_IDS = [DEFAULT_BYPASS_SCHEME_ID, "bypass_scheme_2"]
 
 
 @dataclass
@@ -93,6 +102,7 @@ def simulate_reconfig(
     n_code: int,
     n_siso: int,
     group_g: int,
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None = None,
 ) -> Tuple[int, int, int]:
     """Mirror C++ schedule_scheme_b_reconfig_cpp semantics.
 
@@ -108,6 +118,7 @@ def simulate_reconfig(
         G=group_g,
         active_codes=active_codes,
         free_siso=free_siso,
+        extra_bypass_edges=extra_bypass_edges,
     )
     return len(stage1_match), len(final_match), len(waiting_codes)
 
@@ -117,6 +128,7 @@ def simulate_scheme_c(
     n_code: int,
     n_siso: int,
     group_g: int,
+    extra_bypass_edges: Sequence[Tuple[int, int]] | None = None,
 ) -> Tuple[int, int]:
     """Simulate scheme C staged scheduling."""
     free_siso = list(range(n_siso))
@@ -126,12 +138,35 @@ def simulate_scheme_c(
         G=group_g,
         active_codes=active_codes,
         free_siso=free_siso,
+        extra_bypass_edges=extra_bypass_edges,
     )
     return len(final_match), len(waiting_codes)
 
 
 def random_active_codes(n_code: int, active_prob: float, rng: random.Random) -> List[int]:
     return [idx for idx in range(n_code) if rng.random() < active_prob]
+
+
+def accumulate_stats(
+    stats: SchemeStats,
+    active_count: int,
+    scheduled_count: int,
+    waiting_count: int,
+    n_siso: int,
+) -> None:
+    stats.avg_active += active_count
+    stats.avg_scheduled += scheduled_count
+    stats.avg_waiting += waiting_count
+    stats.avg_utilization += scheduled_count / n_siso if n_siso > 0 else 0.0
+
+
+def finalize_stats(stats: SchemeStats, trials: int) -> None:
+    if trials <= 0:
+        return
+    stats.avg_active /= trials
+    stats.avg_scheduled /= trials
+    stats.avg_waiting /= trials
+    stats.avg_utilization /= trials
 
 
 def run_trials(
@@ -143,12 +178,16 @@ def run_trials(
     static_g_ref: int,
     static_g_same_as_reconfig: int,
     reconfig_g: int,
-) -> Tuple[SchemeStats, SchemeStats, SchemeStats, SchemeStats, float]:
+    bypass_scheme_ids: Sequence[str],
+) -> Tuple[SchemeStats, SchemeStats, Dict[str, SchemeStats], Dict[str, SchemeStats], float]:
     rng = random.Random(seed)
     static_ref_stats = SchemeStats()
     static_sameg_stats = SchemeStats()
-    reconfig_stats = SchemeStats()
-    scheme_c_stats = SchemeStats()
+    scheme_b_stats = {scheme_id: SchemeStats() for scheme_id in bypass_scheme_ids}
+    scheme_c_stats = {scheme_id: SchemeStats() for scheme_id in bypass_scheme_ids}
+    bypass_edge_sets = {
+        scheme_id: get_bypass_edges(scheme_id) for scheme_id in bypass_scheme_ids
+    }
     avg_stage1_util = 0.0
 
     for _ in range(trials):
@@ -161,48 +200,63 @@ def run_trials(
         scheduled_static_sameg, waiting_static_sameg = simulate_grouped_budget(
             active_codes, n_code, n_siso, static_g_same_as_reconfig
         )
-        stage1_reconfig, final_reconfig, waiting_reconfig = simulate_reconfig(
-            active_codes, n_code, n_siso, reconfig_g
-        )
-        scheduled_scheme_c, waiting_scheme_c = simulate_scheme_c(
-            active_codes, n_code, n_siso, reconfig_g
-        )
 
-        static_ref_stats.avg_active += active_count
-        static_ref_stats.avg_scheduled += scheduled_static_ref
-        static_ref_stats.avg_waiting += waiting_static_ref
-        static_ref_stats.avg_utilization += (
-            scheduled_static_ref / n_siso if n_siso > 0 else 0.0
+        stage1_reconfig: int | None = None
+        for scheme_id in bypass_scheme_ids:
+            stage1_candidate, final_reconfig, waiting_reconfig = simulate_reconfig(
+                active_codes,
+                n_code,
+                n_siso,
+                reconfig_g,
+                extra_bypass_edges=bypass_edge_sets[scheme_id],
+            )
+            if stage1_reconfig is None:
+                stage1_reconfig = stage1_candidate
+            elif stage1_candidate != stage1_reconfig:
+                raise RuntimeError("Scheme B stage1 result changed across bypass schemes")
+            accumulate_stats(
+                scheme_b_stats[scheme_id],
+                active_count,
+                final_reconfig,
+                waiting_reconfig,
+                n_siso,
+            )
+
+        for scheme_id in bypass_scheme_ids:
+            scheduled_scheme_c, waiting_scheme_c = simulate_scheme_c(
+                active_codes,
+                n_code,
+                n_siso,
+                reconfig_g,
+                extra_bypass_edges=bypass_edge_sets[scheme_id],
+            )
+            accumulate_stats(
+                scheme_c_stats[scheme_id],
+                active_count,
+                scheduled_scheme_c,
+                waiting_scheme_c,
+                n_siso,
+            )
+
+        accumulate_stats(
+            static_ref_stats, active_count, scheduled_static_ref, waiting_static_ref, n_siso
         )
-
-        static_sameg_stats.avg_active += active_count
-        static_sameg_stats.avg_scheduled += scheduled_static_sameg
-        static_sameg_stats.avg_waiting += waiting_static_sameg
-        static_sameg_stats.avg_utilization += (
-            scheduled_static_sameg / n_siso if n_siso > 0 else 0.0
+        accumulate_stats(
+            static_sameg_stats, active_count, scheduled_static_sameg, waiting_static_sameg, n_siso
         )
-
-        reconfig_stats.avg_active += active_count
-        reconfig_stats.avg_scheduled += final_reconfig
-        reconfig_stats.avg_waiting += waiting_reconfig
-        reconfig_stats.avg_utilization += final_reconfig / n_siso if n_siso > 0 else 0.0
-
-        scheme_c_stats.avg_active += active_count
-        scheme_c_stats.avg_scheduled += scheduled_scheme_c
-        scheme_c_stats.avg_waiting += waiting_scheme_c
-        scheme_c_stats.avg_utilization += scheduled_scheme_c / n_siso if n_siso > 0 else 0.0
 
         avg_stage1_util += stage1_reconfig / n_siso if n_siso > 0 else 0.0
 
     if trials > 0:
-        for stats in (static_ref_stats, static_sameg_stats, reconfig_stats, scheme_c_stats):
-            stats.avg_active /= trials
-            stats.avg_scheduled /= trials
-            stats.avg_waiting /= trials
-            stats.avg_utilization /= trials
+        finalize_stats(static_ref_stats, trials)
+        finalize_stats(static_sameg_stats, trials)
+        for stats in scheme_b_stats.values():
+            finalize_stats(stats, trials)
+        for stats in scheme_c_stats.values():
+            finalize_stats(stats, trials)
         avg_stage1_util /= trials
 
-    return static_ref_stats, static_sameg_stats, reconfig_stats, scheme_c_stats, avg_stage1_util
+    return static_ref_stats, static_sameg_stats, scheme_b_stats, scheme_c_stats, avg_stage1_util
 
 
 def parse_probs(raw: str) -> List[float]:
@@ -217,104 +271,260 @@ def parse_probs(raw: str) -> List[float]:
 
 def print_table(
     probs: Iterable[float],
-    rows: Sequence[Tuple[SchemeStats, SchemeStats, SchemeStats, SchemeStats, float]],
+    rows: Sequence[Tuple[SchemeStats, SchemeStats, Dict[str, SchemeStats], Dict[str, SchemeStats], float]],
     static_g_ref: int,
     static_g_same_as_reconfig: int,
     reconfig_g: int,
+    bypass_scheme_ids: Sequence[str],
 ) -> None:
-    header = (
-        f"激活概率 | 平均活跃code数 | 静态方案利用率(G={static_g_ref},关) "
-        f"| 静态方案利用率(G={static_g_same_as_reconfig},关) "
-        f"| 重排方案阶段1利用率(G={reconfig_g},开) "
-        f"| 重排方案最终利用率(G={reconfig_g},开) "
-        f"| 方案C最终利用率(G={reconfig_g},开) "
-        f"| 静态方案平均已调度(G={static_g_ref}) "
-        f"| 静态方案平均已调度(G={static_g_same_as_reconfig}) "
-        f"| 重排方案平均已调度(G={reconfig_g}) "
-        f"| 方案C平均已调度(G={reconfig_g}) "
-        f"| 静态方案平均未调度(G={static_g_ref}) "
-        f"| 静态方案平均未调度(G={static_g_same_as_reconfig}) "
-        f"| 重排方案平均未调度(G={reconfig_g}) "
-        f"| 方案C平均未调度(G={reconfig_g})"
+    header_parts = [
+        "激活概率",
+        "平均活跃code数",
+        f"静态方案利用率(G={static_g_ref},关)",
+        f"静态方案利用率(G={static_g_same_as_reconfig},关)",
+        f"方案B阶段1利用率(G={reconfig_g},开)",
+    ]
+    header_parts.extend(
+        [
+            f"方案B最终利用率({get_bypass_scheme_label(scheme_id)},G={reconfig_g},开)"
+            for scheme_id in bypass_scheme_ids
+        ]
     )
+    header_parts.extend(
+        [
+            f"方案C最终利用率({get_bypass_scheme_label(scheme_id)},G={reconfig_g},开)"
+            for scheme_id in bypass_scheme_ids
+        ]
+    )
+    header_parts.extend(
+        [
+            f"静态方案平均已调度(G={static_g_ref})",
+            f"静态方案平均已调度(G={static_g_same_as_reconfig})",
+        ]
+    )
+    header_parts.extend(
+        [
+            f"方案B平均已调度({get_bypass_scheme_label(scheme_id)})"
+            for scheme_id in bypass_scheme_ids
+        ]
+    )
+    header_parts.extend(
+        [
+            f"方案C平均已调度({get_bypass_scheme_label(scheme_id)})"
+            for scheme_id in bypass_scheme_ids
+        ]
+    )
+    header_parts.extend(
+        [
+            f"静态方案平均未调度(G={static_g_ref})",
+            f"静态方案平均未调度(G={static_g_same_as_reconfig})",
+        ]
+    )
+    header_parts.extend(
+        [
+            f"方案B平均未调度({get_bypass_scheme_label(scheme_id)})"
+            for scheme_id in bypass_scheme_ids
+        ]
+    )
+    header_parts.extend(
+        [
+            f"方案C平均未调度({get_bypass_scheme_label(scheme_id)})"
+            for scheme_id in bypass_scheme_ids
+        ]
+    )
+    header = " | ".join(header_parts)
     print(header)
     print("-" * len(header))
-    for active_prob, (static_ref_stats, static_sameg_stats, reconfig_stats, scheme_c_stats, stage1_util) in zip(probs, rows):
-        print(
-            f"{active_prob:8.3f} | "
-            f"{static_ref_stats.avg_active:10.3f} | "
-            f"{static_ref_stats.avg_utilization:21.4f} | "
-            f"{static_sameg_stats.avg_utilization:21.4f} | "
-            f"{stage1_util:24.4f} | "
-            f"{reconfig_stats.avg_utilization:24.4f} | "
-            f"{scheme_c_stats.avg_utilization:19.4f} | "
-            f"{static_ref_stats.avg_scheduled:23.3f} | "
-            f"{static_sameg_stats.avg_scheduled:23.3f} | "
-            f"{reconfig_stats.avg_scheduled:20.3f} | "
-            f"{scheme_c_stats.avg_scheduled:17.3f} | "
-            f"{static_ref_stats.avg_waiting:23.3f} | "
-            f"{static_sameg_stats.avg_waiting:23.3f} | "
-            f"{reconfig_stats.avg_waiting:20.3f} | "
-            f"{scheme_c_stats.avg_waiting:17.3f}"
+    for active_prob, (static_ref_stats, static_sameg_stats, scheme_b_stats, scheme_c_stats, stage1_util) in zip(probs, rows):
+        row_parts = [
+            f"{active_prob:8.3f}",
+            f"{static_ref_stats.avg_active:10.3f}",
+            f"{static_ref_stats.avg_utilization:21.4f}",
+            f"{static_sameg_stats.avg_utilization:21.4f}",
+            f"{stage1_util:24.4f}",
+        ]
+        row_parts.extend(
+            [
+                f"{scheme_b_stats[scheme_id].avg_utilization:26.4f}"
+                for scheme_id in bypass_scheme_ids
+            ]
         )
+        row_parts.extend(
+            [
+                f"{scheme_c_stats[scheme_id].avg_utilization:26.4f}"
+                for scheme_id in bypass_scheme_ids
+            ]
+        )
+        row_parts.extend(
+            [
+                f"{static_ref_stats.avg_scheduled:23.3f}",
+                f"{static_sameg_stats.avg_scheduled:23.3f}",
+            ]
+        )
+        row_parts.extend(
+            [
+                f"{scheme_b_stats[scheme_id].avg_scheduled:22.3f}"
+                for scheme_id in bypass_scheme_ids
+            ]
+        )
+        row_parts.extend(
+            [
+                f"{scheme_c_stats[scheme_id].avg_scheduled:22.3f}"
+                for scheme_id in bypass_scheme_ids
+            ]
+        )
+        row_parts.extend(
+            [
+                f"{static_ref_stats.avg_waiting:23.3f}",
+                f"{static_sameg_stats.avg_waiting:23.3f}",
+            ]
+        )
+        row_parts.extend(
+            [
+                f"{scheme_b_stats[scheme_id].avg_waiting:22.3f}"
+                for scheme_id in bypass_scheme_ids
+            ]
+        )
+        row_parts.extend(
+            [
+                f"{scheme_c_stats[scheme_id].avg_waiting:22.3f}"
+                for scheme_id in bypass_scheme_ids
+            ]
+        )
+        print(" | ".join(row_parts))
 
 
 def write_csv(
     output_path: Path,
     probs: Iterable[float],
-    rows: Sequence[Tuple[SchemeStats, SchemeStats, SchemeStats, SchemeStats, float]],
+    rows: Sequence[Tuple[SchemeStats, SchemeStats, Dict[str, SchemeStats], Dict[str, SchemeStats], float]],
     static_g_ref: int,
     static_g_same_as_reconfig: int,
     reconfig_g: int,
+    bypass_scheme_ids: Sequence[str],
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
-        writer.writerow(
+        header = [
+            "激活概率",
+            "平均活跃code数",
+            f"静态方案利用率(G={static_g_ref},关)",
+            f"静态方案利用率(G={static_g_same_as_reconfig},关)",
+            f"方案B阶段1利用率(G={reconfig_g},开)",
+        ]
+        header.extend(
             [
-                "激活概率",
-                "平均活跃code数",
-                f"静态方案利用率(G={static_g_ref},关)",
-                f"静态方案利用率(G={static_g_same_as_reconfig},关)",
-                f"重排方案阶段1利用率(G={reconfig_g},开)",
-                f"重排方案最终利用率(G={reconfig_g},开)",
-                f"方案C最终利用率(G={reconfig_g},开)",
-                f"静态方案平均已调度(G={static_g_ref})",
-                f"静态方案平均已调度(G={static_g_same_as_reconfig})",
-                f"重排方案平均已调度(G={reconfig_g})",
-                f"方案C平均已调度(G={reconfig_g})",
-                f"静态方案平均未调度(G={static_g_ref})",
-                f"静态方案平均未调度(G={static_g_same_as_reconfig})",
-                f"重排方案平均未调度(G={reconfig_g})",
-                f"方案C平均未调度(G={reconfig_g})",
+                f"方案B最终利用率({get_bypass_scheme_label(scheme_id)},G={reconfig_g},开)"
+                for scheme_id in bypass_scheme_ids
             ]
         )
+        header.extend(
+            [
+                f"方案C最终利用率({get_bypass_scheme_label(scheme_id)},G={reconfig_g},开)"
+                for scheme_id in bypass_scheme_ids
+            ]
+        )
+        header.extend(
+            [
+                f"静态方案平均已调度(G={static_g_ref})",
+                f"静态方案平均已调度(G={static_g_same_as_reconfig})",
+            ]
+        )
+        header.extend(
+            [
+                f"方案B平均已调度({get_bypass_scheme_label(scheme_id)})"
+                for scheme_id in bypass_scheme_ids
+            ]
+        )
+        header.extend(
+            [
+                f"方案C平均已调度({get_bypass_scheme_label(scheme_id)})"
+                for scheme_id in bypass_scheme_ids
+            ]
+        )
+        header.extend(
+            [
+                f"静态方案平均未调度(G={static_g_ref})",
+                f"静态方案平均未调度(G={static_g_same_as_reconfig})",
+            ]
+        )
+        header.extend(
+            [
+                f"方案B平均未调度({get_bypass_scheme_label(scheme_id)})"
+                for scheme_id in bypass_scheme_ids
+            ]
+        )
+        header.extend(
+            [
+                f"方案C平均未调度({get_bypass_scheme_label(scheme_id)})"
+                for scheme_id in bypass_scheme_ids
+            ]
+        )
+        writer.writerow(header)
         for active_prob, (
             static_ref_stats,
             static_sameg_stats,
-            reconfig_stats,
+            scheme_b_stats,
             scheme_c_stats,
             stage1_util,
         ) in zip(probs, rows):
-            writer.writerow(
+            row = [
+                f"{active_prob:.6f}",
+                f"{static_ref_stats.avg_active:.6f}",
+                f"{static_ref_stats.avg_utilization:.6f}",
+                f"{static_sameg_stats.avg_utilization:.6f}",
+                f"{stage1_util:.6f}",
+            ]
+            row.extend(
                 [
-                    f"{active_prob:.6f}",
-                    f"{static_ref_stats.avg_active:.6f}",
-                    f"{static_ref_stats.avg_utilization:.6f}",
-                    f"{static_sameg_stats.avg_utilization:.6f}",
-                    f"{stage1_util:.6f}",
-                    f"{reconfig_stats.avg_utilization:.6f}",
-                    f"{scheme_c_stats.avg_utilization:.6f}",
-                    f"{static_ref_stats.avg_scheduled:.6f}",
-                    f"{static_sameg_stats.avg_scheduled:.6f}",
-                    f"{reconfig_stats.avg_scheduled:.6f}",
-                    f"{scheme_c_stats.avg_scheduled:.6f}",
-                    f"{static_ref_stats.avg_waiting:.6f}",
-                    f"{static_sameg_stats.avg_waiting:.6f}",
-                    f"{reconfig_stats.avg_waiting:.6f}",
-                    f"{scheme_c_stats.avg_waiting:.6f}",
+                    f"{scheme_b_stats[scheme_id].avg_utilization:.6f}"
+                    for scheme_id in bypass_scheme_ids
                 ]
             )
+            row.extend(
+                [
+                    f"{scheme_c_stats[scheme_id].avg_utilization:.6f}"
+                    for scheme_id in bypass_scheme_ids
+                ]
+            )
+            row.extend(
+                [
+                    f"{static_ref_stats.avg_scheduled:.6f}",
+                    f"{static_sameg_stats.avg_scheduled:.6f}",
+                ]
+            )
+            row.extend(
+                [
+                    f"{scheme_b_stats[scheme_id].avg_scheduled:.6f}"
+                    for scheme_id in bypass_scheme_ids
+                ]
+            )
+            row.extend(
+                [
+                    f"{scheme_c_stats[scheme_id].avg_scheduled:.6f}"
+                    for scheme_id in bypass_scheme_ids
+                ]
+            )
+            row.extend(
+                [
+                    f"{static_ref_stats.avg_waiting:.6f}",
+                    f"{static_sameg_stats.avg_waiting:.6f}",
+                ]
+            )
+            row.extend(
+                [
+                    f"{scheme_b_stats[scheme_id].avg_waiting:.6f}"
+                    for scheme_id in bypass_scheme_ids
+                ]
+            )
+            row.extend(
+                [
+                    f"{scheme_c_stats[scheme_id].avg_waiting:.6f}"
+                    for scheme_id in bypass_scheme_ids
+                ]
+            )
+            writer.writerow(row)
 
 
 def main() -> int:
@@ -336,7 +546,7 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("python/compare_mux_siso_utilization_results.csv"),
+        default=Path("python/compare_mux_siso_utilization_bypass_compare.csv"),
         help="path to output CSV table",
     )
     args = parser.parse_args()
@@ -357,6 +567,10 @@ def main() -> int:
         f"新增对照: 方案C顺序式两阶段调度(G={args.reconfig_g}, reconfig=true)"
     )
     print(
+        "旁支路对照: "
+        + " vs ".join(get_bypass_scheme_label(scheme_id) for scheme_id in COMPARE_BYPASS_SCHEME_IDS)
+    )
+    print(
         f"参数: n_code={args.n_code}, n_siso={args.n_siso}, "
         f"trials={args.trials}, seed={args.seed}"
     )
@@ -372,11 +586,27 @@ def main() -> int:
             static_g_ref=args.static_g,
             static_g_same_as_reconfig=args.reconfig_g,
             reconfig_g=args.reconfig_g,
+            bypass_scheme_ids=COMPARE_BYPASS_SCHEME_IDS,
         )
         for idx, active_prob in enumerate(args.active_probs)
     ]
-    write_csv(args.output, args.active_probs, rows, args.static_g, args.reconfig_g, args.reconfig_g)
-    print_table(args.active_probs, rows, args.static_g, args.reconfig_g, args.reconfig_g)
+    write_csv(
+        args.output,
+        args.active_probs,
+        rows,
+        args.static_g,
+        args.reconfig_g,
+        args.reconfig_g,
+        COMPARE_BYPASS_SCHEME_IDS,
+    )
+    print_table(
+        args.active_probs,
+        rows,
+        args.static_g,
+        args.reconfig_g,
+        args.reconfig_g,
+        COMPARE_BYPASS_SCHEME_IDS,
+    )
     print()
     print(f"结果表已写入: {args.output}")
     return 0

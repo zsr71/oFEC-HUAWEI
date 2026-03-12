@@ -9,7 +9,13 @@
 """
 
 from group_plotter import draw_scheme_a_schedule, draw_scheme_b_schedule
-from group_scheduler import run_scheme_a, run_scheme_b
+from group_scheduler import (
+    DEFAULT_BYPASS_SCHEME_ID,
+    get_bypass_edges,
+    get_bypass_scheme_label,
+    run_scheme_a,
+    run_scheme_b,
+)
 
 
 def main() -> None:
@@ -24,12 +30,15 @@ def main() -> None:
     active_codes_1based = [1, 2, 3, 4, 5,7, 8, 11, 12, 13, 15, 16, 19, 23, 24, 31, 32]
     free_siso_1based = list(range(1, N_siso + 1))
     show_figure = True
+    bypass_scheme_id = DEFAULT_BYPASS_SCHEME_ID
+    bypass_scheme_label = get_bypass_scheme_label(bypass_scheme_id)
+    extra_bypass_edges = get_bypass_edges(bypass_scheme_id)
 
     active_codes = [idx - 1 for idx in active_codes_1based]
     free_siso = [idx - 1 for idx in free_siso_1based]
 
-    scheme_a_save_path = "schemeA_4group.png"
-    scheme_b_save_path = "schemeB_4group.png"
+    scheme_a_save_path = f"schemeA_4group_{bypass_scheme_id}.png"
+    scheme_b_save_path = f"schemeB_4group_{bypass_scheme_id}.png"
 
     match_a, waiting_codes_a, all_edges_a = run_scheme_a(
         N_code=N_code,
@@ -37,6 +46,7 @@ def main() -> None:
         G=G,
         active_codes=active_codes,
         free_siso=free_siso,
+        extra_bypass_edges=extra_bypass_edges,
     )
     draw_scheme_a_schedule(
         N_code=N_code,
@@ -51,6 +61,7 @@ def main() -> None:
         show=show_figure,
     )
     print("方案A调度完成。")
+    print("旁支路方案:", bypass_scheme_label)
     print("活跃 Code:", [f"C{i + 1}" for i in active_codes])
     print("匹配结果:", [f"C{code_idx + 1}->S{siso_idx + 1}" for code_idx, siso_idx in sorted(match_a.items())])
     print("等待队列:", [f"C{i + 1}" for i in waiting_codes_a])
@@ -62,6 +73,7 @@ def main() -> None:
         G=G,
         active_codes=active_codes,
         free_siso=free_siso,
+        extra_bypass_edges=extra_bypass_edges,
     )
     draw_scheme_b_schedule(
         N_code=N_code,
@@ -77,6 +89,7 @@ def main() -> None:
         show=show_figure,
     )
     print("方案B调度完成。")
+    print("旁支路方案:", bypass_scheme_label)
     print("活跃 Code:", [f"C{i + 1}" for i in active_codes])
     print("阶段1结果:", [f"C{code_idx + 1}->S{siso_idx + 1}" for code_idx, siso_idx in sorted(stage1_match_b.items())])
     print("最终结果:", [f"C{code_idx + 1}->S{siso_idx + 1}" for code_idx, siso_idx in sorted(final_match_b.items())])
