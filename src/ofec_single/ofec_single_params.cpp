@@ -15,12 +15,17 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.BITGEN_RANDOM_BITS = cfg.generate_random_bits;
   params.NORMALIZE_KNOWN_PREFIX_TAIL = cfg.normalize_known_prefix_tail;
   params.ENABLE_EARLY_STOP = cfg.enable_early_stop;
+  params.EARLY_STOP_DETECT_MODE = cfg.early_stop_detect_mode;
   params.debug_trace = cfg.debug_trace;
   params.LLR_BITS = cfg.llr_bits;
   params.DUMP_WORK_LLR = cfg.dump_work_llr;
   params.WORK_LLR_OUTPUT_PATH = cfg.work_llr_output_path;
   if (cfg.llr_bits < 2 || cfg.llr_bits > 16) {
     log << "[ERROR] LLR_BITS 必须在 [2,16]，16 表示浮点，其余使用 qfloat::qfloat<N>\n";
+    return std::nullopt;
+  }
+  if (cfg.early_stop_detect_mode != 1 && cfg.early_stop_detect_mode != 2) {
+    log << "[ERROR] early_stop_detect_mode 必须是 1 或 2\n";
     return std::nullopt;
   }
   params.LLR_CLIP_RATIO = std::clamp(cfg.quant_clip_ratio, 0.0f, 1.0f);

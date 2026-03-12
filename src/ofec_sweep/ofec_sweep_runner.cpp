@@ -273,10 +273,17 @@ int run_sweep(const SweepParameterConfig& config) {
     resolved.base_params.SISO_ACTIVE_LIST = resolved.siso_active_list;
   }
   resolved.base_params.ENABLE_EARLY_STOP = resolved.enable_early_stop;
+  resolved.base_params.EARLY_STOP_DETECT_MODE =
+      resolved.early_stop_detect_mode;
   resolved.base_params.MUX_GROUP_G = resolved.mux_group_g;
   resolved.base_params.MUX_ENABLE_RECONFIG = resolved.mux_enable_reconfig;
   resolved.base_params.MUX_EXTRA_BYPASS_EDGES =
       resolved.mux_extra_bypass_edges;
+  if (resolved.early_stop_detect_mode != 1 &&
+      resolved.early_stop_detect_mode != 2) {
+    std::cerr << "[ERROR] early_stop_detect_mode must be 1 or 2\n";
+    return 1;
+  }
   const auto mux_ok = newcode::mux::validate_siso_active_list(
       resolved.base_params.SISO_ACTIVE_LIST,
       resolved.base_params.TILES_PER_WIN);

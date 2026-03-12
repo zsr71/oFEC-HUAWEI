@@ -5,7 +5,7 @@
 namespace newcode {
 
 template <typename LLR>
-TileEarlyStopResult tile_early_stop_stats2(const matrix::Matrix<LLR>& lin_matrix)
+TileEarlyStopResult detect_tile_early_stop_v2(const matrix::Matrix<LLR>& lin_matrix)
 {
   TileEarlyStopResult res{};
 

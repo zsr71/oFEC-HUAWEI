@@ -17,6 +17,7 @@ static constexpr float       kEbN0_db           = 3.17f;        // 信道 Eb/N0 
 static constexpr int         kChannelSeed       = 998258255;   // 信道噪声随机种子
 static constexpr unsigned    kBitsPerSymbol     = 1;            // 每符号比特数：1=BPSK，偶数=QAM
 static constexpr bool        kEnableEarlyStop   = true;         // true=启用早停，false=关闭早停
+static constexpr int         kEarlyStopDetectMode = 1;          // 1=v1, 2=v2
 
 //量化相关参数
 static constexpr std::size_t kLlrBits =6;                           // LLR 位宽：16=浮点，2~15=qfloat
@@ -109,6 +110,7 @@ int main() {
     .bitgen_seed = kBitgenSeed,
     .channel_seed = kChannelSeed,
     .enable_early_stop = kEnableEarlyStop,
+    .early_stop_detect_mode = kEarlyStopDetectMode,
     .alpha_fill = kAlpha_fill,
     .beta_fill = kBeta_fill,
     .alpha_explicit = kAlpha_explicit,

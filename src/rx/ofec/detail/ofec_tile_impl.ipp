@@ -87,7 +87,8 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
 
   TileEarlyStopResult early_stop_stats;
   if (p.ENABLE_EARLY_STOP) {
-    early_stop_stats = tile_early_stop_stats1(prep.lin_matrix);
+    early_stop_stats =
+        detect_tile_early_stop(prep.lin_matrix, p.EARLY_STOP_DETECT_MODE);
   } else {
     early_stop_stats.row_passed_flags.assign(rows_to_decode, false);
     early_stop_stats.rows_passed = 0;

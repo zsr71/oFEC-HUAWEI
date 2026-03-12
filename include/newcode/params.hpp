@@ -46,6 +46,7 @@ struct Params {
   int CHASE_NTEST = 64; // 生成的测试向量数量（<= 2^CHASE_L）
   int CHASE_SBR   = 2;  // 每个 tile 底部解码的子块行数（1 或 2）
   bool ENABLE_EARLY_STOP = true;  // 是否启用 tile/row 级早停判定
+  int EARLY_STOP_DETECT_MODE = 1; // 1=detect_tile_early_stop_v1, 2=detect_tile_early_stop_v2
 
   // —— fallback 可靠度系数（Chase(256) 中 L0 的回退幅度）——
   float beta = 0.35f;

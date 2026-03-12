@@ -21,6 +21,7 @@ struct SweepParameterConfig {
   std::string interleaver_name = "identity";
   std::string decoder_name = "plain";
   bool enable_early_stop = true;
+  int early_stop_detect_mode = 1;
   bool normalize_extrinsic = true;
   unsigned bits_per_symbol = 2;
 

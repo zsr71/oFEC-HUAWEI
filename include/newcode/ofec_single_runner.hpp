@@ -21,6 +21,7 @@ struct Config {
   int bitgen_seed;
   int channel_seed;
   bool enable_early_stop = true;
+  int early_stop_detect_mode = 1;
   float alpha_fill;
   float beta_fill;
   std::vector<float> alpha_explicit;

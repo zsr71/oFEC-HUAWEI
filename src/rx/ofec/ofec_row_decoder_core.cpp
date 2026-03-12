@@ -139,14 +139,6 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const matrix::Matrix<LLR>& lin_matrix,
           chase_fn(LinVec.data(), LchVec.data(), Y2.data(), row_params);
           produced = true;
         }
-      } else if (early_stop_row_flags &&
-                 row < early_stop_row_flags->size() &&
-                 (*early_stop_row_flags)[row]) {
-        newcode::row_early_stop_process_2(LinVec.data(),
-                                          LchVec.data(),
-                                          Y2.data(),
-                                          row_params);
-        produced = true;
       } else {
         // 调用具体的Chase解码函数
         chase_fn(LinVec.data(), LchVec.data(), Y2.data(), row_params);
