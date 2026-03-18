@@ -29,7 +29,9 @@ TileEarlyStopResult detect_tile_early_stop_v2(const matrix::Matrix<LLR>& lin_mat
   for (size_t r = 0; r < rows; ++r) {
     // 逐行统计“不可靠 bit”个数。
     int unreliable_count = 0;
-    for (size_t j = 0; j < Params::BCH_N; ++j) {
+    const size_t width =
+        p.EARLY_STOP_COND_V2_INCLUDE_OVERALL ? Params::BCH_N : Params::BCH_OVERALL_IDX;
+    for (size_t j = 0; j < width; ++j) {
       const float v = qfloat::llr_to_float(lin_matrix[r][j]);
 
       // 若该 bit 的 LLR 绝对值低于阈值，则认为它当前置信度不足。

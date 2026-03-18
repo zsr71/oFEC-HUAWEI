@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,13 +22,22 @@ struct Config {
   int bitgen_seed;
   int channel_seed;
   bool enable_early_stop = true;
-  int early_stop_detect_mode = 1;
+  int early_stop_condition_mode = 1;
+  int early_stop_action_mode = 1;
+  bool early_stop_cond_v1_require_bch = true;
+  bool early_stop_cond_v1_require_overall = true;
   float early_stop_v2_llr_abs_threshold = 0.5f;
   int early_stop_v2_max_unreliable_bits = 8;
+  bool early_stop_cond_v2_include_overall = true;
   float alpha_fill;
   float beta_fill;
   std::vector<float> alpha_explicit;
   std::vector<float> beta_explicit;
+  float early_stop_action_sign_beta_fill =
+      std::numeric_limits<float>::quiet_NaN();
+  std::vector<float> early_stop_action_sign_beta_explicit;
+  float early_stop_action_residual_divisor = 1.0f;
+  float early_stop_action_hard_llr_mag = 1.0f;
   std::vector<int> siso_active_list;
   int mux_group_g = 1;
   bool mux_enable_reconfig = false;

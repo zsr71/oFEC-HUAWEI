@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <future>
 #include <iomanip>
@@ -116,7 +117,8 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
   for (std::size_t idx = 0; idx < scenarios.size(); ++idx) {
     const auto& scenario = scenarios[idx];
     if (scenario.alpha_list.size() != base_params.TILES_PER_WIN ||
-        scenario.beta_list.size() != base_params.TILES_PER_WIN) {
+        scenario.beta_list.size() != base_params.TILES_PER_WIN ||
+        scenario.early_stop_action_sign_beta_list.size() != base_params.TILES_PER_WIN) {
       if (log) {
         *log << "[WARN] Scenario '" << scenario.name
              << "' skipped due to list size mismatch (expected "
@@ -150,14 +152,32 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
     newcode::Params params = base_params;
     params.ALPHA_LIST = scenario.alpha_list;
     params.beta_list = scenario.beta_list;
+    params.EARLY_STOP_ACTION_SIGN_BETA_LIST =
+        scenario.early_stop_action_sign_beta_list;
     if (!params.ALPHA_LIST.empty()) {
       params.ALPHA = params.ALPHA_LIST.front();
     }
     if (!params.beta_list.empty()) {
       params.beta = params.beta_list.front();
     }
+    if (!params.EARLY_STOP_ACTION_SIGN_BETA_LIST.empty()) {
+      params.EARLY_STOP_ACTION_SIGN_BETA =
+          params.EARLY_STOP_ACTION_SIGN_BETA_LIST.front();
+    }
     params.CHASE_L = scenario.chase_L;
     params.CHASE_NTEST = scenario.chase_n_test;
+    params.EARLY_STOP_CONDITION_MODE = scenario.early_stop_condition_mode;
+    params.EARLY_STOP_ACTION_MODE = scenario.early_stop_action_mode;
+    params.EARLY_STOP_COND_V1_REQUIRE_BCH =
+        scenario.early_stop_cond_v1_require_bch;
+    params.EARLY_STOP_COND_V1_REQUIRE_OVERALL =
+        scenario.early_stop_cond_v1_require_overall;
+    params.EARLY_STOP_V2_LLR_ABS_THRESHOLD =
+        scenario.early_stop_v2_llr_abs_threshold;
+    params.EARLY_STOP_V2_MAX_UNRELIABLE_BITS =
+        scenario.early_stop_v2_max_unreliable_bits;
+    params.EARLY_STOP_COND_V2_INCLUDE_OVERALL =
+        scenario.early_stop_cond_v2_include_overall;
     params.BITGEN_SEED = scenario.bitgen_seed;
     params.CHANNEL_SEED = scenario.channel_seed;
 
@@ -191,8 +211,24 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
           output.alpha_step = scenario.alpha_step;
           output.beta_start = scenario.beta_start;
           output.beta_step = scenario.beta_step;
+          output.early_stop_action_sign_beta_list =
+              scenario.early_stop_action_sign_beta_list;
+          output.early_stop_beta_start = scenario.early_stop_beta_start;
+          output.early_stop_beta_step = scenario.early_stop_beta_step;
           output.chase_L = scenario.chase_L;
           output.chase_n_test = scenario.chase_n_test;
+          output.early_stop_condition_mode = scenario.early_stop_condition_mode;
+          output.early_stop_action_mode = scenario.early_stop_action_mode;
+          output.early_stop_cond_v1_require_bch =
+              scenario.early_stop_cond_v1_require_bch;
+          output.early_stop_cond_v1_require_overall =
+              scenario.early_stop_cond_v1_require_overall;
+          output.early_stop_v2_llr_abs_threshold =
+              scenario.early_stop_v2_llr_abs_threshold;
+          output.early_stop_v2_max_unreliable_bits =
+              scenario.early_stop_v2_max_unreliable_bits;
+          output.early_stop_cond_v2_include_overall =
+              scenario.early_stop_cond_v2_include_overall;
           output.bitgen_seed = scenario.bitgen_seed;
           output.channel_seed = scenario.channel_seed;
           output.ebn0_db = scenario.ebn0_db;
@@ -273,29 +309,82 @@ int run_sweep(const SweepParameterConfig& config) {
     resolved.base_params.SISO_ACTIVE_LIST = resolved.siso_active_list;
   }
   resolved.base_params.ENABLE_EARLY_STOP = resolved.enable_early_stop;
-  resolved.base_params.EARLY_STOP_DETECT_MODE =
-      resolved.early_stop_detect_mode;
+  resolved.base_params.EARLY_STOP_CONDITION_MODE =
+      resolved.early_stop_condition_mode;
+  resolved.base_params.EARLY_STOP_ACTION_MODE =
+      resolved.early_stop_action_mode;
+  resolved.base_params.EARLY_STOP_COND_V1_REQUIRE_BCH =
+      resolved.early_stop_cond_v1_require_bch;
+  resolved.base_params.EARLY_STOP_COND_V1_REQUIRE_OVERALL =
+      resolved.early_stop_cond_v1_require_overall;
   resolved.base_params.EARLY_STOP_V2_LLR_ABS_THRESHOLD =
       resolved.early_stop_v2_llr_abs_threshold;
   resolved.base_params.EARLY_STOP_V2_MAX_UNRELIABLE_BITS =
       resolved.early_stop_v2_max_unreliable_bits;
+  resolved.base_params.EARLY_STOP_COND_V2_INCLUDE_OVERALL =
+      resolved.early_stop_cond_v2_include_overall;
+  resolved.base_params.EARLY_STOP_ACTION_RESIDUAL_DIVISOR =
+      resolved.early_stop_action_residual_divisor;
+  resolved.base_params.EARLY_STOP_ACTION_HARD_LLR_MAG =
+      resolved.early_stop_action_hard_llr_mag;
   resolved.base_params.MUX_GROUP_G = resolved.mux_group_g;
   resolved.base_params.MUX_ENABLE_RECONFIG = resolved.mux_enable_reconfig;
   resolved.base_params.MUX_EXTRA_BYPASS_EDGES =
       resolved.mux_extra_bypass_edges;
-  if (resolved.early_stop_detect_mode != 1 &&
-      resolved.early_stop_detect_mode != 2) {
-    std::cerr << "[ERROR] early_stop_detect_mode must be 1 or 2\n";
+  if (std::isfinite(resolved.early_stop_action_sign_beta_fill)) {
+    resolved.base_params.EARLY_STOP_ACTION_SIGN_BETA =
+        resolved.early_stop_action_sign_beta_fill;
+  }
+  auto validate_mode = [](int mode) -> bool {
+    return mode == 1 || mode == 2;
+  };
+  const int resolved_condition_mode =
+      resolved.base_params.EARLY_STOP_CONDITION_MODE;
+  if (!validate_mode(resolved_condition_mode)) {
+    std::cerr << "[ERROR] early_stop_condition_mode must be 1 or 2\n";
     return 1;
+  }
+  if (!validate_mode(resolved.early_stop_action_mode)) {
+    std::cerr << "[ERROR] early_stop_action_mode must be 1 or 2\n";
+    return 1;
+  }
+  for (int mode : resolved.early_stop_condition_candidates) {
+    if (!validate_mode(mode)) {
+      std::cerr << "[ERROR] early_stop_condition_candidates contains invalid mode\n";
+      return 1;
+    }
+  }
+  for (int mode : resolved.early_stop_action_candidates) {
+    if (!validate_mode(mode)) {
+      std::cerr << "[ERROR] early_stop_action_candidates contains invalid mode\n";
+      return 1;
+    }
   }
   if (resolved.early_stop_v2_llr_abs_threshold < 0.0f) {
     std::cerr << "[ERROR] early_stop_v2_llr_abs_threshold must be >= 0\n";
     return 1;
   }
+  for (float threshold : resolved.early_stop_v2_llr_abs_threshold_candidates) {
+    if (threshold < 0.0f) {
+      std::cerr << "[ERROR] early_stop_v2_llr_abs_threshold_candidates must be >= 0\n";
+      return 1;
+    }
+  }
   if (resolved.early_stop_v2_max_unreliable_bits < 0 ||
       resolved.early_stop_v2_max_unreliable_bits >
           static_cast<int>(newcode::Params::BCH_N)) {
     std::cerr << "[ERROR] early_stop_v2_max_unreliable_bits must be in [0, BCH_N]\n";
+    return 1;
+  }
+  for (int count : resolved.early_stop_v2_max_unreliable_bits_candidates) {
+    if (count < 0 ||
+        count > static_cast<int>(newcode::Params::BCH_N)) {
+      std::cerr << "[ERROR] early_stop_v2_max_unreliable_bits_candidates must be in [0, BCH_N]\n";
+      return 1;
+    }
+  }
+  if (!(resolved.early_stop_action_residual_divisor > 0.0f)) {
+    std::cerr << "[ERROR] early_stop_action_residual_divisor must be > 0\n";
     return 1;
   }
   const auto mux_ok = newcode::mux::validate_siso_active_list(
@@ -422,10 +511,14 @@ int run_sweep(const SweepParameterConfig& config) {
             << " alpha_step=" << pack.alpha_step
             << " | beta_start=" << pack.beta_start
             << " beta_step=" << pack.beta_step
+            << " | es_beta_start=" << pack.early_stop_beta_start
+            << " es_beta_step=" << pack.early_stop_beta_step
             << " | Eb/N0=" << pack.ebn0_db
             << std::defaultfloat
             << " | CHASE_L=" << pack.chase_L
             << " CHASE_NTEST=" << pack.chase_n_test
+            << " | cond/action=" << pack.early_stop_condition_mode
+            << "/" << pack.early_stop_action_mode
             << " | Seeds(bit/channel)=" << pack.bitgen_seed << "/" << pack.channel_seed;
     if (!result.tile_early_stop_pct.empty()) {
       summary << " | EarlyStop%=["
@@ -488,6 +581,9 @@ int run_sweep(const SweepParameterConfig& config) {
       << " step=" << best_beta_step << "\n";
   out << "[RESULT] Best sweep Eb/N0: " << best_ebn0_db << " dB\n";
   out << std::defaultfloat;
+  out << "[RESULT] Best early-stop cond/action: "
+      << best_scenario.early_stop_condition_mode
+      << " / " << best_scenario.early_stop_action_mode << "\n";
   out << "[RESULT] Best CHASE_L/CHASE_NTEST: " << best_chase_L
       << " / " << best_chase_n_test << "\n";
   out << "[RESULT] Best RNG seeds (bit/channel): "
@@ -522,6 +618,12 @@ int run_sweep(const SweepParameterConfig& config) {
   for (size_t i = 0; i < best_scenario.beta_list.size(); ++i) {
     out << best_scenario.beta_list[i]
         << (i + 1 < best_scenario.beta_list.size() ? ", " : "\n");
+  }
+
+  out << "[RESULT] Best early-stop beta_list: ";
+  for (size_t i = 0; i < best_scenario.early_stop_action_sign_beta_list.size(); ++i) {
+    out << best_scenario.early_stop_action_sign_beta_list[i]
+        << (i + 1 < best_scenario.early_stop_action_sign_beta_list.size() ? ", " : "\n");
   }
 
   return 0;

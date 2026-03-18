@@ -1,5 +1,6 @@
 #pragma once
 
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,7 @@ struct ExplicitAlphaBetaPattern {
   std::string label;
   std::vector<float> alpha_list;
   std::vector<float> beta_list;
+  std::vector<float> early_stop_action_sign_beta_list;
 };
 
 // 配置结构体，包含所有可扫参数及基础参数
@@ -21,9 +23,17 @@ struct SweepParameterConfig {
   std::string interleaver_name = "identity";
   std::string decoder_name = "plain";
   bool enable_early_stop = true;
-  int early_stop_detect_mode = 1;
+  int early_stop_condition_mode = 1;
+  int early_stop_action_mode = 1;
+  bool early_stop_cond_v1_require_bch = true;
+  bool early_stop_cond_v1_require_overall = true;
   float early_stop_v2_llr_abs_threshold = 0.5f;
   int early_stop_v2_max_unreliable_bits = 8;
+  bool early_stop_cond_v2_include_overall = true;
+  float early_stop_action_sign_beta_fill =
+      std::numeric_limits<float>::quiet_NaN();
+  float early_stop_action_residual_divisor = 1.0f;
+  float early_stop_action_hard_llr_mag = 1.0f;
   bool normalize_extrinsic = true;
   unsigned bits_per_symbol = 2;
 
@@ -31,6 +41,14 @@ struct SweepParameterConfig {
   std::vector<float> alpha_step_candidates;
   std::vector<float> beta_start_candidates;
   std::vector<float> beta_step_candidates;
+  std::vector<float> early_stop_action_beta_start_candidates;
+  std::vector<float> early_stop_action_beta_step_candidates;
+  std::vector<int> early_stop_condition_candidates;
+  std::vector<int> early_stop_action_candidates;
+  std::vector<bool> early_stop_cond_v1_require_bch_candidates;
+  std::vector<bool> early_stop_cond_v1_require_overall_candidates;
+  std::vector<float> early_stop_v2_llr_abs_threshold_candidates;
+  std::vector<int> early_stop_v2_max_unreliable_bits_candidates;
   std::vector<int> siso_active_list;
   int mux_group_g = 1;
   bool mux_enable_reconfig = false;

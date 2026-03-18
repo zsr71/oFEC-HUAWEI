@@ -13,7 +13,7 @@ void row_early_stop_process_1(const LLR* lin256,
                               float* y2_256,
                               const newcode::Params& p)
 {
-  const float mag = p.beta;
+  const float mag = p.EARLY_STOP_ACTION_SIGN_BETA;
   for (size_t j = 0; j < newcode::Params::BCH_N; ++j) {
     const float v = qfloat::llr_to_float(lin256[j]);
     y2_256[j] = (qfloat::llr_to_float(lin256[j]) - qfloat::llr_to_float(lch256[j]))+((v < 0.0f) ? -mag : mag);

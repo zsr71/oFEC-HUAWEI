@@ -13,10 +13,10 @@ void row_early_stop_process_2(const LLR* lin256,
                               float* y2_256,
                               const newcode::Params& p)
 {
-  (void)p;
+  const float divisor = p.EARLY_STOP_ACTION_RESIDUAL_DIVISOR;
   for (size_t j = 0; j < newcode::Params::BCH_N; ++j) {
     y2_256[j] =
-        (qfloat::llr_to_float(lin256[j]) - qfloat::llr_to_float(lch256[j]))/p.ALPHA;
+        (qfloat::llr_to_float(lin256[j]) - qfloat::llr_to_float(lch256[j])) / divisor;
   }
 }
 

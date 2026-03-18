@@ -1,6 +1,7 @@
 #include "newcode/params.hpp"
 #include "newcode/rx/ofec/chase/decoder_core.hpp"
 #include "newcode/rx/ofec/chase/chase256.hpp"
+#include "newcode/ofec/earlystop/row_early_stop_action.hpp"
 #include "newcode/ofec/earlystop/row_early_stop_process_1.hpp"
 #include "newcode/ofec/earlystop/row_early_stop_process_2.hpp"
 #include "newcode/ofec_decoder_hard.hpp"
@@ -129,11 +130,10 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const matrix::Matrix<LLR>& lin_matrix,
       // 使用软解码
       if (has_mux_state) {
         if (mux_tag == 1u) {
-          //newcode::row_early_stop_process_2(LinVec.data(),LchVec.data(),Y2.data(),row_params);
-          newcode::row_early_stop_process_1(LinVec.data(),
-                                            LchVec.data(),
-                                            Y2.data(),
-                                            row_params);
+          newcode::apply_row_early_stop_action(LinVec.data(),
+                                               LchVec.data(),
+                                               Y2.data(),
+                                               row_params);
           produced = true;
         } else {
           chase_fn(LinVec.data(), LchVec.data(), Y2.data(), row_params);

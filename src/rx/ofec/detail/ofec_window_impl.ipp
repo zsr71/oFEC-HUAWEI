@@ -78,6 +78,10 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
 
         newcode::Params tile_params = p;
         tile_params.beta = pick_float(p.beta_list, t, p.beta);
+        tile_params.EARLY_STOP_ACTION_SIGN_BETA =
+            pick_float(p.EARLY_STOP_ACTION_SIGN_BETA_LIST,
+                       t,
+                       p.EARLY_STOP_ACTION_SIGN_BETA);
         tile_params.ALPHA = pick_float(p.ALPHA_LIST, t, p.ALPHA);
         tile_params.debug_trace.chase_tile_index = static_cast<int>(t);
         tile_params.debug_trace.chase_invocation =

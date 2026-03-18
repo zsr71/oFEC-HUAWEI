@@ -46,9 +46,17 @@ struct Params {
   int CHASE_NTEST = 64; // 生成的测试向量数量（<= 2^CHASE_L）
   int CHASE_SBR   = 2;  // 每个 tile 底部解码的子块行数（1 或 2）
   bool ENABLE_EARLY_STOP = true;  // 是否启用 tile/row 级早停判定
-  int EARLY_STOP_DETECT_MODE = 1; // 1=detect_tile_early_stop_v1, 2=detect_tile_early_stop_v2
+  int EARLY_STOP_CONDITION_MODE = 1;  // 1=detect_tile_early_stop_v1, 2=detect_tile_early_stop_v2
+  int EARLY_STOP_ACTION_MODE = 1;     // 1=sign beta, 2=residual only
+  bool EARLY_STOP_COND_V1_REQUIRE_BCH = true;
+  bool EARLY_STOP_COND_V1_REQUIRE_OVERALL = true;
   float EARLY_STOP_V2_LLR_ABS_THRESHOLD = 0.5f;
   int EARLY_STOP_V2_MAX_UNRELIABLE_BITS = 8;
+  bool EARLY_STOP_COND_V2_INCLUDE_OVERALL = true;
+  float EARLY_STOP_ACTION_SIGN_BETA = 0.35f;
+  std::vector<float> EARLY_STOP_ACTION_SIGN_BETA_LIST;
+  float EARLY_STOP_ACTION_RESIDUAL_DIVISOR = 1.0f;
+  float EARLY_STOP_ACTION_HARD_LLR_MAG = 1.0f;
 
   // —— fallback 可靠度系数（Chase(256) 中 L0 的回退幅度）——
   float beta = 0.35f;

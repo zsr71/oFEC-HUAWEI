@@ -10,7 +10,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
-
 namespace newcode {
 
 template <typename LLR>
@@ -23,16 +22,15 @@ TileEarlyStopResult detect_tile_early_stop_v2(const matrix::Matrix<LLR>& lin_mat
 
 template <typename LLR>
 TileEarlyStopResult detect_tile_early_stop(const matrix::Matrix<LLR>& lin_matrix,
-                                           const Params& p,
-                                           int detect_mode) {
-  switch (detect_mode) {
+                                           const Params& p) {
+  switch (p.EARLY_STOP_CONDITION_MODE) {
     case 1:
       return detect_tile_early_stop_v1(lin_matrix, p);
     case 2:
       return detect_tile_early_stop_v2(lin_matrix, p);
     default:
       throw std::invalid_argument(
-          "detect_tile_early_stop: detect_mode must be 1 or 2");
+          "detect_tile_early_stop: EARLY_STOP_CONDITION_MODE must be 1 or 2");
   }
 }
 

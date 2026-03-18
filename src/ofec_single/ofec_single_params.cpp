@@ -3,6 +3,7 @@
 #include "newcode/ofec/mux/mux_config_validate.hpp"
 #include "newcode/ofec/mux/mux_group_config_validate.hpp"
 #include <algorithm>
+#include <cmath>
 
 namespace ofec_single {
 namespace detail {
@@ -15,9 +16,17 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.BITGEN_RANDOM_BITS = cfg.generate_random_bits;
   params.NORMALIZE_KNOWN_PREFIX_TAIL = cfg.normalize_known_prefix_tail;
   params.ENABLE_EARLY_STOP = cfg.enable_early_stop;
-  params.EARLY_STOP_DETECT_MODE = cfg.early_stop_detect_mode;
+  params.EARLY_STOP_CONDITION_MODE = cfg.early_stop_condition_mode;
+  params.EARLY_STOP_ACTION_MODE = cfg.early_stop_action_mode;
+  params.EARLY_STOP_COND_V1_REQUIRE_BCH = cfg.early_stop_cond_v1_require_bch;
+  params.EARLY_STOP_COND_V1_REQUIRE_OVERALL = cfg.early_stop_cond_v1_require_overall;
   params.EARLY_STOP_V2_LLR_ABS_THRESHOLD = cfg.early_stop_v2_llr_abs_threshold;
   params.EARLY_STOP_V2_MAX_UNRELIABLE_BITS = cfg.early_stop_v2_max_unreliable_bits;
+  params.EARLY_STOP_COND_V2_INCLUDE_OVERALL = cfg.early_stop_cond_v2_include_overall;
+  params.EARLY_STOP_ACTION_RESIDUAL_DIVISOR =
+      cfg.early_stop_action_residual_divisor;
+  params.EARLY_STOP_ACTION_HARD_LLR_MAG =
+      cfg.early_stop_action_hard_llr_mag;
   params.debug_trace = cfg.debug_trace;
   params.LLR_BITS = cfg.llr_bits;
   params.DUMP_WORK_LLR = cfg.dump_work_llr;
@@ -26,8 +35,12 @@ std::optional<newcode::Params> build_params(const Config& cfg,
     log << "[ERROR] LLR_BITS 必须在 [2,16]，16 表示浮点，其余使用 qfloat::qfloat<N>\n";
     return std::nullopt;
   }
-  if (cfg.early_stop_detect_mode != 1 && cfg.early_stop_detect_mode != 2) {
-    log << "[ERROR] early_stop_detect_mode 必须是 1 或 2\n";
+  if (cfg.early_stop_condition_mode != 1 && cfg.early_stop_condition_mode != 2) {
+    log << "[ERROR] early_stop_condition_mode 必须是 1 或 2\n";
+    return std::nullopt;
+  }
+  if (cfg.early_stop_action_mode != 1 && cfg.early_stop_action_mode != 2) {
+    log << "[ERROR] early_stop_action_mode 目前必须是 1 或 2\n";
     return std::nullopt;
   }
   if (cfg.early_stop_v2_llr_abs_threshold < 0.0f) {
@@ -37,6 +50,10 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   if (cfg.early_stop_v2_max_unreliable_bits < 0 ||
       cfg.early_stop_v2_max_unreliable_bits > static_cast<int>(newcode::Params::BCH_N)) {
     log << "[ERROR] early_stop_v2_max_unreliable_bits 必须在 [0, BCH_N] 范围内\n";
+    return std::nullopt;
+  }
+  if (!(cfg.early_stop_action_residual_divisor > 0.0f)) {
+    log << "[ERROR] early_stop_action_residual_divisor 必须 > 0\n";
     return std::nullopt;
   }
   params.LLR_CLIP_RATIO = std::clamp(cfg.quant_clip_ratio, 0.0f, 1.0f);
@@ -71,6 +88,27 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   }
   if (!params.beta_list.empty()) {
     params.beta = params.beta_list.front();
+  }
+
+  if (!cfg.early_stop_action_sign_beta_explicit.empty()) {
+    if (cfg.early_stop_action_sign_beta_explicit.size() != tiles) {
+      log << "[ERROR] early_stop_action_sign_beta_explicit 长度必须等于 TILES_PER_WIN\n";
+      return std::nullopt;
+    }
+    params.EARLY_STOP_ACTION_SIGN_BETA_LIST =
+        cfg.early_stop_action_sign_beta_explicit;
+  } else if (std::isfinite(cfg.early_stop_action_sign_beta_fill)) {
+    params.EARLY_STOP_ACTION_SIGN_BETA_LIST.assign(
+        tiles, cfg.early_stop_action_sign_beta_fill);
+  } else {
+    // 兼容旧行为：如果顶层没有单独配置 early-stop beta，则沿用 Chase 的 beta_list。
+    params.EARLY_STOP_ACTION_SIGN_BETA_LIST = params.beta_list;
+  }
+  if (!params.EARLY_STOP_ACTION_SIGN_BETA_LIST.empty()) {
+    params.EARLY_STOP_ACTION_SIGN_BETA =
+        params.EARLY_STOP_ACTION_SIGN_BETA_LIST.front();
+  } else {
+    params.EARLY_STOP_ACTION_SIGN_BETA = params.beta;
   }
 
   if (!cfg.siso_active_list.empty()) {
