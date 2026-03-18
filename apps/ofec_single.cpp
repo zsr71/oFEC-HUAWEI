@@ -20,7 +20,7 @@ static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个�
 //早停参数
 static constexpr bool        kEnableEarlyStop              = false;   // true=启用早停，false=完全关闭早停路径
 static constexpr int         kEarlyStopConditionMode       = 2;       // 早停条件编号：1=v1，2=v2
-static constexpr int         kEarlyStopActionMode          = 1;       // 早停命中后的动作：1=sign beta，2=residual only
+static constexpr int         kEarlyStopActionMode          = 1;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag
 
 static constexpr bool        kEarlyStopCondV1RequireBch    = true;    // 条件1里是否要求 BCH syndrome 为 0
 static constexpr bool        kEarlyStopCondV1RequireOverall = true;   // 条件1里是否要求 overall parity 一致
@@ -35,7 +35,7 @@ static constexpr float       kQuantClipRatio = 0.5f;   // 动态裁剪比例，0
 
 // 解码主参数
 static constexpr const char* kInterleaverName          = "identity"; // 交织器名称，identity 表示不改变比特顺序
-static constexpr const char* kDecoderName              = "plain";    // 解码器名称，当前常用 plain
+static constexpr const char* kDecoderName              = "chase_baseline"; // 解码器名称：chase_baseline=基线 Chase，chase_overall_parity_search=把 overall parity 也纳入搜索的变体
 static constexpr bool        kNormalizeExtrinsic       = false;      // 是否对 Chase 输出的 extrinsic 做归一化
 static constexpr bool        kNormalizeKnownPrefixTail = false;      // 是否对 known-prefix 之后的尾部 LLR 做归一化
 
@@ -44,7 +44,7 @@ static constexpr float kAlpha_fill                     = 1.0f;   // 每个 tile 
 static constexpr float kBeta_fill                      = 0.40f;  // 每个 tile 共用的 Chase/fallback beta
 static constexpr float kEarlyStopActionBeta_fill       = 0.40f;  // 每个 tile 共用的 early-stop 动作 beta
 static constexpr float kEarlyStopActionResidualDivisor = 1.0f;   // 动作2里 residual 的除数
-static constexpr float kEarlyStopActionHardLlrMag      = 1.0f;   // 预留给硬输出类早停动作的 LLR 幅度
+static constexpr float kEarlyStopActionHardLlrMag      = 1.0f;   // 动作3里硬解成功后输出的固定 |LLR| 幅度
 
 // 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
 static const std::vector<float> kAlpha_explicit = {      // 每个 tile 的 alpha 显式列表
@@ -102,7 +102,7 @@ static const std::vector<newcode::Params::DebugTraceConfig::TraceTarget>
 // log_read_mapping   输出 tile -> global 的读取坐标展开
 // log_write_mapping  输出解码回写对应的坐标及 LLR
 // log_mismatch       当窗口内多个 tile 写回同一坐标且值不同时报错提示
-// log_chase_detail   追踪对应比特在 Chase 内部（plain/ebchPF）的输入/输出
+// log_chase_detail   追踪对应比特在 Chase 内部（chase_baseline / chase_overall_parity_search）的输入/输出
 // dump_chase_csv     每次进入 Chase 时导出 256 码字的 LLR/ω/ML/硬判决到 CSV
 // chase_csv_dir      CSV 导出目录（可直接用 Excel 打开）
 

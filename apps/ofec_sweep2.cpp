@@ -26,7 +26,7 @@ constexpr size_t kStage2Bits     = 16 * 110 * 16 * 111;
 constexpr float  kKeepRatio      = 0.20f;
 
 static constexpr const char* kInterleaverName          = "identity";
-static constexpr const char* kDecoderName             = "plain";
+static constexpr const char* kDecoderName             = "chase_baseline";
 static constexpr unsigned    kBitsPerSymbol           = 1;
 static constexpr bool        kNormalizeExtrinsic      = true;
 static constexpr bool        kGenerateRandomBits      = true;

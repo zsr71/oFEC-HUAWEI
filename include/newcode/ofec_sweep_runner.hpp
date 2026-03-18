@@ -21,7 +21,7 @@ struct ExplicitAlphaBetaPattern {
 struct SweepParameterConfig {
   newcode::Params base_params{};
   std::string interleaver_name = "identity";
-  std::string decoder_name = "plain";
+  std::string decoder_name = "chase_baseline";
   bool enable_early_stop = true;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
@@ -43,6 +43,7 @@ struct SweepParameterConfig {
   std::vector<float> beta_step_candidates;
   std::vector<float> early_stop_action_beta_start_candidates;
   std::vector<float> early_stop_action_beta_step_candidates;
+  std::vector<float> early_stop_action_hard_llr_mag_candidates;
   std::vector<int> early_stop_condition_candidates;
   std::vector<int> early_stop_action_candidates;
   std::vector<bool> early_stop_cond_v1_require_bch_candidates;

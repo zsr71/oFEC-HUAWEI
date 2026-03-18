@@ -8,7 +8,7 @@
 
 // 基础运行入口
 static constexpr const char* kInterleaverName               = "identity"; // 交织器名称，identity 表示不改变顺序
-static constexpr const char* kDecoderName                   = "plain";    // 解码器名称，当前 sweep 默认扫 plain
+static constexpr const char* kDecoderName                   = "chase_baseline"; // 解码器名称：chase_baseline=基线 Chase，chase_overall_parity_search=把 overall parity 也纳入搜索的变体
 
 // 信道与量化口径
 static constexpr unsigned    kBitsPerSymbol                 = 1;          // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
@@ -22,7 +22,7 @@ static constexpr bool        kQuietConsole                  = false;      // tru
 // 早停固定配置：决定“停不停”和“停了以后怎么办”
 static constexpr bool        kEnableEarlyStop               = true;       // 是否启用 early-stop 总开关
 static constexpr int         kEarlyStopConditionMode        = 1;          // 早停条件编号：1=v1，2=v2
-static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only
+static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag
 
 // 条件 1（v1）参数
 static constexpr bool        kEarlyStopCondV1RequireBch     = true;       // 条件1里是否要求 BCH syndrome 为 0
@@ -35,7 +35,7 @@ static constexpr bool        kEarlyStopCondV2IncludeOverall = true;       // 条
 
 // 早停动作参数
 static constexpr float       kEarlyStopActionResidualDivisor = 1.0f;      // 动作2里 residual 的除数
-static constexpr float       kEarlyStopActionHardLlrMag     = 1.0f;       // 预留给硬输出类早停动作的 LLR 幅度
+static constexpr float       kEarlyStopActionHardLlrMag     = 1.0f;       // 动作3里硬解成功后输出的固定 |LLR| 幅度
 
 // MUX / 调度参数
 static const std::vector<int> kSisoActiveList               = {32, 32, 32, 16}; // 每个 tile 的 SISO 行数预算
@@ -52,7 +52,7 @@ static const std::vector<int>   kChaseLCandidates                    = {6};     
 
 // 早停条件 / 动作模式扫描候选
 static const std::vector<int>   kEarlyStopConditionCandidates        = {1, 2};                          // 早停条件候选列表
-static const std::vector<int>   kEarlyStopActionCandidates           = {1, 2};                          // 早停动作候选列表
+static const std::vector<int>   kEarlyStopActionCandidates           = {1, 2, 3};                       // 早停动作候选列表
 
 // 条件 1（v1）扫描候选
 static const std::vector<bool>  kEarlyStopCondV1RequireBchCandidates = {};                              // 条件1里是否要求 BCH 的候选，空表示沿用固定值
@@ -65,6 +65,7 @@ static const std::vector<int>   kEarlyStopV2MaxUnreliableBitsCandidates = {};   
 // 早停动作扫描候选
 static const std::vector<float> kEarlyStopActionBetaStartCandidates  = {};                              // early-stop 动作 beta 起点候选，空表示不单独扫描
 static const std::vector<float> kEarlyStopActionBetaStepCandidates   = {};                              // early-stop 动作 beta 步进候选，空表示不单独扫描
+static const std::vector<float> kEarlyStopActionHardLlrMagCandidates = {};                              // 动作3的 |hard_llr_mag| 候选，空表示沿用固定值
 
 // Monte Carlo 随机种子设置（为空则自动生成）
 static constexpr int kBitgenSeedCount  = 1; // 自动生成的 bitgen seed 数量
@@ -130,6 +131,8 @@ int main() {
   // 扫描候选：early-stop 动作 beta
   config.early_stop_action_beta_start_candidates = kEarlyStopActionBetaStartCandidates;
   config.early_stop_action_beta_step_candidates = kEarlyStopActionBetaStepCandidates;
+  config.early_stop_action_hard_llr_mag_candidates =
+      kEarlyStopActionHardLlrMagCandidates;
 
   // 扫描候选：early-stop 条件 / 动作模式
   config.early_stop_condition_candidates = kEarlyStopConditionCandidates;

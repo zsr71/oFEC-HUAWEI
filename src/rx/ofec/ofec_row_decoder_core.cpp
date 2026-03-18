@@ -130,11 +130,12 @@ DecoderCoreResult<LLR> Decoder_Core_impl(const matrix::Matrix<LLR>& lin_matrix,
       // 使用软解码
       if (has_mux_state) {
         if (mux_tag == 1u) {
-          newcode::apply_row_early_stop_action(LinVec.data(),
-                                               LchVec.data(),
-                                               Y2.data(),
-                                               row_params);
-          produced = true;
+          // 早停命中后改走配置指定的动作分支。
+          // mode3 若硬解失败，会返回 false，从而保持本轮不写回。
+          produced = newcode::apply_row_early_stop_action(LinVec.data(),
+                                                          LchVec.data(),
+                                                          Y2.data(),
+                                                          row_params);
         } else {
           chase_fn(LinVec.data(), LchVec.data(), Y2.data(), row_params);
           produced = true;

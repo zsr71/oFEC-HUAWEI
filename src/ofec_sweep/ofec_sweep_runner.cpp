@@ -178,6 +178,8 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
         scenario.early_stop_v2_max_unreliable_bits;
     params.EARLY_STOP_COND_V2_INCLUDE_OVERALL =
         scenario.early_stop_cond_v2_include_overall;
+    params.EARLY_STOP_ACTION_HARD_LLR_MAG =
+        scenario.early_stop_action_hard_llr_mag;
     params.BITGEN_SEED = scenario.bitgen_seed;
     params.CHANNEL_SEED = scenario.channel_seed;
 
@@ -215,6 +217,8 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
               scenario.early_stop_action_sign_beta_list;
           output.early_stop_beta_start = scenario.early_stop_beta_start;
           output.early_stop_beta_step = scenario.early_stop_beta_step;
+          output.early_stop_action_hard_llr_mag =
+              scenario.early_stop_action_hard_llr_mag;
           output.chase_L = scenario.chase_L;
           output.chase_n_test = scenario.chase_n_test;
           output.early_stop_condition_mode = scenario.early_stop_condition_mode;
@@ -335,27 +339,30 @@ int run_sweep(const SweepParameterConfig& config) {
     resolved.base_params.EARLY_STOP_ACTION_SIGN_BETA =
         resolved.early_stop_action_sign_beta_fill;
   }
-  auto validate_mode = [](int mode) -> bool {
+  auto validate_condition_mode = [](int mode) -> bool {
     return mode == 1 || mode == 2;
+  };
+  auto validate_action_mode = [](int mode) -> bool {
+    return mode == 1 || mode == 2 || mode == 3;
   };
   const int resolved_condition_mode =
       resolved.base_params.EARLY_STOP_CONDITION_MODE;
-  if (!validate_mode(resolved_condition_mode)) {
+  if (!validate_condition_mode(resolved_condition_mode)) {
     std::cerr << "[ERROR] early_stop_condition_mode must be 1 or 2\n";
     return 1;
   }
-  if (!validate_mode(resolved.early_stop_action_mode)) {
-    std::cerr << "[ERROR] early_stop_action_mode must be 1 or 2\n";
+  if (!validate_action_mode(resolved.early_stop_action_mode)) {
+    std::cerr << "[ERROR] early_stop_action_mode must be 1, 2 or 3\n";
     return 1;
   }
   for (int mode : resolved.early_stop_condition_candidates) {
-    if (!validate_mode(mode)) {
+    if (!validate_condition_mode(mode)) {
       std::cerr << "[ERROR] early_stop_condition_candidates contains invalid mode\n";
       return 1;
     }
   }
   for (int mode : resolved.early_stop_action_candidates) {
-    if (!validate_mode(mode)) {
+    if (!validate_action_mode(mode)) {
       std::cerr << "[ERROR] early_stop_action_candidates contains invalid mode\n";
       return 1;
     }
@@ -386,6 +393,16 @@ int run_sweep(const SweepParameterConfig& config) {
   if (!(resolved.early_stop_action_residual_divisor > 0.0f)) {
     std::cerr << "[ERROR] early_stop_action_residual_divisor must be > 0\n";
     return 1;
+  }
+  if (!std::isfinite(resolved.early_stop_action_hard_llr_mag)) {
+    std::cerr << "[ERROR] early_stop_action_hard_llr_mag must be finite\n";
+    return 1;
+  }
+  for (float hard_mag : resolved.early_stop_action_hard_llr_mag_candidates) {
+    if (!std::isfinite(hard_mag)) {
+      std::cerr << "[ERROR] early_stop_action_hard_llr_mag_candidates must be finite\n";
+      return 1;
+    }
   }
   const auto mux_ok = newcode::mux::validate_siso_active_list(
       resolved.base_params.SISO_ACTIVE_LIST,
@@ -513,6 +530,7 @@ int run_sweep(const SweepParameterConfig& config) {
             << " beta_step=" << pack.beta_step
             << " | es_beta_start=" << pack.early_stop_beta_start
             << " es_beta_step=" << pack.early_stop_beta_step
+            << " | hard_mag=" << pack.early_stop_action_hard_llr_mag
             << " | Eb/N0=" << pack.ebn0_db
             << std::defaultfloat
             << " | CHASE_L=" << pack.chase_L
@@ -584,6 +602,12 @@ int run_sweep(const SweepParameterConfig& config) {
   out << "[RESULT] Best early-stop cond/action: "
       << best_scenario.early_stop_condition_mode
       << " / " << best_scenario.early_stop_action_mode << "\n";
+  if (best_scenario.early_stop_action_mode == 3) {
+    out << std::fixed << std::setprecision(3)
+        << "[RESULT] Best early-stop hard_mag: "
+        << best_scenario.early_stop_action_hard_llr_mag << "\n"
+        << std::defaultfloat;
+  }
   out << "[RESULT] Best CHASE_L/CHASE_NTEST: " << best_chase_L
       << " / " << best_chase_n_test << "\n";
   out << "[RESULT] Best RNG seeds (bit/channel): "

@@ -19,7 +19,7 @@ void decode_ebchPF_qfloat(const DecodeRequest& request, DecodeResult& result) {
   Q::set_clip(clip);
 
   if (!request.quiet) {
-    std::cout << "[INFO] (" << request.label << ") ebchPF decoder running in qfloat::qfloat<"
+    std::cout << "[INFO] (" << request.label << ") Chase-overall-parity-search decoder running in qfloat::qfloat<"
               << NBITS << ">\n";
   }
   auto quantized = qfloat::quantize_matrix_to_qfloat<NBITS>(request.channel_llr, clip); //对channel_llr量化
@@ -59,12 +59,12 @@ void decode_ebchPF_quantized(const DecodeRequest& request, DecodeResult& result)
     case 14: decode_ebchPF_qfloat<14>(request, result); break;
     case 15: decode_ebchPF_qfloat<15>(request, result); break;
     default:
-      throw std::runtime_error("[ERROR] Unsupported quant_bits for ebchPF decoder: " +
+      throw std::runtime_error("[ERROR] Unsupported quant_bits for chase_overall_parity_search decoder: " +
                                std::to_string(request.quant_bits));
   }
 }
 
-class ebchPFDecoder final : public IDecoder {
+class ChaseOverallParitySearchDecoder final : public IDecoder {
 public:
   DecodeResult decode(const DecodeRequest& request) override {
     DecodeResult result;
@@ -73,7 +73,7 @@ public:
     switch (request.format) {
       case LlrFormat::Float:
         if (!request.quiet) {
-          std::cout << "[INFO] (" << request.label << ") ebchPF decoder running in FLOAT\n";
+          std::cout << "[INFO] (" << request.label << ") Chase-overall-parity-search decoder running in FLOAT\n";
         }
         if (!request.quiet) {
           if (request.dump_quantized_llr) {
@@ -106,8 +106,8 @@ static void ensure_registered() {
   static std::once_flag once;
   std::call_once(once, [] {
     register_decoder_factory([](const std::string& name) -> std::unique_ptr<IDecoder> {
-      if (name == "ebchPF") {
-        return std::make_unique<ebchPFDecoder>();
+      if (name == "chase_overall_parity_search") {
+        return std::make_unique<ChaseOverallParitySearchDecoder>();
       }
       return nullptr;
     });

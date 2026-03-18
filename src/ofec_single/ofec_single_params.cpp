@@ -39,8 +39,10 @@ std::optional<newcode::Params> build_params(const Config& cfg,
     log << "[ERROR] early_stop_condition_mode 必须是 1 或 2\n";
     return std::nullopt;
   }
-  if (cfg.early_stop_action_mode != 1 && cfg.early_stop_action_mode != 2) {
-    log << "[ERROR] early_stop_action_mode 目前必须是 1 或 2\n";
+  if (cfg.early_stop_action_mode != 1 &&
+      cfg.early_stop_action_mode != 2 &&
+      cfg.early_stop_action_mode != 3) {
+    log << "[ERROR] early_stop_action_mode 目前必须是 1、2 或 3\n";
     return std::nullopt;
   }
   if (cfg.early_stop_v2_llr_abs_threshold < 0.0f) {
@@ -54,6 +56,10 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   }
   if (!(cfg.early_stop_action_residual_divisor > 0.0f)) {
     log << "[ERROR] early_stop_action_residual_divisor 必须 > 0\n";
+    return std::nullopt;
+  }
+  if (!std::isfinite(cfg.early_stop_action_hard_llr_mag)) {
+    log << "[ERROR] early_stop_action_hard_llr_mag 必须是有限数\n";
     return std::nullopt;
   }
   params.LLR_CLIP_RATIO = std::clamp(cfg.quant_clip_ratio, 0.0f, 1.0f);

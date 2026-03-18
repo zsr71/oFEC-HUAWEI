@@ -23,6 +23,7 @@ struct SweepScenario {
   float beta_step = 0.0f;
   float early_stop_beta_start = 0.0f;
   float early_stop_beta_step = 0.0f;
+  float early_stop_action_hard_llr_mag = 1.0f;
   float alpha_low = 0.0f;
   float alpha_high = 0.0f;
   float gamma_alpha = 1.0f;
@@ -55,6 +56,7 @@ struct ScenarioOutput {
   float beta_step = 0.0f;
   float early_stop_beta_start = 0.0f;
   float early_stop_beta_step = 0.0f;
+  float early_stop_action_hard_llr_mag = 1.0f;
   int chase_L = 0;
   int chase_n_test = 0;
   int early_stop_condition_mode = 1;

@@ -9,9 +9,10 @@ namespace newcode {
  * 当前支持：
  * 1. residual + sign * beta
  * 2. residual only / scaled
+ * 3. BCH 硬解成功后直接输出符号化 LLR；失败则本轮不产出输出
  */
 template <typename LLR>
-void apply_row_early_stop_action(const LLR* lin256,
+bool apply_row_early_stop_action(const LLR* lin256,
                                  const LLR* lch256,
                                  float* y2_256,
                                  const newcode::Params& p);

@@ -58,6 +58,10 @@ void append_common_name(std::ostringstream& oss, const SweepScenario& scenario) 
         << scenario.early_stop_beta_start
         << "_d" << scenario.early_stop_beta_step
         << std::defaultfloat;
+  } else if (scenario.early_stop_action_mode == 3) {
+    oss << "_hardMag" << std::fixed << std::setprecision(3)
+        << scenario.early_stop_action_hard_llr_mag
+        << std::defaultfloat;
   }
 }
 
@@ -131,6 +135,12 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
                                 config.early_stop_action_beta_step_candidates,
                                 beta_step)
                           : std::vector<float>{beta_step};
+                  const auto hard_llr_mag_values =
+                      (action_mode == 3)
+                          ? choose_candidates(
+                                config.early_stop_action_hard_llr_mag_candidates,
+                                config.early_stop_action_hard_llr_mag)
+                          : std::vector<float>{config.early_stop_action_hard_llr_mag};
 
                   for (bool v1_require_bch : v1_require_bch_values) {
                     for (bool v1_require_overall : v1_require_overall_values) {
@@ -138,55 +148,59 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
                         for (int v2_unreliable : v2_unreliable_values) {
                           for (float es_beta_start : early_stop_beta_start_values) {
                             for (float es_beta_step : early_stop_beta_step_values) {
-                              for (float ebn0_db : ebn0_candidates) {
-                                for (int bitgen_seed : bitgen_seeds) {
-                                  for (int channel_seed : channel_seeds) {
-                                    SweepScenario scenario;
-                                    scenario.alpha_start = alpha_start;
-                                    scenario.alpha_step = alpha_step;
-                                    scenario.beta_start = beta_start;
-                                    scenario.beta_step = beta_step;
-                                    scenario.chase_L = chase_L;
-                                    scenario.chase_n_test = 1 << chase_L;
-                                    scenario.early_stop_condition_mode = condition_mode;
-                                    scenario.early_stop_action_mode = action_mode;
-                                    scenario.early_stop_cond_v1_require_bch =
-                                        v1_require_bch;
-                                    scenario.early_stop_cond_v1_require_overall =
-                                        v1_require_overall;
-                                    scenario.early_stop_v2_llr_abs_threshold =
-                                        v2_threshold;
-                                    scenario.early_stop_v2_max_unreliable_bits =
-                                        v2_unreliable;
-                                    scenario.early_stop_cond_v2_include_overall =
-                                        config.early_stop_cond_v2_include_overall;
-                                    scenario.bitgen_seed = bitgen_seed;
-                                    scenario.channel_seed = channel_seed;
-                                    scenario.ebn0_db = ebn0_db;
-                                    scenario.alpha_list =
-                                        generate_sequence(alpha_start, alpha_step, len);
-                                    scenario.beta_list =
-                                        generate_sequence(beta_start, beta_step, len);
-                                    if (action_mode == 1) {
-                                      scenario.early_stop_action_sign_beta_list =
-                                          generate_sequence(es_beta_start, es_beta_step, len);
-                                    } else {
-                                      scenario.early_stop_action_sign_beta_list =
-                                          default_action_beta_list(config, scenario, len);
-                                    }
-                                    finalize_beta_lists(scenario);
+                              for (float hard_llr_mag : hard_llr_mag_values) {
+                                for (float ebn0_db : ebn0_candidates) {
+                                  for (int bitgen_seed : bitgen_seeds) {
+                                    for (int channel_seed : channel_seeds) {
+                                      SweepScenario scenario;
+                                      scenario.alpha_start = alpha_start;
+                                      scenario.alpha_step = alpha_step;
+                                      scenario.beta_start = beta_start;
+                                      scenario.beta_step = beta_step;
+                                      scenario.chase_L = chase_L;
+                                      scenario.chase_n_test = 1 << chase_L;
+                                      scenario.early_stop_condition_mode = condition_mode;
+                                      scenario.early_stop_action_mode = action_mode;
+                                      scenario.early_stop_cond_v1_require_bch =
+                                          v1_require_bch;
+                                      scenario.early_stop_cond_v1_require_overall =
+                                          v1_require_overall;
+                                      scenario.early_stop_v2_llr_abs_threshold =
+                                          v2_threshold;
+                                      scenario.early_stop_v2_max_unreliable_bits =
+                                          v2_unreliable;
+                                      scenario.early_stop_cond_v2_include_overall =
+                                          config.early_stop_cond_v2_include_overall;
+                                      scenario.early_stop_action_hard_llr_mag =
+                                          hard_llr_mag;
+                                      scenario.bitgen_seed = bitgen_seed;
+                                      scenario.channel_seed = channel_seed;
+                                      scenario.ebn0_db = ebn0_db;
+                                      scenario.alpha_list =
+                                          generate_sequence(alpha_start, alpha_step, len);
+                                      scenario.beta_list =
+                                          generate_sequence(beta_start, beta_step, len);
+                                      if (action_mode == 1) {
+                                        scenario.early_stop_action_sign_beta_list =
+                                            generate_sequence(es_beta_start, es_beta_step, len);
+                                      } else {
+                                        scenario.early_stop_action_sign_beta_list =
+                                            default_action_beta_list(config, scenario, len);
+                                      }
+                                      finalize_beta_lists(scenario);
 
-                                    std::ostringstream oss;
-                                    oss << std::fixed << std::setprecision(3)
-                                        << "alphaS" << alpha_start << "_d" << alpha_step
-                                        << "_betaS" << beta_start << "_d" << beta_step
-                                        << "_chL" << chase_L;
-                                    append_common_name(oss, scenario);
-                                    oss << "_EbN0_" << ebn0_db
-                                        << "_bitSeed" << bitgen_seed
-                                        << "_chanSeed" << channel_seed;
-                                    scenario.name = oss.str();
-                                    scenarios.push_back(std::move(scenario));
+                                      std::ostringstream oss;
+                                      oss << std::fixed << std::setprecision(3)
+                                          << "alphaS" << alpha_start << "_d" << alpha_step
+                                          << "_betaS" << beta_start << "_d" << beta_step
+                                          << "_chL" << chase_L;
+                                      append_common_name(oss, scenario);
+                                      oss << "_EbN0_" << ebn0_db
+                                          << "_bitSeed" << bitgen_seed
+                                          << "_chanSeed" << channel_seed;
+                                      scenario.name = oss.str();
+                                      scenarios.push_back(std::move(scenario));
+                                    }
                                   }
                                 }
                               }
@@ -241,52 +255,61 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
                 : std::vector<int>{config.early_stop_v2_max_unreliable_bits};
 
         for (int action_mode : action_modes) {
+          const auto hard_llr_mag_values =
+              (action_mode == 3)
+                  ? choose_candidates(
+                        config.early_stop_action_hard_llr_mag_candidates,
+                        config.early_stop_action_hard_llr_mag)
+                  : std::vector<float>{config.early_stop_action_hard_llr_mag};
           for (bool v1_require_bch : v1_require_bch_values) {
             for (bool v1_require_overall : v1_require_overall_values) {
               for (float v2_threshold : v2_threshold_values) {
                 for (int v2_unreliable : v2_unreliable_values) {
-                  for (float ebn0_db : ebn0_candidates) {
-                    for (int bitgen_seed : bitgen_seeds) {
-                      for (int channel_seed : channel_seeds) {
-                        SweepScenario scenario;
-                        scenario.alpha_list = pattern.alpha_list;
-                        scenario.beta_list = pattern.beta_list;
-                        scenario.chase_L = chase_L;
-                        scenario.chase_n_test = 1 << chase_L;
-                        scenario.early_stop_condition_mode = condition_mode;
-                        scenario.early_stop_action_mode = action_mode;
-                        scenario.early_stop_cond_v1_require_bch = v1_require_bch;
-                        scenario.early_stop_cond_v1_require_overall = v1_require_overall;
-                        scenario.early_stop_v2_llr_abs_threshold = v2_threshold;
-                        scenario.early_stop_v2_max_unreliable_bits = v2_unreliable;
-                        scenario.early_stop_cond_v2_include_overall =
-                            config.early_stop_cond_v2_include_overall;
-                        scenario.bitgen_seed = bitgen_seed;
-                        scenario.channel_seed = channel_seed;
-                        scenario.ebn0_db = ebn0_db;
-                        if (action_mode == 1 &&
-                            pattern.early_stop_action_sign_beta_list.size() == len) {
-                          scenario.early_stop_action_sign_beta_list =
-                              pattern.early_stop_action_sign_beta_list;
-                        } else {
-                          scenario.early_stop_action_sign_beta_list =
-                              default_action_beta_list(config, scenario, len);
-                        }
-                        if (!scenario.alpha_list.empty()) {
-                          scenario.alpha_start = scenario.alpha_list.front();
-                          scenario.alpha_step = infer_step(scenario.alpha_list);
-                        }
-                        finalize_beta_lists(scenario);
+                  for (float hard_llr_mag : hard_llr_mag_values) {
+                    for (float ebn0_db : ebn0_candidates) {
+                      for (int bitgen_seed : bitgen_seeds) {
+                        for (int channel_seed : channel_seeds) {
+                          SweepScenario scenario;
+                          scenario.alpha_list = pattern.alpha_list;
+                          scenario.beta_list = pattern.beta_list;
+                          scenario.chase_L = chase_L;
+                          scenario.chase_n_test = 1 << chase_L;
+                          scenario.early_stop_condition_mode = condition_mode;
+                          scenario.early_stop_action_mode = action_mode;
+                          scenario.early_stop_cond_v1_require_bch = v1_require_bch;
+                          scenario.early_stop_cond_v1_require_overall = v1_require_overall;
+                          scenario.early_stop_v2_llr_abs_threshold = v2_threshold;
+                          scenario.early_stop_v2_max_unreliable_bits = v2_unreliable;
+                          scenario.early_stop_cond_v2_include_overall =
+                              config.early_stop_cond_v2_include_overall;
+                          scenario.early_stop_action_hard_llr_mag = hard_llr_mag;
+                          scenario.bitgen_seed = bitgen_seed;
+                          scenario.channel_seed = channel_seed;
+                          scenario.ebn0_db = ebn0_db;
+                          if (action_mode == 1 &&
+                              pattern.early_stop_action_sign_beta_list.size() == len) {
+                            scenario.early_stop_action_sign_beta_list =
+                                pattern.early_stop_action_sign_beta_list;
+                          } else {
+                            scenario.early_stop_action_sign_beta_list =
+                                default_action_beta_list(config, scenario, len);
+                          }
+                          if (!scenario.alpha_list.empty()) {
+                            scenario.alpha_start = scenario.alpha_list.front();
+                            scenario.alpha_step = infer_step(scenario.alpha_list);
+                          }
+                          finalize_beta_lists(scenario);
 
-                        std::ostringstream oss;
-                        oss << base_label
-                            << "_chL" << chase_L;
-                        append_common_name(oss, scenario);
-                        oss << "_EbN0_" << std::fixed << std::setprecision(3) << ebn0_db
-                            << "_bitSeed" << bitgen_seed
-                            << "_chanSeed" << channel_seed;
-                        scenario.name = oss.str();
-                        scenarios.push_back(std::move(scenario));
+                          std::ostringstream oss;
+                          oss << base_label
+                              << "_chL" << chase_L;
+                          append_common_name(oss, scenario);
+                          oss << "_EbN0_" << std::fixed << std::setprecision(3) << ebn0_db
+                              << "_bitSeed" << bitgen_seed
+                              << "_chanSeed" << channel_seed;
+                          scenario.name = oss.str();
+                          scenarios.push_back(std::move(scenario));
+                        }
                       }
                     }
                   }

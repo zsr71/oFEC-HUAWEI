@@ -19,7 +19,7 @@ void decode_plain_qfloat(const DecodeRequest& request, DecodeResult& result) {
   Q::set_clip(clip);
 
   if (!request.quiet) {
-    std::cout << "[INFO] (" << request.label << ") Plain decoder running in qfloat::qfloat<"
+    std::cout << "[INFO] (" << request.label << ") Chase-baseline decoder running in qfloat::qfloat<"
               << NBITS << ">\n";
   }
   auto quantized = qfloat::quantize_matrix_to_qfloat<NBITS>(request.channel_llr, clip); //对channel_llr量化
@@ -59,12 +59,12 @@ void decode_plain_quantized(const DecodeRequest& request, DecodeResult& result) 
     case 14: decode_plain_qfloat<14>(request, result); break;
     case 15: decode_plain_qfloat<15>(request, result); break;
     default:
-      throw std::runtime_error("[ERROR] Unsupported quant_bits for Plain decoder: " +
+      throw std::runtime_error("[ERROR] Unsupported quant_bits for chase_baseline decoder: " +
                                std::to_string(request.quant_bits));
   }
 }
 
-class PlainDecoder final : public IDecoder {
+class ChaseBaselineDecoder final : public IDecoder {
 public:
   DecodeResult decode(const DecodeRequest& request) override {
     DecodeResult result;
@@ -73,7 +73,7 @@ public:
     switch (request.format) {
       case LlrFormat::Float:
         if (!request.quiet) {
-          std::cout << "[INFO] (" << request.label << ") Plain decoder running in FLOAT\n";
+          std::cout << "[INFO] (" << request.label << ") Chase-baseline decoder running in FLOAT\n";
         }
         if (!request.quiet) {
           if (request.dump_quantized_llr) {
@@ -106,8 +106,8 @@ static void ensure_registered() {
   static std::once_flag once;
   std::call_once(once, [] {
     register_decoder_factory([](const std::string& name) -> std::unique_ptr<IDecoder> {
-      if (name == "plain") {
-        return std::make_unique<PlainDecoder>();
+      if (name == "chase_baseline") {
+        return std::make_unique<ChaseBaselineDecoder>();
       }
       return nullptr;
     });
