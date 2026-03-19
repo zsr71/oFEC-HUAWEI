@@ -166,6 +166,8 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
     }
     params.CHASE_L = scenario.chase_L;
     params.CHASE_NTEST = scenario.chase_n_test;
+    params.CHASE_TOPK_KEEP = scenario.chase_topk_keep;
+    params.CHASE_GROUP_MINIMA_BITS = scenario.chase_group_minima_bits;
     params.EARLY_STOP_CONDITION_MODE = scenario.early_stop_condition_mode;
     params.EARLY_STOP_ACTION_MODE = scenario.early_stop_action_mode;
     params.EARLY_STOP_COND_V1_REQUIRE_BCH =
@@ -207,6 +209,7 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
           ScenarioOutput output;
           output.idx = idx;
           output.name = scenario.name;
+          output.decoder_name = scenario.decoder_name;
           output.alpha_list = scenario.alpha_list;
           output.beta_list = scenario.beta_list;
           output.alpha_start = scenario.alpha_start;
@@ -221,6 +224,8 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
               scenario.early_stop_action_hard_llr_mag;
           output.chase_L = scenario.chase_L;
           output.chase_n_test = scenario.chase_n_test;
+          output.chase_topk_keep = scenario.chase_topk_keep;
+          output.chase_group_minima_bits = scenario.chase_group_minima_bits;
           output.early_stop_condition_mode = scenario.early_stop_condition_mode;
           output.early_stop_action_mode = scenario.early_stop_action_mode;
           output.early_stop_cond_v1_require_bch =
@@ -239,6 +244,7 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
 
           newcode::Params local_params = params;
           newcode::PipelineConfig local_cfg = pipeline_cfg;
+          local_cfg.decoder_name = scenario.decoder_name;
           const std::string label =
               stage_tag.empty() ? scenario.name : (scenario.name + "_" + stage_tag);
           output.result =
@@ -331,6 +337,10 @@ int run_sweep(const SweepParameterConfig& config) {
       resolved.early_stop_action_residual_divisor;
   resolved.base_params.EARLY_STOP_ACTION_HARD_LLR_MAG =
       resolved.early_stop_action_hard_llr_mag;
+  resolved.base_params.CHASE_NTEST = resolved.chase_n_test;
+  resolved.base_params.CHASE_TOPK_KEEP = resolved.chase_topk_keep;
+  resolved.base_params.CHASE_GROUP_MINIMA_BITS =
+      resolved.chase_group_minima_bits;
   resolved.base_params.MUX_GROUP_G = resolved.mux_group_g;
   resolved.base_params.MUX_ENABLE_RECONFIG = resolved.mux_enable_reconfig;
   resolved.base_params.MUX_EXTRA_BYPASS_EDGES =
@@ -398,9 +408,39 @@ int run_sweep(const SweepParameterConfig& config) {
     std::cerr << "[ERROR] early_stop_action_hard_llr_mag must be finite\n";
     return 1;
   }
+  if (resolved.chase_topk_keep < 1) {
+    std::cerr << "[ERROR] chase_topk_keep must be >= 1\n";
+    return 1;
+  }
+  if (resolved.chase_n_test < 1) {
+    std::cerr << "[ERROR] chase_n_test must be >= 1\n";
+    return 1;
+  }
+  if (resolved.chase_group_minima_bits < 0) {
+    std::cerr << "[ERROR] chase_group_minima_bits must be >= 0\n";
+    return 1;
+  }
   for (float hard_mag : resolved.early_stop_action_hard_llr_mag_candidates) {
     if (!std::isfinite(hard_mag)) {
       std::cerr << "[ERROR] early_stop_action_hard_llr_mag_candidates must be finite\n";
+      return 1;
+    }
+  }
+  for (int keep : resolved.chase_topk_keep_candidates) {
+    if (keep < 1) {
+      std::cerr << "[ERROR] chase_topk_keep_candidates must be >= 1\n";
+      return 1;
+    }
+  }
+  for (int n_test : resolved.chase_n_test_candidates) {
+    if (n_test < 1) {
+      std::cerr << "[ERROR] chase_n_test_candidates must be >= 1\n";
+      return 1;
+    }
+  }
+  for (int group_bits : resolved.chase_group_minima_bits_candidates) {
+    if (group_bits < 0) {
+      std::cerr << "[ERROR] chase_group_minima_bits_candidates must be >= 0\n";
       return 1;
     }
   }
@@ -491,7 +531,9 @@ int run_sweep(const SweepParameterConfig& config) {
   float best_beta_start = 0.0f;
   float best_beta_step = 0.0f;
   int best_chase_L = cfg.base_params.CHASE_L;
-  int best_chase_n_test = 1 << cfg.base_params.CHASE_L;
+  int best_chase_n_test = cfg.base_params.CHASE_NTEST;
+  int best_chase_topk_keep = cfg.base_params.CHASE_TOPK_KEEP;
+  int best_chase_group_minima_bits = cfg.base_params.CHASE_GROUP_MINIMA_BITS;
   int best_bitgen_seed = cfg.base_params.BITGEN_SEED;
   int best_channel_seed = cfg.base_params.CHANNEL_SEED;
   float best_ebn0_db = !ebn0_values.empty() ? ebn0_values.front() : newcode::DEFAULT_EBN0_DB;
@@ -519,6 +561,7 @@ int run_sweep(const SweepParameterConfig& config) {
 
     std::ostringstream summary;
     summary << "[SUMMARY] " << pack.name
+            << " decoder=" << pack.decoder_name
             << " Pre-FEC BER=" << result.pre_fec.ber
             << " (errs=" << result.pre_fec.errors << "/" << result.pre_fec.total << ")"
             << " | Post-FEC BER=" << result.post_fec.ber
@@ -535,6 +578,8 @@ int run_sweep(const SweepParameterConfig& config) {
             << std::defaultfloat
             << " | CHASE_L=" << pack.chase_L
             << " CHASE_NTEST=" << pack.chase_n_test
+            << " CHASE_TOPK_KEEP=" << pack.chase_topk_keep
+            << " CHASE_GROUP_MINIMA_BITS=" << pack.chase_group_minima_bits
             << " | cond/action=" << pack.early_stop_condition_mode
             << "/" << pack.early_stop_action_mode
             << " | Seeds(bit/channel)=" << pack.bitgen_seed << "/" << pack.channel_seed;
@@ -572,6 +617,8 @@ int run_sweep(const SweepParameterConfig& config) {
       best_beta_step = pack.beta_step;
       best_chase_L = pack.chase_L;
       best_chase_n_test = pack.chase_n_test;
+      best_chase_topk_keep = pack.chase_topk_keep;
+      best_chase_group_minima_bits = pack.chase_group_minima_bits;
       best_bitgen_seed = pack.bitgen_seed;
       best_channel_seed = pack.channel_seed;
       best_ebn0_db = pack.ebn0_db;
@@ -590,6 +637,7 @@ int run_sweep(const SweepParameterConfig& config) {
 
   const auto& best_scenario = scenarios[best_index];
   out << "\n[RESULT] Best scenario: " << best_scenario.name
+      << " decoder=" << best_scenario.decoder_name
       << " with Post-FEC BER=" << best_result.post_fec.ber
       << " (errs=" << best_result.post_fec.errors << "/" << best_result.post_fec.total << ")\n";
   out << std::fixed << std::setprecision(3);
@@ -610,6 +658,9 @@ int run_sweep(const SweepParameterConfig& config) {
   }
   out << "[RESULT] Best CHASE_L/CHASE_NTEST: " << best_chase_L
       << " / " << best_chase_n_test << "\n";
+  out << "[RESULT] Best CHASE_TOPK_KEEP: " << best_chase_topk_keep << "\n";
+  out << "[RESULT] Best CHASE_GROUP_MINIMA_BITS: "
+      << best_chase_group_minima_bits << "\n";
   out << "[RESULT] Best RNG seeds (bit/channel): "
       << best_bitgen_seed << "/" << best_channel_seed << "\n";
 

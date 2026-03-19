@@ -129,6 +129,9 @@ add_library(decoder_plain STATIC
 target_include_directories(decoder_plain PUBLIC ${NEWCODE_INCLUDE})
 target_link_libraries(decoder_plain PUBLIC newcode_frontend)
 target_sources(decoder_plain PRIVATE src/rx/decoder/factories/plain_decoder_factory.cpp)
+target_sources(decoder_plain PRIVATE src/rx/decoder/factories/topk_pruned_decoder_factory.cpp)
+target_sources(decoder_plain PRIVATE src/rx/decoder/factories/global_pair_decoder_factory.cpp)
+target_sources(decoder_plain PRIVATE src/rx/decoder/factories/group_minima_decoder_factory.cpp)
 
 add_library(decoder_ebchPF STATIC
   ${DECODER_EBCHPF_SRCS}

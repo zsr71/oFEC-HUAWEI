@@ -28,14 +28,59 @@ void chase_decode_256_ebchPF(const LLR* Y256,
                              float* Y2_256,
                              const newcode::Params& p);
 
+template<typename LLR>
+void chase_decode_256_topk_pruned(const LLR* Lin256,
+                                  const LLR* Lch256,
+                                  float* Y2_256,
+                                  const newcode::Params& p);
+
+template<typename LLR>
+void chase_decode_256_topk_pruned(const LLR* Y256,
+                                  float* Y2_256,
+                                  const newcode::Params& p);
+
+template<typename LLR>
+void chase_decode_256_global_pair(const LLR* Lin256,
+                                  const LLR* Lch256,
+                                  float* Y2_256,
+                                  const newcode::Params& p);
+
+template<typename LLR>
+void chase_decode_256_global_pair(const LLR* Y256,
+                                  float* Y2_256,
+                                  const newcode::Params& p);
+
+template<typename LLR>
+void chase_decode_256_group_minima(const LLR* Lin256,
+                                   const LLR* Lch256,
+                                   float* Y2_256,
+                                   const newcode::Params& p);
+
+template<typename LLR>
+void chase_decode_256_group_minima(const LLR* Y256,
+                                   float* Y2_256,
+                                   const newcode::Params& p);
+
 // 显式实例化（与你项目中常用 LLR 类型对齐）
 extern template void chase_decode_256_plain<float >(const float*,  const float*,  float*,  const newcode::Params&);
 extern template void chase_decode_256_plain<float >(const float*,  float*,  const newcode::Params&);    
+extern template void chase_decode_256_topk_pruned<float >(const float*,  const float*,  float*,  const newcode::Params&);
+extern template void chase_decode_256_topk_pruned<float >(const float*,  float*,  const newcode::Params&);
+extern template void chase_decode_256_global_pair<float >(const float*,  const float*,  float*,  const newcode::Params&);
+extern template void chase_decode_256_global_pair<float >(const float*,  float*,  const newcode::Params&);
+extern template void chase_decode_256_group_minima<float >(const float*,  const float*,  float*,  const newcode::Params&);
+extern template void chase_decode_256_group_minima<float >(const float*,  float*,  const newcode::Params&);
 #define DECLARE_CHASE256_QFLOAT(N) \
 extern template void chase_decode_256_plain<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const newcode::Params&); \
 extern template void chase_decode_256_plain<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, float*, const newcode::Params&); \
 extern template void chase_decode_256_ebchPF<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const newcode::Params&); \
-extern template void chase_decode_256_ebchPF<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, float*, const newcode::Params&);
+extern template void chase_decode_256_ebchPF<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, float*, const newcode::Params&); \
+extern template void chase_decode_256_topk_pruned<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const newcode::Params&); \
+extern template void chase_decode_256_topk_pruned<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, float*, const newcode::Params&); \
+extern template void chase_decode_256_global_pair<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const newcode::Params&); \
+extern template void chase_decode_256_global_pair<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, float*, const newcode::Params&); \
+extern template void chase_decode_256_group_minima<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, const qfloat::qfloat<N>*, float*, const newcode::Params&); \
+extern template void chase_decode_256_group_minima<qfloat::qfloat<N>>(const qfloat::qfloat<N>*, float*, const newcode::Params&);
 
 DECLARE_CHASE256_QFLOAT(2)
 DECLARE_CHASE256_QFLOAT(3)

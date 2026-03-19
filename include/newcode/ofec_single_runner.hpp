@@ -17,6 +17,9 @@ struct Config {
   std::string label;
   float ebn0_db;
   int chaseL_override;
+  int chase_n_test_override = -1;
+  int chase_topk_keep = 8;
+  int chase_group_minima_bits = 3;
   bool normalize_extrinsic;
   unsigned bits_per_symbol;
   int bitgen_seed;

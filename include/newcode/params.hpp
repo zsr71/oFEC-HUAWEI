@@ -44,6 +44,8 @@ struct Params {
   // ===== Chase-Pyndiah 控制参数 =====
   int CHASE_L     = 6;  // 选取“最不可靠”位置的数量
   int CHASE_NTEST = 64; // 生成的测试向量数量（<= 2^CHASE_L）
+  int CHASE_TOPK_KEEP = 8; // chase_topk_pruned 保留参与 ML/外信息搜索的 Top-K 候选数
+  int CHASE_GROUP_MINIMA_BITS = 3; // chase_group_minima 按前多少个 test-pattern 位做分组
   int CHASE_SBR   = 2;  // 每个 tile 底部解码的子块行数（1 或 2）
   bool ENABLE_EARLY_STOP = true;  // 是否启用 tile/row 级早停判定
   int EARLY_STOP_CONDITION_MODE = 1;  // 1=detect_tile_early_stop_v1, 2=detect_tile_early_stop_v2
@@ -147,6 +149,8 @@ struct Params {
            (TILE_OVERLAP_BR < TILE_HEIGHT_BR) &&
            (CHASE_L >= 1) &&
            (CHASE_NTEST >= 1) &&
+           (CHASE_TOPK_KEEP >= 1) &&
+           (CHASE_GROUP_MINIMA_BITS >= 0) &&
            (CHASE_SBR == 1 || CHASE_SBR == 2);
   }
 };

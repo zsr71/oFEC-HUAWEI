@@ -27,6 +27,8 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       cfg.early_stop_action_residual_divisor;
   params.EARLY_STOP_ACTION_HARD_LLR_MAG =
       cfg.early_stop_action_hard_llr_mag;
+  params.CHASE_TOPK_KEEP = cfg.chase_topk_keep;
+  params.CHASE_GROUP_MINIMA_BITS = cfg.chase_group_minima_bits;
   params.debug_trace = cfg.debug_trace;
   params.LLR_BITS = cfg.llr_bits;
   params.DUMP_WORK_LLR = cfg.dump_work_llr;
@@ -62,9 +64,25 @@ std::optional<newcode::Params> build_params(const Config& cfg,
     log << "[ERROR] early_stop_action_hard_llr_mag 必须是有限数\n";
     return std::nullopt;
   }
+  if (cfg.chase_topk_keep < 1) {
+    log << "[ERROR] chase_topk_keep 必须 >= 1\n";
+    return std::nullopt;
+  }
+  if (cfg.chase_n_test_override == 0 || cfg.chase_n_test_override < -1) {
+    log << "[ERROR] chase_n_test_override 必须是 -1 或 >= 1\n";
+    return std::nullopt;
+  }
+  if (cfg.chase_group_minima_bits < 0) {
+    log << "[ERROR] chase_group_minima_bits 必须 >= 0\n";
+    return std::nullopt;
+  }
   params.LLR_CLIP_RATIO = std::clamp(cfg.quant_clip_ratio, 0.0f, 1.0f);
   if (cfg.chaseL_override >= 0) {
     params.CHASE_L = cfg.chaseL_override;
+  }
+  if (cfg.chase_n_test_override >= 0) {
+    params.CHASE_NTEST = cfg.chase_n_test_override;
+  } else if (cfg.chaseL_override >= 0) {
     params.CHASE_NTEST = 1 << params.CHASE_L;
   }
 

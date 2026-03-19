@@ -45,6 +45,9 @@ void ensure_decoders_registered() {
   std::call_once(once, [] {
     register_decoder_plain_factory();
     register_decoder_ebchPF_factory();
+    register_decoder_topk_pruned_factory();
+    register_decoder_global_pair_factory();
+    register_decoder_group_minima_factory();
   });
 }
 

@@ -22,6 +22,7 @@ struct SweepParameterConfig {
   newcode::Params base_params{};
   std::string interleaver_name = "identity";
   std::string decoder_name = "chase_baseline";
+  std::vector<std::string> decoder_name_candidates;
   bool enable_early_stop = true;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
@@ -34,6 +35,9 @@ struct SweepParameterConfig {
       std::numeric_limits<float>::quiet_NaN();
   float early_stop_action_residual_divisor = 1.0f;
   float early_stop_action_hard_llr_mag = 1.0f;
+  int chase_n_test = 64;
+  int chase_topk_keep = 8;
+  int chase_group_minima_bits = 3;
   bool normalize_extrinsic = true;
   unsigned bits_per_symbol = 2;
 
@@ -55,6 +59,9 @@ struct SweepParameterConfig {
   bool mux_enable_reconfig = false;
   std::vector<newcode::mux::MuxEdge> mux_extra_bypass_edges;
   std::vector<int> chase_l_candidates;
+  std::vector<int> chase_n_test_candidates;
+  std::vector<int> chase_topk_keep_candidates;
+  std::vector<int> chase_group_minima_bits_candidates;
 
   int bitgen_seed_count = 0;
   int channel_seed_count = 0;

@@ -27,6 +27,7 @@ constexpr float  kKeepRatio      = 0.20f;
 
 static constexpr const char* kInterleaverName          = "identity";
 static constexpr const char* kDecoderName             = "chase_baseline";
+static constexpr int         kChaseTopkKeep           = 8;
 static constexpr unsigned    kBitsPerSymbol           = 1;
 static constexpr bool        kNormalizeExtrinsic      = true;
 static constexpr bool        kGenerateRandomBits      = true;
@@ -134,6 +135,7 @@ ofec_sweep::SweepParameterConfig build_base_config() {
 
   config.interleaver_name = kInterleaverName;
   config.decoder_name = kDecoderName;
+  config.chase_topk_keep = kChaseTopkKeep;
   config.bits_per_symbol = kBitsPerSymbol;
   config.normalize_extrinsic = kNormalizeExtrinsic;
   config.generate_random_bits = kGenerateRandomBits;
@@ -164,6 +166,7 @@ ofec_sweep::detail::SweepScenario make_scenario(
     const ofec_sweep::SweepParameterConfig& config) {
   ofec_sweep::detail::SweepScenario sc;
   sc.name = pattern.label;
+  sc.decoder_name = config.decoder_name;
   sc.alpha_list = pattern.alpha_list;
   sc.beta_list = pattern.beta_list;
   if (!sc.alpha_list.empty()) sc.alpha_start = sc.alpha_list.front();
@@ -176,6 +179,7 @@ ofec_sweep::detail::SweepScenario make_scenario(
   sc.gamma_beta = shape.gamma_beta;
   sc.chase_L = config.base_params.CHASE_L;
   sc.chase_n_test = 1 << sc.chase_L;
+  sc.chase_topk_keep = config.chase_topk_keep;
   sc.bitgen_seed = config.base_params.BITGEN_SEED;
   sc.channel_seed = config.base_params.CHANNEL_SEED;
   sc.ebn0_db = kEvalEbN0;

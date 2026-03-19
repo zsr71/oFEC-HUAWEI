@@ -30,15 +30,66 @@ matrix::Matrix<LLR> ofec_decode_llr_ebchPF(const matrix::Matrix<LLR>& llr_mat, c
                                       &chase::Decoder_Core_ebchPF<CoreLLR>);
 }
 
+template <typename LLR>
+matrix::Matrix<LLR> ofec_decode_llr_topk_pruned(const matrix::Matrix<LLR>& llr_mat,
+                                        const newcode::Params& p,
+                                        std::vector<TileEarlyStopCounter>* tile_stats,
+                                        bool normalize_extrinsic,
+                                        const matrix::Matrix<float>* tx_llr_ref)
+{
+  using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
+  return detail::ofec_decode_llr_impl(llr_mat, p, tile_stats, normalize_extrinsic,
+                                      tx_llr_ref,
+                                      &chase::Decoder_Core_topk_pruned<CoreLLR>);
+}
+
+template <typename LLR>
+matrix::Matrix<LLR> ofec_decode_llr_global_pair(const matrix::Matrix<LLR>& llr_mat,
+                                                const newcode::Params& p,
+                                                std::vector<TileEarlyStopCounter>* tile_stats,
+                                                bool normalize_extrinsic,
+                                                const matrix::Matrix<float>* tx_llr_ref)
+{
+  using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
+  return detail::ofec_decode_llr_impl(llr_mat, p, tile_stats, normalize_extrinsic,
+                                      tx_llr_ref,
+                                      &chase::Decoder_Core_global_pair<CoreLLR>);
+}
+
+template <typename LLR>
+matrix::Matrix<LLR> ofec_decode_llr_group_minima(const matrix::Matrix<LLR>& llr_mat,
+                                                 const newcode::Params& p,
+                                                 std::vector<TileEarlyStopCounter>* tile_stats,
+                                                 bool normalize_extrinsic,
+                                                 const matrix::Matrix<float>* tx_llr_ref)
+{
+  using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
+  return detail::ofec_decode_llr_impl(llr_mat, p, tile_stats, normalize_extrinsic,
+                                      tx_llr_ref,
+                                      &chase::Decoder_Core_group_minima<CoreLLR>);
+}
+
 // ===== 显式实例化 =====
 template matrix::Matrix<float>  ofec_decode_llr_plain<float >(const matrix::Matrix<float>&,  const newcode::Params&, std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
 template matrix::Matrix<float>  ofec_decode_llr_ebchPF<float >(const matrix::Matrix<float>&,  const newcode::Params&, std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
+template matrix::Matrix<float>  ofec_decode_llr_topk_pruned<float >(const matrix::Matrix<float>&,  const newcode::Params&, std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
+template matrix::Matrix<float>  ofec_decode_llr_global_pair<float >(const matrix::Matrix<float>&,  const newcode::Params&, std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
+template matrix::Matrix<float>  ofec_decode_llr_group_minima<float >(const matrix::Matrix<float>&,  const newcode::Params&, std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
 
 #define INSTANTIATE_DECODE_QFLOAT(N) \
 template matrix::Matrix<qfloat::qfloat<N>> ofec_decode_llr_plain<qfloat::qfloat<N>>( \
     const matrix::Matrix<qfloat::qfloat<N>>&, const newcode::Params&, \
     std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*); \
 template matrix::Matrix<qfloat::qfloat<N>> ofec_decode_llr_ebchPF<qfloat::qfloat<N>>( \
+    const matrix::Matrix<qfloat::qfloat<N>>&, const newcode::Params&, \
+    std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*); \
+template matrix::Matrix<qfloat::qfloat<N>> ofec_decode_llr_topk_pruned<qfloat::qfloat<N>>( \
+    const matrix::Matrix<qfloat::qfloat<N>>&, const newcode::Params&, \
+    std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*); \
+template matrix::Matrix<qfloat::qfloat<N>> ofec_decode_llr_global_pair<qfloat::qfloat<N>>( \
+    const matrix::Matrix<qfloat::qfloat<N>>&, const newcode::Params&, \
+    std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*); \
+template matrix::Matrix<qfloat::qfloat<N>> ofec_decode_llr_group_minima<qfloat::qfloat<N>>( \
     const matrix::Matrix<qfloat::qfloat<N>>&, const newcode::Params&, \
     std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
 INSTANTIATE_DECODE_QFLOAT(2)

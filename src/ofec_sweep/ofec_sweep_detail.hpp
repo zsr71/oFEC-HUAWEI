@@ -14,6 +14,7 @@ namespace detail {
 
 struct SweepScenario {
   std::string name;
+  std::string decoder_name;
   std::vector<float> alpha_list;
   std::vector<float> beta_list;
   std::vector<float> early_stop_action_sign_beta_list;
@@ -32,6 +33,8 @@ struct SweepScenario {
   float gamma_beta = 1.0f;
   int chase_L = 0;
   int chase_n_test = 0;
+  int chase_topk_keep = 8;
+  int chase_group_minima_bits = 3;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
   bool early_stop_cond_v1_require_bch = true;
@@ -47,6 +50,7 @@ struct SweepScenario {
 struct ScenarioOutput {
   std::size_t idx{};
   std::string name;
+  std::string decoder_name;
   std::vector<float> alpha_list;
   std::vector<float> beta_list;
   std::vector<float> early_stop_action_sign_beta_list;
@@ -59,6 +63,8 @@ struct ScenarioOutput {
   float early_stop_action_hard_llr_mag = 1.0f;
   int chase_L = 0;
   int chase_n_test = 0;
+  int chase_topk_keep = 8;
+  int chase_group_minima_bits = 3;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
   bool early_stop_cond_v1_require_bch = true;

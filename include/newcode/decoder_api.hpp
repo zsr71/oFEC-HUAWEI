@@ -68,5 +68,8 @@ std::unique_ptr<IDecoder> make_decoder(const std::string& name);
 // Built-in decoder registration hooks (implemented by each decoder module)
 void register_decoder_plain_factory();
 void register_decoder_ebchPF_factory();
+void register_decoder_topk_pruned_factory();
+void register_decoder_global_pair_factory();
+void register_decoder_group_minima_factory();
 
 } // namespace newcode

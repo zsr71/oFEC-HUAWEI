@@ -8,7 +8,8 @@
 
 // 基础运行入口
 static constexpr const char* kInterleaverName               = "identity"; // 交织器名称，identity 表示不改变顺序
-static constexpr const char* kDecoderName                   = "chase_baseline"; // 解码器名称：chase_baseline=基线 Chase，chase_overall_parity_search=把 overall parity 也纳入搜索的变体
+static constexpr const char* kDecoderName                   = "chase_baseline"; // 解码器名称：chase_baseline=逐 bit 搜索 Cplus/Cminus 的基线 Chase；chase_topk_pruned=Top-K 裁剪版（pruned=裁剪，只保留前 K 个 good 候选）；chase_global_pair=全局固定一对 best/second 来算所有 bit 的可靠度；chase_group_minima=分组组内最优版（minima=每组里度量最小/score 最大的代表）；chase_overall_parity_search=把 overall parity 也纳入搜索的变体
+static const std::vector<const char*> kDecoderNameCandidates = {};         // decoder_name 扫描候选，空表示只跑固定解码器；非空时会优先按这里展开多个解码方法
 
 // 信道与量化口径
 static constexpr unsigned    kBitsPerSymbol                 = 1;          // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
@@ -49,6 +50,13 @@ static const std::vector<float> kAlphaStepCandidates                 = utils::li
 static const std::vector<float> kBetaStartCandidates                 = utils::linspace(0.0f, 0.2f, 2); // Chase beta 起点候选
 static const std::vector<float> kBetaStepCandidates                  = utils::linspace(0.0f, 0.2f, 2); // Chase beta 步进候选
 static const std::vector<int>   kChaseLCandidates                    = {6};                             // Chase L 候选列表
+static constexpr int            kChaseNTest                          = 64;                              // Chase 测试序列数量固定值
+static const std::vector<int>   kChaseNTestCandidates                = {};                              // Chase 测试序列数量扫描候选，空表示沿用固定值
+
+static constexpr int            kChaseTopkKeep                       = 8;                               // chase_topk_pruned 的默认 Top-K 保留数；只对“裁剪版”解码器生效
+static const std::vector<int>   kChaseTopkKeepCandidates             = {};                              // chase_topk_pruned 的 Top-K 扫描候选，空表示沿用固定值
+static constexpr int            kChaseGroupMinimaBits                = 3;                               // chase_group_minima 按前多少个 test-pattern 位分组；取 3 时对应 2^3=8 个组
+static const std::vector<int>   kChaseGroupMinimaBitsCandidates      = {};                              // chase_group_minima 分组位数扫描候选，空表示沿用固定值
 
 // 早停条件 / 动作模式扫描候选
 static const std::vector<int>   kEarlyStopConditionCandidates        = {1, 2};                          // 早停条件候选列表
@@ -102,6 +110,11 @@ int main() {
   // 基础链路配置
   config.interleaver_name = kInterleaverName;
   config.decoder_name = kDecoderName;
+  for (const char* decoder_name : kDecoderNameCandidates) {
+    if (decoder_name && decoder_name[0] != '\0') {
+      config.decoder_name_candidates.emplace_back(decoder_name);
+    }
+  }
   config.bits_per_symbol = kBitsPerSymbol;
   config.normalize_extrinsic = kNormalizeExtrinsic;
   config.generate_random_bits = kGenerateRandomBits;
@@ -121,12 +134,18 @@ int main() {
   config.early_stop_cond_v2_include_overall = kEarlyStopCondV2IncludeOverall;
   config.early_stop_action_residual_divisor = kEarlyStopActionResidualDivisor;
   config.early_stop_action_hard_llr_mag = kEarlyStopActionHardLlrMag;
+  config.chase_n_test = kChaseNTest;
+  config.chase_topk_keep = kChaseTopkKeep;
+  config.chase_group_minima_bits = kChaseGroupMinimaBits;
 
   // 扫描候选：Chase / 外信息
   config.alpha_start_candidates = kAlphaStartCandidates;
   config.alpha_step_candidates = kAlphaStepCandidates;
   config.beta_start_candidates = kBetaStartCandidates;
   config.beta_step_candidates = kBetaStepCandidates;
+  config.chase_n_test_candidates = kChaseNTestCandidates;
+  config.chase_topk_keep_candidates = kChaseTopkKeepCandidates;
+  config.chase_group_minima_bits_candidates = kChaseGroupMinimaBitsCandidates;
 
   // 扫描候选：early-stop 动作 beta
   config.early_stop_action_beta_start_candidates = kEarlyStopActionBetaStartCandidates;

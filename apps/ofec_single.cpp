@@ -35,7 +35,10 @@ static constexpr float       kQuantClipRatio = 0.5f;   // 动态裁剪比例，0
 
 // 解码主参数
 static constexpr const char* kInterleaverName          = "identity"; // 交织器名称，identity 表示不改变比特顺序
-static constexpr const char* kDecoderName              = "chase_baseline"; // 解码器名称：chase_baseline=基线 Chase，chase_overall_parity_search=把 overall parity 也纳入搜索的变体
+static constexpr const char* kDecoderName              = "chase_baseline"; // 解码器名称：chase_baseline=逐 bit 搜索 Cplus/Cminus 的基线 Chase；chase_topk_pruned=Top-K 裁剪版（pruned=裁剪，只保留前 K 个 good 候选参与后续外信息计算）；chase_global_pair=全局固定一对 best/second 来计算各 bit 可靠度；chase_group_minima=分组组内最优版（minima=各组里度量最小/score 最大的代表候选）；chase_overall_parity_search=把 overall parity 也纳入搜索的变体
+static constexpr int         kChaseNTestOverride       = -1;               // Chase 测试序列数量，-1 表示默认按 2^L 生成
+static constexpr int         kChaseTopkKeep            = 8;                // chase_topk_pruned 中保留参与 ML/外信息计算的 Top-K 候选数
+static constexpr int         kChaseGroupMinimaBits     = 3;                // chase_group_minima 里按前多少个 test-pattern 位分组；例如取 3 时会分成 2^3=8 组，并在每组里选一个组内最优 good 候选
 static constexpr bool        kNormalizeExtrinsic       = false;      // 是否对 Chase 输出的 extrinsic 做归一化
 static constexpr bool        kNormalizeKnownPrefixTail = false;      // 是否对 known-prefix 之后的尾部 LLR 做归一化
 
@@ -124,6 +127,9 @@ int main() {
     .label = kLabel,
     .ebn0_db = kEbN0_db,
     .chaseL_override = kChaseL_override,
+    .chase_n_test_override = kChaseNTestOverride,
+    .chase_topk_keep = kChaseTopkKeep,
+    .chase_group_minima_bits = kChaseGroupMinimaBits,
     .normalize_extrinsic = kNormalizeExtrinsic,
     .bits_per_symbol = kBitsPerSymbol,
     .bitgen_seed = kBitgenSeed,

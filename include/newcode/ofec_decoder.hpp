@@ -23,7 +23,7 @@ struct TileProcessResult {
   std::size_t rows_total = 0;
 };
 
-// 顶层解码（plain / ebchPF 两个变体分别导出）
+// 顶层解码（不同 Chase 变体分别导出）
 template <typename LLR>
 matrix::Matrix<LLR> ofec_decode_llr_plain(const matrix::Matrix<LLR>& llr_mat, const Params& p,
                                   std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
@@ -35,6 +35,24 @@ matrix::Matrix<LLR> ofec_decode_llr_ebchPF(const matrix::Matrix<LLR>& llr_mat, c
                                    std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
                                    bool normalize_extrinsic = true,
                                    const matrix::Matrix<float>* tx_llr_ref = nullptr);
+
+template <typename LLR>
+matrix::Matrix<LLR> ofec_decode_llr_topk_pruned(const matrix::Matrix<LLR>& llr_mat, const Params& p,
+                                        std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
+                                        bool normalize_extrinsic = true,
+                                        const matrix::Matrix<float>* tx_llr_ref = nullptr);
+
+template <typename LLR>
+matrix::Matrix<LLR> ofec_decode_llr_global_pair(const matrix::Matrix<LLR>& llr_mat, const Params& p,
+                                                std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
+                                                bool normalize_extrinsic = true,
+                                                const matrix::Matrix<float>* tx_llr_ref = nullptr);
+
+template <typename LLR>
+matrix::Matrix<LLR> ofec_decode_llr_group_minima(const matrix::Matrix<LLR>& llr_mat, const Params& p,
+                                                 std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
+                                                 bool normalize_extrinsic = true,
+                                                 const matrix::Matrix<float>* tx_llr_ref = nullptr);
 
 // 窗口处理：对 work_llr 的 [win_start, win_end] 做一轮（或多轮）tile 扫描（就地修改）
 template <typename LLR>
@@ -54,6 +72,33 @@ void process_window_ebchPF(matrix::Matrix<LLR>& work_llr,
                            std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
                            bool normalize_extrinsic = true,
                            const matrix::Matrix<float>* tx_llr_ref = nullptr);
+
+template <typename LLR>
+void process_window_topk_pruned(matrix::Matrix<LLR>& work_llr,
+                                const matrix::Matrix<LLR>& channel_llr,
+                                std::size_t win_start, std::size_t win_end, const Params& p,
+                                std::size_t tile_height_rows, std::size_t tile_stride_rows, std::size_t TILES_PER_WIN,
+                                std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
+                                bool normalize_extrinsic = true,
+                                const matrix::Matrix<float>* tx_llr_ref = nullptr);
+
+template <typename LLR>
+void process_window_global_pair(matrix::Matrix<LLR>& work_llr,
+                                const matrix::Matrix<LLR>& channel_llr,
+                                std::size_t win_start, std::size_t win_end, const Params& p,
+                                std::size_t tile_height_rows, std::size_t tile_stride_rows, std::size_t TILES_PER_WIN,
+                                std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
+                                bool normalize_extrinsic = true,
+                                const matrix::Matrix<float>* tx_llr_ref = nullptr);
+
+template <typename LLR>
+void process_window_group_minima(matrix::Matrix<LLR>& work_llr,
+                                 const matrix::Matrix<LLR>& channel_llr,
+                                 std::size_t win_start, std::size_t win_end, const Params& p,
+                                 std::size_t tile_height_rows, std::size_t tile_stride_rows, std::size_t TILES_PER_WIN,
+                                 std::vector<TileEarlyStopCounter>* tile_stats = nullptr,
+                                 bool normalize_extrinsic = true,
+                                 const matrix::Matrix<float>* tx_llr_ref = nullptr);
 
 template <typename LLR>
 inline void process_window(matrix::Matrix<LLR>& work_llr,
@@ -89,6 +134,33 @@ TileProcessResult<LLR> process_tile_ebchPF(const matrix::Matrix<LLR>& tile_in,
                                           const matrix::Matrix<float>* tx_llr_ref = nullptr);
 
 template <typename LLR>
+TileProcessResult<LLR> process_tile_topk_pruned(const matrix::Matrix<LLR>& tile_in,
+                                                const matrix::Matrix<LLR>& ch_tile,
+                                                const Params& p,
+                                                std::size_t tile_top_row_global,
+                                                bool use_hard_decode,
+                                                bool normalize_extrinsic,
+                                                const matrix::Matrix<float>* tx_llr_ref = nullptr);
+
+template <typename LLR>
+TileProcessResult<LLR> process_tile_global_pair(const matrix::Matrix<LLR>& tile_in,
+                                                const matrix::Matrix<LLR>& ch_tile,
+                                                const Params& p,
+                                                std::size_t tile_top_row_global,
+                                                bool use_hard_decode,
+                                                bool normalize_extrinsic,
+                                                const matrix::Matrix<float>* tx_llr_ref = nullptr);
+
+template <typename LLR>
+TileProcessResult<LLR> process_tile_group_minima(const matrix::Matrix<LLR>& tile_in,
+                                                 const matrix::Matrix<LLR>& ch_tile,
+                                                 const Params& p,
+                                                 std::size_t tile_top_row_global,
+                                                 bool use_hard_decode,
+                                                 bool normalize_extrinsic,
+                                                 const matrix::Matrix<float>* tx_llr_ref = nullptr);
+
+template <typename LLR>
 inline TileProcessResult<LLR> process_tile(const matrix::Matrix<LLR>& tile_in,
                                            const matrix::Matrix<LLR>& ch_tile,
                                            const Params& p,
@@ -106,6 +178,9 @@ inline TileProcessResult<LLR> process_tile(const matrix::Matrix<LLR>& tile_in,
 extern template matrix::Matrix<float>  ofec_decode_llr_plain<float >(const matrix::Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
 
 extern template matrix::Matrix<float>  ofec_decode_llr_ebchPF<float >(const matrix::Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
+extern template matrix::Matrix<float>  ofec_decode_llr_topk_pruned<float >(const matrix::Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
+extern template matrix::Matrix<float>  ofec_decode_llr_global_pair<float >(const matrix::Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
+extern template matrix::Matrix<float>  ofec_decode_llr_group_minima<float >(const matrix::Matrix<float>&,  const Params&, std::vector<TileEarlyStopCounter>*, bool, const matrix::Matrix<float>*);
 
 extern template void process_window_plain<float >(matrix::Matrix<float>&,  const matrix::Matrix<float>&,
                                                   std::size_t, std::size_t, const Params&,
@@ -117,6 +192,21 @@ extern template void process_window_ebchPF<float >(matrix::Matrix<float>&,  cons
                                                   std::size_t, std::size_t, std::size_t,
                                                   std::vector<TileEarlyStopCounter>*, bool,
                                                   const matrix::Matrix<float>*);
+extern template void process_window_topk_pruned<float >(matrix::Matrix<float>&,  const matrix::Matrix<float>&,
+                                                         std::size_t, std::size_t, const Params&,
+                                                         std::size_t, std::size_t, std::size_t,
+                                                         std::vector<TileEarlyStopCounter>*, bool,
+                                                         const matrix::Matrix<float>*);
+extern template void process_window_global_pair<float >(matrix::Matrix<float>&,  const matrix::Matrix<float>&,
+                                                        std::size_t, std::size_t, const Params&,
+                                                        std::size_t, std::size_t, std::size_t,
+                                                        std::vector<TileEarlyStopCounter>*, bool,
+                                                        const matrix::Matrix<float>*);
+extern template void process_window_group_minima<float >(matrix::Matrix<float>&,  const matrix::Matrix<float>&,
+                                                         std::size_t, std::size_t, const Params&,
+                                                         std::size_t, std::size_t, std::size_t,
+                                                         std::vector<TileEarlyStopCounter>*, bool,
+                                                         const matrix::Matrix<float>*);
 extern template TileProcessResult<float>  process_tile_plain<float >(const matrix::Matrix<float>&,  const matrix::Matrix<float>&,
                                                                      const Params&, std::size_t, bool, bool,
                                                                      const matrix::Matrix<float>*);
@@ -124,6 +214,15 @@ extern template TileProcessResult<float>  process_tile_plain<float >(const matri
 extern template TileProcessResult<float>  process_tile_ebchPF<float >(const matrix::Matrix<float>&,  const matrix::Matrix<float>&,
                                                                       const Params&, std::size_t, bool, bool,
                                                                       const matrix::Matrix<float>*);
+extern template TileProcessResult<float>  process_tile_topk_pruned<float >(const matrix::Matrix<float>&,  const matrix::Matrix<float>&,
+                                                                           const Params&, std::size_t, bool, bool,
+                                                                           const matrix::Matrix<float>*);
+extern template TileProcessResult<float>  process_tile_global_pair<float >(const matrix::Matrix<float>&,  const matrix::Matrix<float>&,
+                                                                           const Params&, std::size_t, bool, bool,
+                                                                           const matrix::Matrix<float>*);
+extern template TileProcessResult<float>  process_tile_group_minima<float >(const matrix::Matrix<float>&,  const matrix::Matrix<float>&,
+                                                                            const Params&, std::size_t, bool, bool,
+                                                                            const matrix::Matrix<float>*);
 
 
 // qfloat 量化类型（按需开启）
@@ -140,6 +239,18 @@ extern template matrix::Matrix<qfloat::qfloat<4>> ofec_decode_llr_ebchPF<qfloat:
 extern template matrix::Matrix<qfloat::qfloat<5>> ofec_decode_llr_ebchPF<qfloat::qfloat<5>>(const matrix::Matrix<qfloat::qfloat<5>>&,
                                                                                       const Params&, std::vector<TileEarlyStopCounter>*, bool,
                                                                                       const matrix::Matrix<float>*);
+extern template matrix::Matrix<qfloat::qfloat<4>> ofec_decode_llr_topk_pruned<qfloat::qfloat<4>>(const matrix::Matrix<qfloat::qfloat<4>>&,
+                                                                                                   const Params&, std::vector<TileEarlyStopCounter>*, bool,
+                                                                                                   const matrix::Matrix<float>*);
+extern template matrix::Matrix<qfloat::qfloat<5>> ofec_decode_llr_topk_pruned<qfloat::qfloat<5>>(const matrix::Matrix<qfloat::qfloat<5>>&,
+                                                                                                   const Params&, std::vector<TileEarlyStopCounter>*, bool,
+                                                                                                   const matrix::Matrix<float>*);
+extern template matrix::Matrix<qfloat::qfloat<4>> ofec_decode_llr_group_minima<qfloat::qfloat<4>>(const matrix::Matrix<qfloat::qfloat<4>>&,
+                                                                                                    const Params&, std::vector<TileEarlyStopCounter>*, bool,
+                                                                                                    const matrix::Matrix<float>*);
+extern template matrix::Matrix<qfloat::qfloat<5>> ofec_decode_llr_group_minima<qfloat::qfloat<5>>(const matrix::Matrix<qfloat::qfloat<5>>&,
+                                                                                                    const Params&, std::vector<TileEarlyStopCounter>*, bool,
+                                                                                                    const matrix::Matrix<float>*);
 
 
 extern template void process_window<qfloat::qfloat<4>>(matrix::Matrix<qfloat::qfloat<4>>&,
@@ -191,6 +302,30 @@ extern template void process_window_ebchPF<qfloat::qfloat<5>>(matrix::Matrix<qfl
                                                               std::size_t, std::size_t, std::size_t,
                                                               std::vector<TileEarlyStopCounter>*, bool,
                                                               const matrix::Matrix<float>*);
+extern template void process_window_topk_pruned<qfloat::qfloat<4>>(matrix::Matrix<qfloat::qfloat<4>>&,
+                                                                    const matrix::Matrix<qfloat::qfloat<4>>&,
+                                                                    std::size_t, std::size_t, const Params&,
+                                                                    std::size_t, std::size_t, std::size_t,
+                                                                    std::vector<TileEarlyStopCounter>*, bool,
+                                                                    const matrix::Matrix<float>*);
+extern template void process_window_topk_pruned<qfloat::qfloat<5>>(matrix::Matrix<qfloat::qfloat<5>>&,
+                                                                    const matrix::Matrix<qfloat::qfloat<5>>&,
+                                                                    std::size_t, std::size_t, const Params&,
+                                                                    std::size_t, std::size_t, std::size_t,
+                                                                    std::vector<TileEarlyStopCounter>*, bool,
+                                                                    const matrix::Matrix<float>*);
+extern template void process_window_group_minima<qfloat::qfloat<4>>(matrix::Matrix<qfloat::qfloat<4>>&,
+                                                                     const matrix::Matrix<qfloat::qfloat<4>>&,
+                                                                     std::size_t, std::size_t, const Params&,
+                                                                     std::size_t, std::size_t, std::size_t,
+                                                                     std::vector<TileEarlyStopCounter>*, bool,
+                                                                     const matrix::Matrix<float>*);
+extern template void process_window_group_minima<qfloat::qfloat<5>>(matrix::Matrix<qfloat::qfloat<5>>&,
+                                                                     const matrix::Matrix<qfloat::qfloat<5>>&,
+                                                                     std::size_t, std::size_t, const Params&,
+                                                                     std::size_t, std::size_t, std::size_t,
+                                                                     std::vector<TileEarlyStopCounter>*, bool,
+                                                                     const matrix::Matrix<float>*);
 extern template TileProcessResult<qfloat::qfloat<4>> process_tile_plain<qfloat::qfloat<4>>(const matrix::Matrix<qfloat::qfloat<4>>&,
                                                                                              const matrix::Matrix<qfloat::qfloat<4>>&,
                                                                                              const Params&, std::size_t, bool, bool,
@@ -207,4 +342,20 @@ extern template TileProcessResult<qfloat::qfloat<5>> process_tile_ebchPF<qfloat:
                                                                                               const matrix::Matrix<qfloat::qfloat<5>>&,
                                                                                               const Params&, std::size_t, bool, bool,
                                                                                               const matrix::Matrix<float>*);
+extern template TileProcessResult<qfloat::qfloat<4>> process_tile_topk_pruned<qfloat::qfloat<4>>(const matrix::Matrix<qfloat::qfloat<4>>&,
+                                                                                                   const matrix::Matrix<qfloat::qfloat<4>>&,
+                                                                                                   const Params&, std::size_t, bool, bool,
+                                                                                                   const matrix::Matrix<float>*);
+extern template TileProcessResult<qfloat::qfloat<5>> process_tile_topk_pruned<qfloat::qfloat<5>>(const matrix::Matrix<qfloat::qfloat<5>>&,
+                                                                                                   const matrix::Matrix<qfloat::qfloat<5>>&,
+                                                                                                   const Params&, std::size_t, bool, bool,
+                                                                                                   const matrix::Matrix<float>*);
+extern template TileProcessResult<qfloat::qfloat<4>> process_tile_group_minima<qfloat::qfloat<4>>(const matrix::Matrix<qfloat::qfloat<4>>&,
+                                                                                                    const matrix::Matrix<qfloat::qfloat<4>>&,
+                                                                                                    const Params&, std::size_t, bool, bool,
+                                                                                                    const matrix::Matrix<float>*);
+extern template TileProcessResult<qfloat::qfloat<5>> process_tile_group_minima<qfloat::qfloat<5>>(const matrix::Matrix<qfloat::qfloat<5>>&,
+                                                                                                    const matrix::Matrix<qfloat::qfloat<5>>&,
+                                                                                                    const Params&, std::size_t, bool, bool,
+                                                                                                    const matrix::Matrix<float>*);
 } // namespace newcode

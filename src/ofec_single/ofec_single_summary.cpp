@@ -42,8 +42,13 @@ void log_run_overview(const Config& cfg,
                       const newcode::Params& params,
                       io::DualWriter& log) {
   log << "[INFO] run_pipeline(label=" << cfg.label
+      << ", decoder=" << cfg.decoder_name
       << ", Eb/N0=" << cfg.ebn0_db
-      << " dB, CHASE_L=" << params.CHASE_L << ")\n";
+      << " dB, CHASE_L=" << params.CHASE_L
+      << ", CHASE_NTEST=" << params.CHASE_NTEST
+      << ", CHASE_TOPK_KEEP=" << params.CHASE_TOPK_KEEP
+      << ", CHASE_GROUP_MINIMA_BITS=" << params.CHASE_GROUP_MINIMA_BITS
+      << ")\n";
   log << "[INFO] RNG seeds (bitgen/channel) = "
       << params.BITGEN_SEED << "/"
       << params.CHANNEL_SEED << "\n";
