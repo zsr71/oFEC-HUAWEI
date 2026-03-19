@@ -13,8 +13,8 @@ static constexpr int         kBitgenSeed         = 1521867291;    // 比特生�
 static constexpr bool        kGenerateRandomBits = true;          // true=发送随机信息比特，false=发送全 0 比特
 
 // 信道参数
-static constexpr float       kEbN0_db                      = 3.57f;   // 信道 Eb/N0，单位 dB
-static constexpr int         kChannelSeed                  = 998258255; // 信道噪声随机种子，固定后可复现实验
+static constexpr float       kEbN0_db                      = 3.13f;   // 信道 Eb/N0，单位 dB
+static constexpr int         kChannelSeed                  = 9982582558; // 信道噪声随机种子，固定后可复现实验
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
 //早停参数
@@ -35,9 +35,14 @@ static constexpr float       kQuantClipRatio = 0.5f;   // 动态裁剪比例，0
 
 // 解码主参数
 static constexpr const char* kInterleaverName          = "identity"; // 交织器名称，identity 表示不改变比特顺序
-static constexpr const char* kDecoderName              = "chase_baseline"; // 解码器名称：chase_baseline=逐 bit 搜索 Cplus/Cminus 的基线 Chase；chase_topk_pruned=Top-K 裁剪版（pruned=裁剪，只保留前 K 个 good 候选参与后续外信息计算）；chase_global_pair=全局固定一对 best/second 来计算各 bit 可靠度；chase_group_minima=分组组内最优版（minima=各组里度量最小/score 最大的代表候选）；chase_overall_parity_search=把 overall parity 也纳入搜索的变体
+static constexpr const char* kDecoderName              = "chase_topk_pruned"; 
+// 解码器名称：chase_baseline=逐 bit 搜索 Cplus/Cminus 的基线 Chase；
+//chase_topk_pruned=Top-K 裁剪版（pruned=裁剪，只保留前 K 个 good 候选参与后续外信息计算）
+//；chase_global_pair=全局固定一对 best/second 来计算各 bit 可靠度；
+//chase_group_minima=分组组内最优版（minima=各组里度量最小/score 最大的代表候选）；
+//chase_overall_parity_search=把 overall parity 也纳入搜索的变体
 static constexpr int         kChaseNTestOverride       = -1;               // Chase 测试序列数量，-1 表示默认按 2^L 生成
-static constexpr int         kChaseTopkKeep            = 8;                // chase_topk_pruned 中保留参与 ML/外信息计算的 Top-K 候选数
+static constexpr int         kChaseTopkKeep            = 24;                // chase_topk_pruned 中保留参与 ML/外信息计算的 Top-K 候选数
 static constexpr int         kChaseGroupMinimaBits     = 3;                // chase_group_minima 里按前多少个 test-pattern 位分组；例如取 3 时会分成 2^3=8 组，并在每组里选一个组内最优 good 候选
 static constexpr bool        kNormalizeExtrinsic       = false;      // 是否对 Chase 输出的 extrinsic 做归一化
 static constexpr bool        kNormalizeKnownPrefixTail = false;      // 是否对 known-prefix 之后的尾部 LLR 做归一化
@@ -65,9 +70,9 @@ static constexpr bool kMuxEnableReconfig  = false;                 // true 表�
 static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边集合方案编号：1=scheme1，2=scheme2
 
 // LLR 导出相关
-static constexpr bool        kDumpQuantizedLlr = true;                         // 是否导出量化后的信道 LLR
+static constexpr bool        kDumpQuantizedLlr = false;                         // 是否导出量化后的信道 LLR
 static constexpr const char* kQuantizedLlrPath = "data/llr/quantized_llr.txt"; // 量化 LLR 输出路径
-static constexpr bool        kDumpWorkLlr      = true;                         // 是否保存最终累积得到的 work_llr
+static constexpr bool        kDumpWorkLlr      = false;                         // 是否保存最终累积得到的 work_llr
 static constexpr const char* kWorkLlrPath      = "data/llr/work_llr.txt";      // work_llr 输出路径
 
 namespace {

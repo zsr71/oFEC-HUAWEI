@@ -25,9 +25,12 @@ struct PipelineConfig {
 struct PipelineResult {
   float ebn0_db = std::numeric_limits<float>::quiet_NaN();
   BerStats pre_fec;
+  BerStats pre_fec_quantized_hard;
   BerStats post_fec;
   std::vector<std::size_t> pre_fec_error_positions;
+  std::vector<std::size_t> pre_fec_quantized_hard_error_positions;
   std::vector<std::size_t> post_fec_error_positions;
+  bool has_pre_fec_quantized_hard = false;
   std::vector<double> tile_early_stop_pct;
   std::vector<double> tile_row_early_stop_pct;
   std::string dequantized_llr_path; // 反量化后的 LLR 保存位置

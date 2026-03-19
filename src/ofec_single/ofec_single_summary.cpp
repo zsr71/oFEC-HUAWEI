@@ -67,12 +67,22 @@ void log_pipeline_results(const newcode::PipelineResult& result,
   log << "[RESULT] Pre-FEC BER=" << result.pre_fec.ber
       << " (errs=" << result.pre_fec.errors
       << "/" << result.pre_fec.total << ")";
+  if (result.has_pre_fec_quantized_hard) {
+    log << " | Pre-FEC BER (quantized hard)="
+        << result.pre_fec_quantized_hard.ber
+        << " (errs=" << result.pre_fec_quantized_hard.errors
+        << "/" << result.pre_fec_quantized_hard.total << ")";
+  }
   log << " | Post-FEC BER=" << result.post_fec.ber
       << " (errs=" << result.post_fec.errors
       << "/" << result.post_fec.total << ")\n";
 
   log << "[DETAIL] Pre-FEC error positions: "
       << format_positions(result.pre_fec_error_positions) << "\n";
+  if (result.has_pre_fec_quantized_hard) {
+    log << "[DETAIL] Pre-FEC error positions (quantized hard): "
+        << format_positions(result.pre_fec_quantized_hard_error_positions) << "\n";
+  }
   log << "[DETAIL] Post-FEC error positions: "
       << format_positions(result.post_fec_error_positions) << "\n";
 

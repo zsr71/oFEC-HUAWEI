@@ -30,6 +30,7 @@ void decode_ebchPF_qfloat(const DecodeRequest& request, DecodeResult& result) {
 
   // pre_decoder_llr 一直使用原始通道LLR，以保证 pre-BER 基于未裁剪/未量化的数据
   result.pre_decoder_llr = request.channel_llr;
+  result.quantized_pre_decoder_llr = qfloat::dequantize_matrix_from_qfloat(quantized, clip);
   auto decoded = ofec_decode_llr_ebchPF(quantized, request.params, &result.tile_stats,
                                         request.normalize_extrinsic, request.tx_llr_ref);//对量化后的LLR进行解码
   result.post_decoder_llr = qfloat::dequantize_matrix_from_qfloat(decoded, clip); //对解码后的量化LLR矩阵反量化，得到post_decoder_llr

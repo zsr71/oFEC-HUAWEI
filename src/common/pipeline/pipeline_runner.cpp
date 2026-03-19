@@ -257,6 +257,14 @@ PipelineResult run_pipeline(const Params& params,
 
   // 提取解码后信息比特
   auto rx_info_bits_pre  = matrix::rx_info_from_bit_llr(decode_result.pre_decoder_llr,  params);
+  std::vector<uint8_t> rx_info_bits_pre_quantized;
+  const bool has_pre_quantized =
+      decode_result.quantized_pre_decoder_llr.rows() > 0 &&
+      decode_result.quantized_pre_decoder_llr.cols() > 0;
+  if (has_pre_quantized) {
+    rx_info_bits_pre_quantized =
+        matrix::rx_info_from_bit_llr(decode_result.quantized_pre_decoder_llr, params);
+  }
   auto rx_info_bits_post = matrix::rx_info_from_bit_llr(decode_result.post_decoder_llr, params);
 
   if (verbose) {
@@ -270,9 +278,17 @@ PipelineResult run_pipeline(const Params& params,
   PipelineResult result;
   result.ebn0_db  = ebn0_dB;
   result.pre_fec_error_positions.clear();
+  result.pre_fec_quantized_hard_error_positions.clear();
   result.post_fec_error_positions.clear();
   result.pre_fec  = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_pre,  pre_label.c_str(),
                                           params, &result.pre_fec_error_positions, config.quiet);
+  if (has_pre_quantized) {
+    const std::string pre_quant_label = label + " Pre-FEC (quantized hard)";
+    result.pre_fec_quantized_hard = compute_and_print_ber(
+        tx_info_bits_ref, rx_info_bits_pre_quantized, pre_quant_label.c_str(),
+        params, &result.pre_fec_quantized_hard_error_positions, config.quiet);
+    result.has_pre_fec_quantized_hard = true;
+  }
   result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(),
                                           params, &result.post_fec_error_positions, config.quiet);
   result.tile_early_stop_pct = compute_early_stop_percentages(decode_result.tile_stats);

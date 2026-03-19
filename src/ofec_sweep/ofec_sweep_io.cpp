@@ -28,15 +28,14 @@ void ensure_csv_header(const std::string& csv_path) {
   }
 
   std::ofstream fout(csv_path, std::ios::out | std::ios::app);
-  fout << "timestamp,run_id,scenario,decoder_name,alpha_start,alpha_step,beta_start,beta_step,"
-          "early_stop_beta_start,early_stop_beta_step,"
+  fout << "timestamp,run_id,scenario,decoder_name,"
+          "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
           "early_stop_action_hard_llr_mag,"
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,bitgen_seed,channel_seed,ebn0_db,ALPHA_LIST,beta_list,"
           "early_stop_beta_list,early_stop_condition_mode,early_stop_action_mode,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,"
           "early_stop_cond_v2_include_overall,"
-          "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
           "early_stop_mean_pct,early_stop_row_mean_pct,early_stop_list,early_stop_row_list\n";
 }
 
@@ -98,20 +97,18 @@ void write_csv_row(std::ostream& csv,
                    CsvFormat format) {
   const auto prev_prec = csv.precision();
   if (format == CsvFormat::Basic) {
-    const float alpha_step = infer_step(scenario.alpha_list);
-    const float beta_step = infer_step(scenario.beta_list);
     const double es_mean = mean(result.tile_early_stop_pct);
     const double es_row_mean = mean(result.tile_row_early_stop_pct);
     csv << timestamp << ","
         << run_id << ","
         << scenario.name << ","
         << scenario.decoder_name << ","
-        << scenario.alpha_start << ","
-        << alpha_step << ","
-        << scenario.beta_start << ","
-        << beta_step << ","
-        << scenario.early_stop_beta_start << ","
-        << scenario.early_stop_beta_step << ","
+        << result.pre_fec.ber << ","
+        << result.pre_fec.errors << ","
+        << result.pre_fec.total << ","
+        << std::setprecision(10) << result.post_fec.ber << ","
+        << result.post_fec.errors << ","
+        << result.post_fec.total << ","
         << scenario.early_stop_action_hard_llr_mag << ","
         << scenario.chase_L << ","
         << scenario.chase_n_test << ","
@@ -129,13 +126,7 @@ void write_csv_row(std::ostream& csv,
         << (scenario.early_stop_cond_v1_require_overall ? 1 : 0) << ","
         << scenario.early_stop_v2_llr_abs_threshold << ","
         << scenario.early_stop_v2_max_unreliable_bits << ","
-        << (scenario.early_stop_cond_v2_include_overall ? 1 : 0) << ","
-        << result.pre_fec.ber << ","
-        << result.pre_fec.errors << ","
-        << result.pre_fec.total << ","
-        << std::setprecision(10) << result.post_fec.ber << ","
-        << result.post_fec.errors << ","
-        << result.post_fec.total << ",";
+        << (scenario.early_stop_cond_v2_include_overall ? 1 : 0) << ",";
     csv.precision(prev_prec);
     if (std::isnan(es_mean)) {
       csv << ",";

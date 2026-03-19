@@ -32,6 +32,8 @@ void decode_global_pair_qfloat(const DecodeRequest& request, DecodeResult& resul
   }
 
   result.pre_decoder_llr = request.channel_llr;
+  result.quantized_pre_decoder_llr =
+      qfloat::dequantize_matrix_from_qfloat(quantized, clip);
   auto decoded = ofec_decode_llr_global_pair(quantized, request.params,
                                              &result.tile_stats,
                                              request.normalize_extrinsic,

@@ -45,6 +45,7 @@ struct DecodeRequest {
 
 struct DecodeResult {
   matrix::Matrix<float> pre_decoder_llr;
+  matrix::Matrix<float> quantized_pre_decoder_llr;
   matrix::Matrix<float> post_decoder_llr;
   std::vector<TileEarlyStopCounter> tile_stats;
   DecodeStats stats;

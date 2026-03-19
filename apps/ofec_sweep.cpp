@@ -6,85 +6,54 @@
 
 // ======== 用户可调参数区域 ========
 
-// 基础运行入口
+// 发端参数：交织 / 比特源 / 调制入口
 static constexpr const char* kInterleaverName               = "identity"; // 交织器名称，identity 表示不改变顺序
-static constexpr const char* kDecoderName                   = "chase_baseline"; // 解码器名称：chase_baseline=逐 bit 搜索 Cplus/Cminus 的基线 Chase；chase_topk_pruned=Top-K 裁剪版（pruned=裁剪，只保留前 K 个 good 候选）；chase_global_pair=全局固定一对 best/second 来算所有 bit 的可靠度；chase_group_minima=分组组内最优版（minima=每组里度量最小/score 最大的代表）；chase_overall_parity_search=把 overall parity 也纳入搜索的变体
-static const std::vector<const char*> kDecoderNameCandidates = {};         // decoder_name 扫描候选，空表示只跑固定解码器；非空时会优先按这里展开多个解码方法
-
-// 信道与量化口径
 static constexpr unsigned    kBitsPerSymbol                 = 1;          // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
-static constexpr bool        kNormalizeExtrinsic            = false;      // 是否对 extrinsic 做归一化
 static constexpr bool        kGenerateRandomBits            = true;       // true=随机信息比特，false=全 0 比特
-static constexpr bool        kNormalizeKnownPrefixTail      = false;      // 是否对 known-prefix 之后的尾部做归一化
-static constexpr float       kQuantClipRatio                = 0.5f;       // 动态 clip 比例，0 表示禁用
+static constexpr int         kBitgenSeed                    = 20260319; // 顶层固定 bitgen seed；本 app 中优先级最高，会覆盖随机 SeedCount 路径
+static constexpr int         kBitgenSeedCount               = 1;          // 自动生成的 bitgen seed 数量
+
+// 信道参数：噪声强度 / 信道随机性
+static constexpr float       kEbN0Start                     = 3.13f;      // 扫描起始 Eb/N0
+static constexpr float       kEbN0End                       = 3.13f;      // 扫描结束 Eb/N0
+static constexpr int         kEbN0Points                    = 1;          // Eb/N0 采样点数
+static constexpr int         kChannelSeed                   = 3192026;  // 顶层固定 channel seed；本 app 中优先级最高，会覆盖随机 SeedCount 路径
+static constexpr int         kChannelSeedCount              = 1;          // 自动生成的 channel seed 数量
+
+// 量化参数：只影响 LLR 量化口径
 static constexpr std::size_t kLlrBits                       = 6;          // LLR 位宽：16=浮点，2~15=qfloat
-static constexpr bool        kQuietConsole                  = false;      // true=减少控制台打印，false=保留详细日志
+static constexpr float       kQuantClipRatio                = 0.5f;       // 动态 clip 比例，0 表示禁用
 
-// 早停固定配置：决定“停不停”和“停了以后怎么办”
-static constexpr bool        kEnableEarlyStop               = true;       // 是否启用 early-stop 总开关
-static constexpr int         kEarlyStopConditionMode        = 1;          // 早停条件编号：1=v1，2=v2
-static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag
+// 解码参数：decoder 选择、Chase 参数、alpha/beta、MUX 调度
+// 解码器名称：
+// chase_baseline=逐 bit 搜索 Cplus/Cminus 的基线 Chase
+// chase_topk_pruned=Top-K 裁剪版（pruned=裁剪，只保留前 K 个 good 候选）
+// chase_global_pair=全局固定一对 best/second 来算所有 bit 的可靠度
+// chase_group_minima=分组组内最优版（minima=每组里度量最小/score 最大的代表）
+// chase_overall_parity_search=把 overall parity 也纳入搜索的变体
+static constexpr const char* kDecoderName                   = "chase_baseline";
+static const std::vector<const char*> kDecoderNameCandidates = {};         // decoder_name 扫描候选，空表示只跑固定解码器；非空时会优先按这里展开多个解码方法
+static constexpr bool        kNormalizeExtrinsic            = false;      // 是否对 extrinsic 做归一化
+static constexpr bool        kNormalizeKnownPrefixTail      = false;      // 是否对 known-prefix 之后的尾部做归一化
+static const std::vector<int> kChaseLCandidates             = {6};        // Chase L 候选列表
+static constexpr int         kChaseNTest                    = 64;         // Chase 测试序列数量固定值
+static const std::vector<int> kChaseNTestCandidates         = {};         // Chase 测试序列数量扫描候选，空表示沿用固定值
 
-// 条件 1（v1）参数
-static constexpr bool        kEarlyStopCondV1RequireBch     = true;       // 条件1里是否要求 BCH syndrome 为 0
-static constexpr bool        kEarlyStopCondV1RequireOverall = true;       // 条件1里是否要求 overall parity 一致
+static constexpr int         kChaseTopkKeep                 = 8;          // chase_topk_pruned 的默认 Top-K 保留数；只对“裁剪版”解码器生效
+static const std::vector<int> kChaseTopkKeepCandidates      = {};         // chase_topk_pruned 的 Top-K 扫描候选，空表示沿用固定值
 
-// 条件 2（v2）参数
-static constexpr float       kEarlyStopV2LlrAbsThreshold    = 0.5f;       // 条件2中判不可靠 bit 的 |LLR| 阈值
-static constexpr int         kEarlyStopV2MaxUnreliableBits  = 8;          // 条件2允许的不可靠 bit 数上限
-static constexpr bool        kEarlyStopCondV2IncludeOverall = true;       // 条件2统计时是否把 overall bit 纳入
+static constexpr int         kChaseGroupMinimaBits          = 3;          // chase_group_minima 按前多少个 test-pattern 位分组；取 3 时对应 2^3=8 个组
+static const std::vector<int> kChaseGroupMinimaBitsCandidates = {1,2,3,4,5,6};       // chase_group_minima 分组位数扫描候选，空表示沿用固定值
 
-// 早停动作参数
-static constexpr float       kEarlyStopActionResidualDivisor = 1.0f;      // 动作2里 residual 的除数
-static constexpr float       kEarlyStopActionHardLlrMag     = 1.0f;       // 动作3里硬解成功后输出的固定 |LLR| 幅度
+static const std::vector<float> kAlphaStartCandidates       = utils::linspace(0.0f, 0.2f, 2); // alpha 起点候选
+static const std::vector<float> kAlphaStepCandidates        = utils::linspace(0.0f, 0.2f, 2); // alpha 步进候选
+static const std::vector<float> kBetaStartCandidates        = utils::linspace(0.0f, 0.2f, 2); // Chase beta 起点候选
+static const std::vector<float> kBetaStepCandidates         = utils::linspace(0.0f, 0.2f, 2); // Chase beta 步进候选
 
-// MUX / 调度参数
-static const std::vector<int> kSisoActiveList               = {32, 32, 32, 16}; // 每个 tile 的 SISO 行数预算
+static const std::vector<int> kSisoActiveList               = {32, 32, 32, 32}; // 每个 tile 的 SISO 行数预算
 static constexpr int         kMuxGroupG                     = 1;          // MUX 分组粒度，1 表示全局池化
 static constexpr bool        kMuxEnableReconfig             = false;      // 是否启用重配置版 MUX 调度
 static constexpr int         kMuxBypassScheme               = 1;          // 旁路边集合方案编号：1=scheme1，2=scheme2
-
-// Chase / 外信息扫描候选
-static const std::vector<float> kAlphaStartCandidates                = utils::linspace(0.0f, 0.2f, 2); // alpha 起点候选
-static const std::vector<float> kAlphaStepCandidates                 = utils::linspace(0.0f, 0.2f, 2); // alpha 步进候选
-static const std::vector<float> kBetaStartCandidates                 = utils::linspace(0.0f, 0.2f, 2); // Chase beta 起点候选
-static const std::vector<float> kBetaStepCandidates                  = utils::linspace(0.0f, 0.2f, 2); // Chase beta 步进候选
-static const std::vector<int>   kChaseLCandidates                    = {6};                             // Chase L 候选列表
-static constexpr int            kChaseNTest                          = 64;                              // Chase 测试序列数量固定值
-static const std::vector<int>   kChaseNTestCandidates                = {};                              // Chase 测试序列数量扫描候选，空表示沿用固定值
-
-static constexpr int            kChaseTopkKeep                       = 8;                               // chase_topk_pruned 的默认 Top-K 保留数；只对“裁剪版”解码器生效
-static const std::vector<int>   kChaseTopkKeepCandidates             = {};                              // chase_topk_pruned 的 Top-K 扫描候选，空表示沿用固定值
-static constexpr int            kChaseGroupMinimaBits                = 3;                               // chase_group_minima 按前多少个 test-pattern 位分组；取 3 时对应 2^3=8 个组
-static const std::vector<int>   kChaseGroupMinimaBitsCandidates      = {};                              // chase_group_minima 分组位数扫描候选，空表示沿用固定值
-
-// 早停条件 / 动作模式扫描候选
-static const std::vector<int>   kEarlyStopConditionCandidates        = {1, 2};                          // 早停条件候选列表
-static const std::vector<int>   kEarlyStopActionCandidates           = {1, 2, 3};                       // 早停动作候选列表
-
-// 条件 1（v1）扫描候选
-static const std::vector<bool>  kEarlyStopCondV1RequireBchCandidates = {};                              // 条件1里是否要求 BCH 的候选，空表示沿用固定值
-static const std::vector<bool>  kEarlyStopCondV1RequireOverallCandidates = {};                          // 条件1里是否要求 overall 的候选，空表示沿用固定值
-
-// 条件 2（v2）扫描候选
-static const std::vector<float> kEarlyStopV2LlrAbsThresholdCandidates = {};                             // 条件2阈值候选，空表示沿用固定值
-static const std::vector<int>   kEarlyStopV2MaxUnreliableBitsCandidates = {};                           // 条件2不可靠 bit 上限候选，空表示沿用固定值
-
-// 早停动作扫描候选
-static const std::vector<float> kEarlyStopActionBetaStartCandidates  = {};                              // early-stop 动作 beta 起点候选，空表示不单独扫描
-static const std::vector<float> kEarlyStopActionBetaStepCandidates   = {};                              // early-stop 动作 beta 步进候选，空表示不单独扫描
-static const std::vector<float> kEarlyStopActionHardLlrMagCandidates = {};                              // 动作3的 |hard_llr_mag| 候选，空表示沿用固定值
-
-// Monte Carlo 随机种子设置（为空则自动生成）
-static constexpr int kBitgenSeedCount  = 1; // 自动生成的 bitgen seed 数量
-static constexpr int kChannelSeedCount = 1; // 自动生成的 channel seed 数量
-
-// Eb/N0 扫描区间
-static constexpr float kEbN0Start  = 3.07f; // 扫描起始 Eb/N0
-static constexpr float kEbN0End    = 3.07f; // 扫描结束 Eb/N0
-static constexpr int   kEbN0Points = 1;     // Eb/N0 采样点数
-
-// 显式列表方案（可选）：直接给定每个 tile 的 alpha / beta / early-stop beta
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = { // 显式给出 alpha/beta/early-stop beta 列表的方案集合
  {"custom_label",
   {0.342857,0.387439,0.435806,0.485714},
@@ -92,13 +61,40 @@ static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBet
   {}},
 };
 
-// Decoder 调试跟踪配置
-static constexpr bool kDecoderTraceEnable      = false; // 是否启用 decoder trace
-static constexpr long kDecoderTraceRow         = -1;    // 需要跟踪的全局行号，-1 表示不指定
-static constexpr long kDecoderTraceCol         = -1;    // 需要跟踪的全局列号，-1 表示不指定
-static constexpr bool kDecoderTraceLogRead     = false; // 是否打印 tile 读取映射
-static constexpr bool kDecoderTraceLogWrite    = false; // 是否打印 tile 写回映射
-static constexpr bool kDecoderTraceLogMismatch = false; // 是否打印写回冲突告警
+// 早停参数：总开关 -> 条件 -> 条件细参 -> 动作 -> 动作细参
+static constexpr bool        kEnableEarlyStop               = false;      // 是否启用 early-stop 总开关
+static constexpr int         kEarlyStopConditionMode        = 1;          // 早停条件编号：1=v1，2=v2
+static const std::vector<int> kEarlyStopConditionCandidates = {};    // 早停条件候选列表
+static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag
+static const std::vector<int> kEarlyStopActionCandidates    = {}; // 早停动作候选列表
+
+static constexpr bool        kEarlyStopCondV1RequireBch     = true;       // 条件1里是否要求 BCH syndrome 为 0
+static const std::vector<bool> kEarlyStopCondV1RequireBchCandidates = {}; // 条件1里是否要求 BCH 的候选，空表示沿用固定值
+static constexpr bool        kEarlyStopCondV1RequireOverall = true;       // 条件1里是否要求 overall parity 一致
+static const std::vector<bool> kEarlyStopCondV1RequireOverallCandidates = {}; // 条件1里是否要求 overall 的候选，空表示沿用固定值
+
+static constexpr float       kEarlyStopV2LlrAbsThreshold    = 0.5f;       // 条件2中判不可靠 bit 的 |LLR| 阈值
+static const std::vector<float> kEarlyStopV2LlrAbsThresholdCandidates = {}; // 条件2阈值候选，空表示沿用固定值
+static constexpr int         kEarlyStopV2MaxUnreliableBits  = 8;          // 条件2允许的不可靠 bit 数上限
+static const std::vector<int> kEarlyStopV2MaxUnreliableBitsCandidates = {}; // 条件2不可靠 bit 上限候选，空表示沿用固定值
+static constexpr bool        kEarlyStopCondV2IncludeOverall = true;       // 条件2统计时是否把 overall bit 纳入
+
+static constexpr float       kEarlyStopActionResidualDivisor = 1.0f;      // 动作2里 residual 的除数
+static constexpr float       kEarlyStopActionHardLlrMag     = 1.0f;       // 动作3里硬解成功后输出的固定 |LLR| 幅度
+
+static const std::vector<float> kEarlyStopActionBetaStartCandidates = {}; // early-stop 动作 beta 起点候选，空表示不单独扫描
+static const std::vector<float> kEarlyStopActionBetaStepCandidates = {};  // early-stop 动作 beta 步进候选，空表示不单独扫描
+
+static const std::vector<float> kEarlyStopActionHardLlrMagCandidates = {}; // 动作3的 |hard_llr_mag| 候选，空表示沿用固定值
+
+// Debug 参数：控制日志与 decoder trace
+static constexpr bool        kQuietConsole                  = false;      // true=减少控制台打印，false=保留详细日志
+static constexpr bool        kDecoderTraceEnable            = false;      // 是否启用 decoder trace
+static constexpr long        kDecoderTraceRow               = -1;         // 需要跟踪的全局行号，-1 表示不指定
+static constexpr long        kDecoderTraceCol               = -1;         // 需要跟踪的全局列号，-1 表示不指定
+static constexpr bool        kDecoderTraceLogRead           = false;      // 是否打印 tile 读取映射
+static constexpr bool        kDecoderTraceLogWrite          = false;      // 是否打印 tile 写回映射
+static constexpr bool        kDecoderTraceLogMismatch       = false;      // 是否打印写回冲突告警
 
 // ==================================
 
@@ -175,6 +171,10 @@ int main() {
   config.chase_l_candidates = kChaseLCandidates;
 
   // Monte Carlo seed 配置
+  config.base_params.BITGEN_SEED = kBitgenSeed;
+  config.base_params.CHANNEL_SEED = kChannelSeed;
+  config.bitgen_seed_candidates = {kBitgenSeed};
+  config.channel_seed_candidates = {kChannelSeed};
   config.bitgen_seed_count = kBitgenSeedCount;
   config.channel_seed_count = kChannelSeedCount;
 
