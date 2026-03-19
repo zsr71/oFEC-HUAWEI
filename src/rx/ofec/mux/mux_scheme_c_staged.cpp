@@ -101,8 +101,9 @@ std::vector<int> build_normal_code_list_for_group(int group_idx, int code_per_gr
 
 std::vector<int> build_tail_code_list_for_group(int group_idx, int code_per_group) {
   std::vector<int> tail_codes;
-  tail_codes.reserve(2u);
-  const int begin = group_idx * code_per_group + (code_per_group - 2);
+  const int tail_count = std::max(2, code_per_group / 4);
+  tail_codes.reserve(static_cast<std::size_t>(tail_count));
+  const int begin = group_idx * code_per_group + (code_per_group - tail_count);
   const int end = group_idx * code_per_group + code_per_group;
   for (int code_idx = begin; code_idx < end; ++code_idx) {
     tail_codes.push_back(code_idx);

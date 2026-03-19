@@ -97,23 +97,30 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
   std::vector<uint8_t> mux_state =
       newcode::mux::build_state_from_early_stop(early_stop_stats);
-  if (p.MUX_ENABLE_RECONFIG) {
-    const auto active_codes =
-        newcode::mux::collect_active_codes_from_state(mux_state);
-    const auto free_siso =
-        newcode::mux::build_free_siso_list(siso_active_for_tile);
-    const auto schedule = newcode::mux::schedule_scheme_c_staged_cpp(
-        static_cast<int>(mux_state.size()),
-        siso_active_for_tile,
-        p.MUX_GROUP_G,
-        active_codes,
-        free_siso,
-        p.MUX_EXTRA_BYPASS_EDGES);
-    newcode::mux::apply_schedule_result_to_mux_state(
-        mux_state, schedule.final_code_to_siso);
-  } else {
-    newcode::mux::apply_siso_budget_grouped(
-        mux_state, siso_active_for_tile, p.MUX_GROUP_G);
+  // 方案一：只有当当前 tile 的 SISO 预算小于待处理 code 数时，MUX 才真正介入。
+  // 若预算已经覆盖全部 rows_to_decode，则保持 NeedSiso/EarlyStopped 原状态，
+  // 不再执行 grouped budget 或 reconfig 调度。
+  const bool mux_needed =
+      siso_active_for_tile < static_cast<int>(rows_to_decode);
+  if (mux_needed) {
+    if (p.MUX_ENABLE_RECONFIG) {
+      const auto active_codes =
+          newcode::mux::collect_active_codes_from_state(mux_state);
+      const auto free_siso =
+          newcode::mux::build_free_siso_list(siso_active_for_tile);
+      const auto schedule = newcode::mux::schedule_scheme_c_staged_cpp(
+          static_cast<int>(mux_state.size()),
+          siso_active_for_tile,
+          p.MUX_GROUP_G,
+          active_codes,
+          free_siso,
+          p.MUX_EXTRA_BYPASS_EDGES);
+      newcode::mux::apply_schedule_result_to_mux_state(
+          mux_state, schedule.final_code_to_siso);
+    } else {
+      newcode::mux::apply_siso_budget_grouped(
+          mux_state, siso_active_for_tile, p.MUX_GROUP_G);
+    }
   }
 
   auto decoder_res = decode_tile<LLR>(prep,

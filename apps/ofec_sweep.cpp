@@ -14,9 +14,9 @@ static constexpr int         kBitgenSeed                    = 20260319; // 顶�
 static constexpr int         kBitgenSeedCount               = 1;          // 自动生成的 bitgen seed 数量
 
 // 信道参数：噪声强度 / 信道随机性
-static constexpr float       kEbN0Start                     = 3.13f;      // 扫描起始 Eb/N0
-static constexpr float       kEbN0End                       = 3.13f;      // 扫描结束 Eb/N0
-static constexpr int         kEbN0Points                    = 1;          // Eb/N0 采样点数
+static constexpr float       kEbN0Start                     = 3.07f;      // 扫描起始 Eb/N0
+static constexpr float       kEbN0End                       = 3.37f;      // 扫描结束 Eb/N0
+static constexpr int         kEbN0Points                    = 30;          // Eb/N0 采样点数
 static constexpr int         kChannelSeed                   = 3192026;  // 顶层固定 channel seed；本 app 中优先级最高，会覆盖随机 SeedCount 路径
 static constexpr int         kChannelSeedCount              = 1;          // 自动生成的 channel seed 数量
 
@@ -31,7 +31,7 @@ static constexpr float       kQuantClipRatio                = 0.5f;       // 动
 // chase_global_pair=全局固定一对 best/second 来算所有 bit 的可靠度
 // chase_group_minima=分组组内最优版（minima=每组里度量最小/score 最大的代表）
 // chase_overall_parity_search=把 overall parity 也纳入搜索的变体
-static constexpr const char* kDecoderName                   = "chase_baseline";
+static constexpr const char* kDecoderName                   = "chase_group_minima";
 static const std::vector<const char*> kDecoderNameCandidates = {};         // decoder_name 扫描候选，空表示只跑固定解码器；非空时会优先按这里展开多个解码方法
 static constexpr bool        kNormalizeExtrinsic            = false;      // 是否对 extrinsic 做归一化
 static constexpr bool        kNormalizeKnownPrefixTail      = false;      // 是否对 known-prefix 之后的尾部做归一化
@@ -42,18 +42,18 @@ static const std::vector<int> kChaseNTestCandidates         = {};         // Cha
 static constexpr int         kChaseTopkKeep                 = 8;          // chase_topk_pruned 的默认 Top-K 保留数；只对“裁剪版”解码器生效
 static const std::vector<int> kChaseTopkKeepCandidates      = {};         // chase_topk_pruned 的 Top-K 扫描候选，空表示沿用固定值
 
-static constexpr int         kChaseGroupMinimaBits          = 3;          // chase_group_minima 按前多少个 test-pattern 位分组；取 3 时对应 2^3=8 个组
-static const std::vector<int> kChaseGroupMinimaBitsCandidates = {1,2,3,4,5,6};       // chase_group_minima 分组位数扫描候选，空表示沿用固定值
+static constexpr int         kChaseGroupMinimaBits          = 4;          // chase_group_minima 按前多少个 test-pattern 位分组；取 3 时对应 2^3=8 个组
+static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4};       // chase_group_minima 分组位数扫描候选，空表示沿用固定值
 
 static const std::vector<float> kAlphaStartCandidates       = utils::linspace(0.0f, 0.2f, 2); // alpha 起点候选
 static const std::vector<float> kAlphaStepCandidates        = utils::linspace(0.0f, 0.2f, 2); // alpha 步进候选
 static const std::vector<float> kBetaStartCandidates        = utils::linspace(0.0f, 0.2f, 2); // Chase beta 起点候选
 static const std::vector<float> kBetaStepCandidates         = utils::linspace(0.0f, 0.2f, 2); // Chase beta 步进候选
 
-static const std::vector<int> kSisoActiveList               = {32, 32, 32, 32}; // 每个 tile 的 SISO 行数预算
-static constexpr int         kMuxGroupG                     = 1;          // MUX 分组粒度，1 表示全局池化
-static constexpr bool        kMuxEnableReconfig             = false;      // 是否启用重配置版 MUX 调度
-static constexpr int         kMuxBypassScheme               = 1;          // 旁路边集合方案编号：1=scheme1，2=scheme2
+static const std::vector<int> kSisoActiveList               = {32, 32, 32, 16}; // 每个 tile 的 SISO 行数预算
+static constexpr int         kMuxGroupG                     = 2;          // MUX 分组粒度，1 表示全局池化
+static constexpr bool        kMuxEnableReconfig             = true;      // 是否启用重配置版 MUX 调度
+static constexpr int         kMuxBypassScheme               = 3;          // 旁路边集合方案编号：1=scheme1，2=scheme2
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = { // 显式给出 alpha/beta/early-stop beta 列表的方案集合
  {"custom_label",
   {0.342857,0.387439,0.435806,0.485714},
@@ -79,7 +79,7 @@ static constexpr int         kEarlyStopV2MaxUnreliableBits  = 8;          // 条
 static const std::vector<int> kEarlyStopV2MaxUnreliableBitsCandidates = {}; // 条件2不可靠 bit 上限候选，空表示沿用固定值
 static constexpr bool        kEarlyStopCondV2IncludeOverall = true;       // 条件2统计时是否把 overall bit 纳入
 
-static constexpr float       kEarlyStopActionResidualDivisor = 1.0f;      // 动作2里 residual 的除数
+static constexpr float       kEarlyStopActionResidualDivisor = 0.4f;      // 动作2里 residual 的除数
 static constexpr float       kEarlyStopActionHardLlrMag     = 1.0f;       // 动作3里硬解成功后输出的固定 |LLR| 幅度
 
 static const std::vector<float> kEarlyStopActionBetaStartCandidates = {}; // early-stop 动作 beta 起点候选，空表示不单独扫描
