@@ -33,6 +33,9 @@ const std::vector<float> kBetaList = {0.2f, 0.4f, 0.6f, 0.8f};
  * 程序会在固定参数下并行跑多组 seed，并把汇总 BER 写到 data/ 下的 CSV 文件。
  */
 int main() {
+  // 功能：构造一组固定 decoder 参数，在多组 seed 上并行运行 seed sweep。
+  // 输入：不接收命令行参数，所有实验配置都来自文件顶部常量。
+  // 输出：成功时返回 0，并在 data/ 下生成 summary/trial CSV；失败时返回 2。
   new_float_only::SeedSweepConfig config;
   config.label = kLabel;
   config.ebn0_db = kEbN0Db;
