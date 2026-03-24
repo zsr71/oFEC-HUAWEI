@@ -24,6 +24,7 @@ log/
 *.out
 *.err
 *.txt
+!**/CMakeLists.txt
 
 # Python cache / virtualenv
 __pycache__/
