@@ -14,6 +14,18 @@ void writeback_tile(const TilePrepared<LLR>& prep,
                     matrix::Matrix<LLR>* tile_out,
                     matrix::Matrix<float>* last_tile_history_accum)
 {
+  // 输入:
+  // - prep: tile 输入准备阶段留下的映射关系和 trace 信息。
+  // - decoder_res: decoder core 输出，包括 lout 和 produced_rows。
+  // - p: 当前 tile 参数。
+  // - tile_top_row_global: tile 顶部的全局行号。
+  // - capture_last_tile_history: 是否记录当前 tile 的历史值。
+  // - tile_out: tile 输出矩阵，会被原地写回。
+  // - last_tile_history_accum: 可选的全局历史矩阵。
+  // 输出:
+  // - 无返回值；通过 tile_out / last_tile_history_accum 反映写回结果。
+  // 用途:
+  // - 把 decoder core 的线性输出重新映射回 tile 的二维布局，并可选累积历史值。
   using Adapter = LinMatrixAdapter<LLR>;
   using CoreLLR = typename Adapter::core_type;
 
@@ -25,6 +37,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
   constexpr int OVR_IDX   = static_cast<int>(newcode::Params::BCH_OVERALL_IDX);                  // 255
 
   auto core_to_float = [](const CoreLLR& value) -> float {
+    // 将 core 域类型统一转成 float，便于做历史累积。
     if constexpr (std::is_same_v<CoreLLR, float> || std::is_same_v<CoreLLR, double>) {
       return static_cast<float>(value);
     } else {
@@ -38,6 +51,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
   auto history_value = [&](const CoreLLR& combined,
                            float extrinsic,
                            const LLR& prior) -> float {
+    // 对 qfloat 路径，combined 可能仍在 code 域，因此历史值需要反量化后再保存。
     if constexpr (history_needs_dequant) {
       // For quantized LLR (e.g., qfloat::qfloat<N>), combined is in code domain.
       // Sum dequantized values so history stores real amplitudes.
@@ -62,6 +76,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
     const int r = static_cast<int>(row_global % static_cast<size_t>(B));
 
     for (int i = 0; i < TAKE_BITS; ++i) {
+      // 先写回当前行上的系统/新信息位。
       const int k = N + i;
       const size_t Ct = static_cast<size_t>((k - N) / B);
       const size_t ct = static_cast<size_t>((k % B) ^ r);
@@ -76,6 +91,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
 
     }
     for (int j = 0; j < BCH_PAR; ++j) {
+      // 再写回 BCH parity。
       const int k = K + j;
       const size_t Ct = static_cast<size_t>((k - N) / B);
       const size_t ct = static_cast<size_t>((k % B) ^ r);
@@ -89,6 +105,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
 
     }
     {
+      // 最后写回 overall parity。
       const int k = OVR_IDX;
       const size_t Ct = static_cast<size_t>((k - N) / B);
       const size_t ct = static_cast<size_t>((k % B) ^ r);
@@ -106,6 +123,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
     const long R = static_cast<long>(row_global / static_cast<size_t>(B));
     for (int k = 0; k < N; ++k)
     {
+      // 前 N 位需要重新投影回“历史信息”所在的全局二维坐标。
       const long br = (R ^ 1L)
                     - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)
                     - static_cast<long>(2 * (N / B))
@@ -149,6 +167,8 @@ void writeback_tile(const TilePrepared<LLR>& prep,
           float extrinsic_llr_last_tile=lout_row[static_cast<size_t>(k)]/p.ALPHA;
           if (rr_idx_global < last_tile_history_accum->rows() &&
               cc_idx_global < last_tile_history_accum->cols()) {
+            // 历史值记录的是“新 extrinsic + 旧 prior”的组合，
+            // 供后续硬判 tile 或窗口最终输出合成使用。
             const CoreLLR combined = Adapter::combine(extrinsic_llr, prior_llr);
             (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
                 history_value(combined, extrinsic_llr_last_tile, prior_llr);

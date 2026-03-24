@@ -9,6 +9,16 @@ static void dump_chase_csv(const newcode::Params::DebugTraceConfig& trace,
                            const uint8_t* ML,
                            const float* omega)
 {
+    // 输入:
+    // - trace: 调试追踪配置。
+    // - y: 当前输入 LLR（float 域）。
+    // - hard_ch: 输入硬判结果。
+    // - ML: 最终选择的 ML 码字。
+    // - omega: 输出外信息。
+    // 输出:
+    // - 无返回值；若配置允许，则把本次 Chase 的关键量导出到 CSV。
+    // 用途:
+    // - 用于离线分析某个比特/坐标在 Chase 内部的候选码字和外信息变化。
     if (!trace.enable || !trace.dump_chase_csv) return;
     if (trace.chase_tile_index < 0 || trace.chase_invocation < 0) return;
 
@@ -36,6 +46,7 @@ static void dump_chase_csv(const newcode::Params::DebugTraceConfig& trace,
     fs::create_directories(dir, ec);
 
     for (const auto& entry : entries) {
+        // 每个被追踪目标单独输出一个 CSV 文件。
         if (entry.row_index < 0 || entry.k < 0) continue;
         std::string label = entry.label;
         if (label.empty()) {
@@ -92,4 +103,3 @@ static void dump_chase_csv(const newcode::Params::DebugTraceConfig& trace,
 
 } // namespace detail
 } // namespace newcode
-

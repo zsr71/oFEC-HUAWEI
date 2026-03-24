@@ -8,6 +8,16 @@ void chase_decode_256_group_minima(const LLR* Lin256,
                                    float* Y2_256,
                                    const newcode::Params& p)
 {
+    // 输入:
+    // - Lin256: 当前 256 维输入 LLR。
+    // - Lch256: 信道 LLR；本实现未使用。
+    // - Y2_256: 输出外信息数组。
+    // - p: 参数集合。
+    // 输出:
+    // - 在 Y2_256 中写入 256 维外信息。
+    // 用途:
+    // - Group-minima 变体先按若干个最不可靠位的翻转模式把候选分组，
+    //   每组只保留最优码字，再用保留下来的组内代表做竞争外信息。
     using namespace newcode::detail;
 
     float beta;
@@ -56,6 +66,7 @@ void chase_decode_256_group_minima(const LLR* Lin256,
     std::vector<uint8_t> tmp_in(BCH_N_TOTAL), cw255(BCH_N_CORE);
     for (int c = 0; c < NTEST; ++c)
     {
+        // 枚举翻转模式并生成 BCH 合法候选。
         std::copy(hard_ch, hard_ch + BCH_N_TOTAL, tmp_in.begin());
         for (int j = 0; j < L_eff; ++j) {
             if (patt[static_cast<std::size_t>(c)][j]) {
@@ -82,6 +93,7 @@ void chase_decode_256_group_minima(const LLR* Lin256,
 
     const int group_bits = std::min(std::max(0, p.CHASE_GROUP_MINIMA_BITS), L_eff);
     const int group_count = 1 << group_bits;
+    // 以前 group_bits 个翻转位作为分组键，每组仅保留最佳候选。
     std::vector<bool> group_has_best(static_cast<std::size_t>(group_count), false);
     std::vector<Comp> group_best(static_cast<std::size_t>(group_count),
                                  Comp{-std::numeric_limits<float>::infinity(), -1, false, 0});
@@ -154,6 +166,7 @@ void chase_decode_256_group_minima(const LLR* Lin256,
 
     std::vector<float> omega(BCH_N_TOTAL, std::numeric_limits<float>::quiet_NaN());
     for (int j = 0; j < BCH_N_TOTAL; ++j) {
+        // 在“每组最佳候选”的集合上，为 bit j 分别寻找 0/1 两侧最优竞争者。
         int best_idx_plus = -1;
         float best_S_plus = -std::numeric_limits<float>::infinity();
         int best_idx_minus = -1;
@@ -201,6 +214,7 @@ void chase_decode_256_group_minima(const LLR* Lin256,
         }
 
         if (std::isnan(omega[j])) {
+            // 若没有形成有效竞争，则回退到固定幅度 beta。
             const float sgn = ML[j] ? -1.f : +1.f;
             omega[j] = beta * sgn;
         }
@@ -218,6 +232,7 @@ void chase_decode_256_group_minima(const LLR* Y256,
                                    float* Y2_256,
                                    const newcode::Params& p)
 {
+    // 两参包装，直接转调主实现。
     chase_decode_256_group_minima<LLR>(Y256, Y256, Y2_256, p);
 }
 

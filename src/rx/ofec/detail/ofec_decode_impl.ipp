@@ -22,6 +22,18 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
                                  const matrix::Matrix<float>* tx_llr_ref,
                                  CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn)
 {
+  // 输入:
+  // - llr_mat: 整帧输入 LLR 矩阵，按行组织。
+  // - p: OFEC 解码参数，包含窗口、tile、alpha/beta、mux 等配置。
+  // - tile_stats: 可选输出，用于累计每个 tile 的 early-stop 统计。
+  // - normalize_extrinsic: 是否对 core 输出的外信息做归一化。
+  // - tx_llr_ref: 可选参考矩阵，仅用于调试/追踪比特。
+  // - core_fn: 真正的 Chase/Decoder core 回调。
+  // 输出:
+  // - 返回一张与输入同尺寸的 LLR 矩阵，表示窗口滑动和 tile 累积后的最终结果。
+  // 用途:
+  // - 这是 OFEC 软译码 detail 层的总入口，负责参数校验、窗口调度、
+  //   工作矩阵初始化、窗口循环处理，以及最终把历史信息重新与信道项合成。
   const size_t N = newcode::Params::NUM_SUBBLOCK_COLS * newcode::Params::BITS_PER_SUBBLOCK_DIM;
 
   const size_t RROWS = llr_mat.rows();
@@ -66,6 +78,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   matrix::Matrix<LLR> work_llr(RROWS, N);
   for (size_t r = 0; r < RROWS; ++r)
       for (size_t c = 0; c < N; ++c)
+          // work_llr 保存“当前已累积的外信息”，初始为 0。
           work_llr[r][c] = qfloat::llr_from_float<LLR>(0.0f);
   matrix::Matrix<float> last_tile_history_llr(RROWS, N);
 
@@ -88,6 +101,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
 
   while (win_start <= last_ws) {
     const size_t win_end = win_start + WIN_HEIGHT_ROWS - 1;
+    // 逐窗口处理；每个窗口内部会再拆成多个 tile。
     process_window_impl<LLR>(work_llr, channel_llr,
                              win_start, win_end, p,
                              TILE_HEIGHT_ROWS, TILE_STRIDE_ROWS, TILES_PER_WIN,
@@ -107,6 +121,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   matrix::Matrix<LLR> out(RROWS, N);
   for (size_t r = 0; r < RROWS; ++r) {
     for (size_t c = 0; c < N; ++c) {
+      // 最终输出不是单纯的外信息，而是“原始信道项 + 窗口累积的历史项”。
       const float sum = qfloat::llr_to_float(channel_llr[r][c]) + last_tile_history_llr[r][c];
       out[r][c] = qfloat::llr_from_float<LLR>(sum);
     }

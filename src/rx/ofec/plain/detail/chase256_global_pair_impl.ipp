@@ -8,6 +8,16 @@ void chase_decode_256_global_pair(const LLR* Lin256,
                                   float* Y2_256,
                                   const newcode::Params& p)
 {
+    // 输入:
+    // - Lin256: 当前 256 维输入 LLR。
+    // - Lch256: 信道 LLR；本实现未使用。
+    // - Y2_256: 输出外信息数组。
+    // - p: 参数集合。
+    // 输出:
+    // - 在 Y2_256 中写入 256 维外信息。
+    // 用途:
+    // - Global-pair 变体只保留全局最优和次优两个候选，
+    //   若某位在这两个候选上取值不同，则用它们构造该位外信息。
     using namespace newcode::detail;
 
     float beta;
@@ -57,6 +67,7 @@ void chase_decode_256_global_pair(const LLR* Lin256,
 
     for (int c = 0; c < NTEST; ++c)
     {
+        // 枚举翻转模式并生成 BCH 合法候选。
         std::copy(hard_ch, hard_ch + BCH_N_TOTAL, tmp_in.begin());
         for (int j = 0; j < L_eff; ++j) {
             if (patt[c][j]) {
@@ -100,6 +111,7 @@ void chase_decode_256_global_pair(const LLR* Lin256,
         ranked_good.empty() ? -1 : ranked_good.front().idx;
     const int global_second_idx =
         (ranked_good.size() >= 2u) ? ranked_good[1].idx : -1;
+    // global_pair 的核心就是只看这两个全局最佳候选。
 
     int ml_idx = -1;
     float ml_S = -std::numeric_limits<float>::infinity();
@@ -137,6 +149,7 @@ void chase_decode_256_global_pair(const LLR* Lin256,
             const auto& second = CW_all[static_cast<std::size_t>(global_second_idx)];
 
             if (first[j] != second[j]) {
+                // 只有当全局前二候选在 bit j 上意见相反时，才可构造竞争外信息。
                 const auto& Cplus = (first[j] == 0u) ? first : second;
                 const auto& Cminus = (first[j] == 1u) ? first : second;
 
@@ -165,6 +178,7 @@ void chase_decode_256_global_pair(const LLR* Lin256,
         }
 
         if (std::isnan(omega[j])) {
+            // 若前二候选在该位未形成竞争，则退化为固定幅度 fallback。
             const float sgn = ML[j] ? -1.f : +1.f;
             omega[j] = beta * sgn;
         }
@@ -182,6 +196,7 @@ void chase_decode_256_global_pair(const LLR* Y256,
                                   float* Y2_256,
                                   const newcode::Params& p)
 {
+    // 两参包装，直接把同一输入同时作为先验/信道输入传给主实现。
     chase_decode_256_global_pair<LLR>(Y256, Y256, Y2_256, p);
 }
 

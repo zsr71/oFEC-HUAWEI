@@ -22,6 +22,21 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                          CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn,
                          matrix::Matrix<float>* last_tile_history_accum)
 {
+  // 输入:
+  // - work_llr: 当前全局工作矩阵，保存已经累积的外信息/历史信息，会被原地更新。
+  // - channel_llr: 原始信道矩阵，只读。
+  // - [win_start, win_end]: 当前处理窗口的全局行范围。
+  // - p: 参数集合。
+  // - tile_height_rows/tile_stride_rows/TILES_PER_WIN: 当前窗口的 tile 划分方式。
+  // - tile_stats: 可选 early-stop 统计输出。
+  // - normalize_extrinsic: 是否归一化每个 tile 的外信息。
+  // - tx_llr_ref: 可选参考矩阵，用于调试。
+  // - core_fn: Chase core 回调。
+  // - last_tile_history_accum: 记录“最后一个有效 tile”的历史值，供窗口外层合成输出。
+  // 输出:
+  // - 无返回值；通过原地更新 work_llr / tile_stats / last_tile_history_accum 生效。
+  // 用途:
+  // - 在一个滑动窗口内部，按 tile 顺序切片、解码、写回，并把结果覆盖回全局工作矩阵。
   (void)win_start;
   const auto& trace_cfg = p.debug_trace;
   const bool trace_has_coords = (trace_cfg.row >= 0 && trace_cfg.col >= 0);
@@ -41,6 +56,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
   std::vector<bool> hard_tile_mask(TILES_PER_WIN);
   int last_soft_tile_idx = -1;
   for (size_t t = 0; t < TILES_PER_WIN; ++t) {
+      // 先根据配置判断每个 tile 走软译码还是硬判回退。
       const bool is_hard = pick_int(p.HARD_TILE_LIST, t, p.HARD_DECODE_DEFAULT ? 1 : 0) != 0;
       hard_tile_mask[t] = is_hard;
       if (!is_hard) {
@@ -50,6 +66,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
 
   for (size_t t = 0; t < TILES_PER_WIN; ++t)
   {
+        // 当前 tile 在窗口中的全局行范围。
         const size_t tile_bottom_row = win_end  - t * tile_stride_rows;
         const size_t tile_top_row    = tile_bottom_row + 1 - tile_height_rows;
 
@@ -67,9 +84,11 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             for (size_t c = 0; c < N; ++c) {
                 const size_t global_row = tile_top_row + r;
                 if (use_history_input) {
+                    // 某些硬判 tile 直接吃“最后 soft tile 留下的历史值”。
                     const float hist = (*last_tile_history_accum)[global_row][c];
                     tile_in[r][c] = qfloat::llr_from_float<LLR>(hist);
                 } else {
+                    // 常规路径从 work_llr 读取当前先验/外信息。
                     tile_in[r][c]  = work_llr[global_row][c];
                 }
                 ch_tile[r][c]  = channel_llr[global_row][c];
@@ -104,6 +123,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                                                                 capture_history);
 
     if (tile_stats && t < tile_stats->size()) {
+      // 将本 tile 的 early-stop 统计累加到窗口级统计数组。
       auto& counter = (*tile_stats)[t];
       counter.total += 1;
       if (tile_result.early_stop_triggered) {
@@ -130,6 +150,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                       << " channel =" << channel_val << '\n';
           }
         }
+        // tile 解码写回后的结果覆盖到全局工作矩阵，供后续 tile/窗口继续使用。
         work_llr[global_row][c] = incoming;
       }
     }

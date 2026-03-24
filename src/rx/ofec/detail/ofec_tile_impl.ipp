@@ -60,6 +60,22 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
                                          matrix::Matrix<float>* last_tile_history_accum,
                                          bool capture_last_tile_history)
 {
+  // 输入:
+  // - tile_in: 当前 tile 的先验/历史输入矩阵。
+  // - ch_tile: 当前 tile 对应的原始信道矩阵。
+  // - p: 当前 tile 生效的参数。
+  // - tile_top_row_global: tile 顶部在整帧中的全局行号。
+  // - siso_active_for_tile: 当前 tile 可用的 SISO budget。
+  // - use_hard_decode: 是否走硬判回退。
+  // - normalize_extrinsic: 是否对外信息归一化。
+  // - tx_llr_ref: 可选参考矩阵，仅调试用。
+  // - core_fn: Chase core 回调。
+  // - last_tile_history_accum: 可选历史累积矩阵。
+  // - capture_last_tile_history: 是否把当前 tile 的历史结果写入 last_tile_history_accum。
+  // 输出:
+  // - TileProcessResult，包含 tile 写回矩阵以及 early-stop 统计结果。
+  // 用途:
+  // - 这是 tile 级调度入口，串起“准备输入 -> early-stop -> mux -> core 解码 -> 写回”。
   constexpr int B         = static_cast<int>(newcode::Params::BITS_PER_SUBBLOCK_DIM);            // 16
   constexpr int N         = static_cast<int>(newcode::Params::NUM_SUBBLOCK_COLS * B);            // 128
 
@@ -87,6 +103,7 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
 
   TileEarlyStopResult early_stop_stats;
   if (p.ENABLE_EARLY_STOP) {
+    // 先根据输入统计结果判断哪些 decoder row 已经满足 early-stop 条件。
     early_stop_stats = detect_tile_early_stop(prep.lin_matrix, p);
   } else {
     early_stop_stats.row_passed_flags.assign(rows_to_decode, false);
@@ -103,6 +120,7 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
   const bool mux_needed =
       siso_active_for_tile < static_cast<int>(rows_to_decode);
   if (mux_needed) {
+    // 当 SISO 预算不足以覆盖所有 row 时，MUX 才会真正参与裁剪/重配置。
     if (p.MUX_ENABLE_RECONFIG) {
       const auto active_codes =
           newcode::mux::collect_active_codes_from_state(mux_state);
@@ -131,6 +149,7 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
                                       &mux_state,
                                       core_fn);
 
+  // 将 core 输出重新映射回 tile 的原始坐标系，并可选记录历史值。
   writeback_tile(prep,
                  decoder_res,
                  p,

@@ -4,7 +4,14 @@ namespace newcode {
 namespace detail {
 
 // ----- overall (even) parity from 255-bit core (extend to 256 bits) -----
-inline uint8_t parity256_from255(const uint8_t* cw255) {
+inline uint8_t parity256_from255(const uint8_t* cw255)
+{
+    // 输入:
+    // - cw255: BCH(255,239) 译码得到的 255 位码字。
+    // 输出:
+    // - 扩展到 256 位时使用的 overall parity。
+    // 用途:
+    // - 把 255 位 BCH 核心码字补成 256 位扩展码字。
     uint8_t acc = 0;
     for (int i = 0; i < BCH_N_CORE; ++i) acc ^= cw255[i];
     return acc;
@@ -12,4 +19,3 @@ inline uint8_t parity256_from255(const uint8_t* cw255) {
 
 } // namespace detail
 } // namespace newcode
-

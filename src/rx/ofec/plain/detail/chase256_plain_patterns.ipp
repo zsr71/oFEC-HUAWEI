@@ -6,6 +6,14 @@ namespace detail {
 // ----- generate Chase test patterns over the L unreliable positions -----
 static void gen_test_patterns(int L, int n_test, std::vector<std::vector<bool>>& patt)
 {
+    // 输入:
+    // - L: 最不可靠位数量。
+    // - n_test: 需要生成的测试模式数。
+    // - patt: 输出容器引用。
+    // 输出:
+    // - patt[c][j] 表示第 c 个模式是否翻转第 j 个最不可靠位。
+    // 用途:
+    // - 为 Chase 生成 bit-flipping 模式，后续每个模式都会送入 BCH 硬译码形成候选码字。
     if (n_test <= 0) n_test = 1;
     patt.assign(n_test, std::vector<bool>(L, false));
 
@@ -35,4 +43,3 @@ static void gen_test_patterns(int L, int n_test, std::vector<std::vector<bool>>&
 
 } // namespace detail
 } // namespace newcode
-

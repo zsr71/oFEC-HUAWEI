@@ -12,6 +12,13 @@ struct TileTraceContext {
   long trace_col{-1};
 
   bool should_trace(bool flag, long rr, long cc) const {
+    // 输入:
+    // - flag: 当前类别日志是否开启。
+    // - rr/cc: 待判断的全局坐标。
+    // 输出:
+    // - 是否需要对这个坐标打印/记录 trace。
+    // 用途:
+    // - 集中封装 trace 条件判断，避免散落在映射代码里。
     return trace_enabled && flag && rr == trace_row && cc == trace_col;
   }
 };
@@ -39,6 +46,18 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
                                       size_t rows_to_decode,
                                       const matrix::Matrix<float>* tx_llr_ref)
 {
+  // 输入:
+  // - tile_in: 当前 tile 的先验/历史矩阵。
+  // - ch_tile: 当前 tile 的信道矩阵。
+  // - p: 当前 tile 参数。
+  // - tile_top_row_global: tile 顶部全局行号。
+  // - SBR: 本 tile 需要解码的 subblock row 数。
+  // - rows_to_decode: 实际 decoder row 数，通常为 SBR * B。
+  // - tx_llr_ref: 可选参考矩阵，仅用于调试时生成 expected bit。
+  // 输出:
+  // - TilePrepared，包含 lin_matrix/lch_matrix、行映射表、调试信息和 core 参数。
+  // 用途:
+  // - 将 tile 的二维几何布局重排成 decoder core 需要的 2N 线性输入格式。
   using Adapter = typename TilePrepared<LLR>::Adapter;
   constexpr int B         = static_cast<int>(newcode::Params::BITS_PER_SUBBLOCK_DIM);            // 16
   constexpr int N         = static_cast<int>(newcode::Params::NUM_SUBBLOCK_COLS * B);            // 128
@@ -89,6 +108,7 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
                                   long bit_index,
                                   long rr, long cc,
                                   size_t row_idx, int k) {
+    // 为被追踪的全局坐标建立“decoder 行/列 <-> 全局位置”的映射记录。
     int expected_bit = -1;
     if (expected_bits && row_idx < expected_bits->size() &&
         k >= 0 && static_cast<size_t>(k) < (*expected_bits)[row_idx].size()) {
@@ -141,6 +161,7 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
   };
 
   for (int s = 0; s < SBR; ++s){
+    // s 表示当前处理的第几个 subblock row 组。
     const size_t sbr_row0_local = H - static_cast<size_t>((SBR-s) * B);
     for (int r_off = 0; r_off < B; ++r_off)
     {
@@ -156,6 +177,7 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
 
       for (int k = 0; k < N; ++k)
       {
+        // 前 N 位对应“历史信息”部分，要从上一轮相关位置重新取值并做交织映射。
         const long br = (R ^ 1L)
                       - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)
                       - static_cast<long>(2 * (N / B))
@@ -181,6 +203,7 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
         {
           const LLR Lch = ch_tile[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)];
           const LLR La  = tile_in [static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)];
+          // lin_matrix 是送给 core 的总输入；lch_matrix 只保留信道项。
           lin_matrix[row_idx][static_cast<size_t>(k)] = Adapter::combine(Lch, La);
           lch_matrix[row_idx][static_cast<size_t>(k)] = Adapter::channel(Lch);
         }
@@ -198,6 +221,7 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
       }
 
       for (int i = 0; i < TAKE_BITS; ++i) {
+        // 接下来的 TAKE_BITS 部分对应当前行上的系统/新信息位。
         const int k = N + i;
         const size_t Ct = static_cast<size_t>((k - N) / B);
         const size_t ct = static_cast<size_t>((k % B) ^ r);
@@ -221,6 +245,7 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
       }
 
       for (int j = 0; j < BCH_PAR; ++j) {
+        // 然后是 BCH 奇偶校验位。
         const int k = K + j;
         const size_t Ct = static_cast<size_t>((k - N) / B);
         const size_t ct = static_cast<size_t>((k % B) ^ r);
@@ -239,6 +264,7 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
       }
 
       {
+        // 最后一位是 overall parity。
         const int k = OVR_IDX;
         const size_t Ct = static_cast<size_t>((k - N) / B);
         const size_t ct = static_cast<size_t>((k % B) ^ r);
@@ -274,6 +300,7 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
   }
 
   TilePrepared<LLR> prep;
+  // 将所有为 core 准备好的中间结果打包返回。
   prep.lin_matrix = std::move(lin_matrix);
   prep.lch_matrix = std::move(lch_matrix);
   prep.row_local_lookup = std::move(row_local_lookup);

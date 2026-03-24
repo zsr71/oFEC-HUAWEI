@@ -8,6 +8,15 @@ void chase_decode_256_topk_pruned(const LLR* Lin256,
                                   float* Y2_256,
                                   const newcode::Params& p)
 {
+    // 输入:
+    // - Lin256: 当前 256 维输入 LLR。
+    // - Lch256: 信道 LLR；本实现未使用。
+    // - Y2_256: 输出外信息数组。
+    // - p: 参数集合。
+    // 输出:
+    // - 在 Y2_256 中写入 256 维外信息。
+    // 用途:
+    // - Top-K 变体先按分数保留前 K 个合法候选，再只在这些候选上做 ML 选择和竞争外信息计算。
     using namespace newcode::detail;
 
     float beta;
@@ -58,6 +67,7 @@ void chase_decode_256_topk_pruned(const LLR* Lin256,
 
     for (int c = 0; c < NTEST; ++c)
     {
+        // 枚举翻转模式并生成 BCH 合法候选。
         std::copy(hard_ch, hard_ch + BCH_N_TOTAL, tmp_in.begin());
         for (int j = 0; j < L_eff; ++j) {
             if (patt[c][j]) {
@@ -97,6 +107,7 @@ void chase_decode_256_topk_pruned(const LLR* Lin256,
                   return lhs.idx < rhs.idx;
               });
     if (static_cast<int>(kept_comps.size()) > keep_k) {
+        // 只保留分数最高的前 K 个合法候选。
         kept_comps.resize(static_cast<std::size_t>(keep_k));
     }
 
@@ -131,6 +142,7 @@ void chase_decode_256_topk_pruned(const LLR* Lin256,
 
     std::vector<float> omega(BCH_N_TOTAL, std::numeric_limits<float>::quiet_NaN());
     for (int j = 0; j < BCH_N_TOTAL; ++j) {
+        // 在保留下来的 Top-K 候选上，为 bit j 分别寻找 0/1 两侧最优竞争者。
         int best_idx_plus = -1;
         float best_S_plus = -std::numeric_limits<float>::infinity();
         int best_idx_minus = -1;
@@ -182,6 +194,7 @@ void chase_decode_256_topk_pruned(const LLR* Lin256,
         }
 
         if (std::isnan(omega[j])) {
+            // 若没有形成有效竞争，则回退到固定幅度 beta。
             const float sgn = ML[j] ? -1.f : +1.f;
             omega[j] = beta * sgn;
         }
@@ -199,6 +212,7 @@ void chase_decode_256_topk_pruned(const LLR* Y256,
                                   float* Y2_256,
                                   const newcode::Params& p)
 {
+    // 两参包装，直接转调主实现。
     chase_decode_256_topk_pruned<LLR>(Y256, Y256, Y2_256, p);
 }
 
