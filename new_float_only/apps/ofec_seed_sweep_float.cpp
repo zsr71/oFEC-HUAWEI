@@ -3,6 +3,8 @@
 #include "new_float_only/seed_sweep_runner.hpp"
 
 namespace {
+// 这组常量控制 seed sweep 本身：跑多少次 trial、使用哪组基础 seed、
+// 是否静默 pipeline，以及是否把汇总结果写到 CSV。
 constexpr const char* kLabel = "seed_sweep_float_demo";
 constexpr float kEbN0Db = 3.13f;
 constexpr std::size_t kTrialCount = 6;
@@ -17,16 +19,12 @@ constexpr bool kQuietLogs = false;
 constexpr bool kWriteSummaryCsv = true;
 constexpr bool kWriteTrialCsv = true;
 
+// 这组常量控制固定不变的 float plain 解码参数。
+// kAlphaList / kBetaList 按 tile 顺序给出每个 tile 使用的 alpha/beta。
 constexpr bool kNormalizeKnownPrefixTail = false;
 constexpr int kChaseL = 6;
-constexpr float kAlpha0 = 0.2f;
-constexpr float kAlpha1 = 0.4f;
-constexpr float kAlpha2 = 0.6f;
-constexpr float kAlpha3 = 0.8f;
-constexpr float kBeta0 = 0.2f;
-constexpr float kBeta1 = 0.4f;
-constexpr float kBeta2 = 0.6f;
-constexpr float kBeta3 = 0.8f;
+const std::vector<float> kAlphaList = {0.2f, 0.4f, 0.6f, 0.8f};
+const std::vector<float> kBetaList = {0.2f, 0.4f, 0.6f, 0.8f};
 }  // namespace
 
 /**
@@ -54,8 +52,8 @@ int main() {
   config.decoder.NORMALIZE_KNOWN_PREFIX_TAIL = kNormalizeKnownPrefixTail;
   config.decoder.CHASE_L = kChaseL;
   config.decoder.CHASE_NTEST = 1 << config.decoder.CHASE_L;
-  config.decoder.ALPHA_LIST = {kAlpha0, kAlpha1, kAlpha2, kAlpha3};
-  config.decoder.beta_list = {kBeta0, kBeta1, kBeta2, kBeta3};
+  config.decoder.ALPHA_LIST = kAlphaList;
+  config.decoder.beta_list = kBetaList;
   config.decoder.HARD_DECODE_DEFAULT = false;
   config.decoder.HARD_TILE_LIST = {0, 0, 0, 0};
   config.decoder.DUMP_WORK_LLR = false;
