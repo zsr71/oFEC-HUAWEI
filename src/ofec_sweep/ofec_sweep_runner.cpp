@@ -53,6 +53,65 @@ std::vector<int> resolve_seeds(const std::vector<int>& provided,
   return generated;
 }
 
+template <typename T>
+std::string join_compact(const std::vector<T>& values) {
+  std::ostringstream oss;
+  oss << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    oss << values[i];
+    if (i + 1 < values.size()) {
+      oss << ",";
+    }
+  }
+  oss << "]";
+  return oss.str();
+}
+
+std::string join_compact(const std::vector<bool>& values) {
+  std::ostringstream oss;
+  oss << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    oss << (values[i] ? "true" : "false");
+    if (i + 1 < values.size()) {
+      oss << ",";
+    }
+  }
+  oss << "]";
+  return oss.str();
+}
+
+std::string join_compact(const std::vector<std::string>& values) {
+  std::ostringstream oss;
+  oss << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    oss << values[i];
+    if (i + 1 < values.size()) {
+      oss << ",";
+    }
+  }
+  oss << "]";
+  return oss.str();
+}
+
+std::string summarize_patterns(
+    const std::vector<ofec_sweep::ExplicitAlphaBetaPattern>& patterns) {
+  std::ostringstream oss;
+  oss << "[";
+  for (std::size_t i = 0; i < patterns.size(); ++i) {
+    const auto& p = patterns[i];
+    oss << "{label=" << (p.label.empty() ? "<empty>" : p.label)
+        << ",alpha=" << join_compact(p.alpha_list)
+        << ",beta=" << join_compact(p.beta_list)
+        << ",es_beta=" << join_compact(p.early_stop_action_sign_beta_list)
+        << "}";
+    if (i + 1 < patterns.size()) {
+      oss << ",";
+    }
+  }
+  oss << "]";
+  return oss.str();
+}
+
 }  // namespace
 
 namespace detail {
@@ -226,6 +285,8 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
           output.chase_n_test = scenario.chase_n_test;
           output.chase_topk_keep = scenario.chase_topk_keep;
           output.chase_group_minima_bits = scenario.chase_group_minima_bits;
+          output.mux_group_g = scenario.mux_group_g;
+          output.mux_bypass_scheme = scenario.mux_bypass_scheme;
           output.early_stop_condition_mode = scenario.early_stop_condition_mode;
           output.early_stop_action_mode = scenario.early_stop_action_mode;
           output.early_stop_cond_v1_require_bch =
@@ -484,6 +545,87 @@ int run_sweep(const SweepParameterConfig& config) {
   const std::string log_path = (data_dir / ("run_" + run_id + ".log")).string();
   const bool mirror_console = !cfg.quiet_logs;
   DualOut out(std::cout, log_path, mirror_console);
+
+  out << "[CONFIG] ofec_sweep top-level parameters\n";
+  out << "[CONFIG][TX] interleaver_name=" << cfg.interleaver_name
+      << " bits_per_symbol=" << cfg.bits_per_symbol
+      << " generate_random_bits=" << (cfg.generate_random_bits ? "true" : "false")
+      << " bitgen_seed=" << cfg.base_params.BITGEN_SEED
+      << " bitgen_seed_count=" << cfg.bitgen_seed_count
+      << " bitgen_seed_candidates=" << join_compact(cfg.bitgen_seed_candidates)
+      << "\n";
+  out << "[CONFIG][CH] ebn0_start=" << cfg.ebn0_start
+      << " ebn0_end=" << cfg.ebn0_end
+      << " ebn0_points=" << cfg.ebn0_points
+      << " ebn0_candidates=" << join_compact(cfg.ebn0_candidates)
+      << " channel_seed=" << cfg.base_params.CHANNEL_SEED
+      << " channel_seed_count=" << cfg.channel_seed_count
+      << " channel_seed_candidates=" << join_compact(cfg.channel_seed_candidates)
+      << "\n";
+  out << "[CONFIG][Q] llr_bits=" << cfg.base_params.LLR_BITS
+      << " quant_clip_ratio=" << cfg.quant_clip_ratio << "\n";
+  out << "[CONFIG][DEC] decoder_name=" << cfg.decoder_name
+      << " decoder_name_candidates=" << join_compact(cfg.decoder_name_candidates)
+      << " normalize_extrinsic=" << (cfg.normalize_extrinsic ? "true" : "false")
+      << " normalize_known_prefix_tail="
+      << (cfg.normalize_known_prefix_tail ? "true" : "false")
+      << " chase_l_candidates=" << join_compact(cfg.chase_l_candidates)
+      << " chase_n_test=" << cfg.chase_n_test
+      << " chase_n_test_candidates=" << join_compact(cfg.chase_n_test_candidates)
+      << " chase_topk_keep=" << cfg.chase_topk_keep
+      << " chase_topk_keep_candidates=" << join_compact(cfg.chase_topk_keep_candidates)
+      << " chase_group_minima_bits=" << cfg.chase_group_minima_bits
+      << " chase_group_minima_bits_candidates="
+      << join_compact(cfg.chase_group_minima_bits_candidates)
+      << " alpha_start_candidates=" << join_compact(cfg.alpha_start_candidates)
+      << " alpha_step_candidates=" << join_compact(cfg.alpha_step_candidates)
+      << " beta_start_candidates=" << join_compact(cfg.beta_start_candidates)
+      << " beta_step_candidates=" << join_compact(cfg.beta_step_candidates)
+      << " explicit_patterns=" << summarize_patterns(cfg.explicit_patterns)
+      << " siso_active_list=" << join_compact(cfg.siso_active_list)
+      << " mux_group_g=" << cfg.mux_group_g
+      << " mux_enable_reconfig=" << (cfg.mux_enable_reconfig ? "true" : "false")
+      << " mux_bypass_scheme=" << cfg.mux_bypass_scheme
+      << "\n";
+  out << "[CONFIG][ES] enable_early_stop=" << (cfg.enable_early_stop ? "true" : "false")
+      << " early_stop_condition_mode=" << cfg.early_stop_condition_mode
+      << " early_stop_condition_candidates="
+      << join_compact(cfg.early_stop_condition_candidates)
+      << " early_stop_action_mode=" << cfg.early_stop_action_mode
+      << " early_stop_action_candidates=" << join_compact(cfg.early_stop_action_candidates)
+      << " v1_require_bch=" << (cfg.early_stop_cond_v1_require_bch ? "true" : "false")
+      << " v1_require_bch_candidates="
+      << join_compact(cfg.early_stop_cond_v1_require_bch_candidates)
+      << " v1_require_overall=" << (cfg.early_stop_cond_v1_require_overall ? "true" : "false")
+      << " v1_require_overall_candidates="
+      << join_compact(cfg.early_stop_cond_v1_require_overall_candidates)
+      << " v2_llr_abs_threshold=" << cfg.early_stop_v2_llr_abs_threshold
+      << " v2_llr_abs_threshold_candidates="
+      << join_compact(cfg.early_stop_v2_llr_abs_threshold_candidates)
+      << " v2_max_unreliable_bits=" << cfg.early_stop_v2_max_unreliable_bits
+      << " v2_max_unreliable_bits_candidates="
+      << join_compact(cfg.early_stop_v2_max_unreliable_bits_candidates)
+      << " v2_include_overall=" << (cfg.early_stop_cond_v2_include_overall ? "true" : "false")
+      << " action_sign_beta_fill=" << cfg.early_stop_action_sign_beta_fill
+      << " action_beta_start_candidates="
+      << join_compact(cfg.early_stop_action_beta_start_candidates)
+      << " action_beta_step_candidates="
+      << join_compact(cfg.early_stop_action_beta_step_candidates)
+      << " action_residual_divisor=" << cfg.early_stop_action_residual_divisor
+      << " action_hard_llr_mag=" << cfg.early_stop_action_hard_llr_mag
+      << " action_hard_llr_mag_candidates="
+      << join_compact(cfg.early_stop_action_hard_llr_mag_candidates)
+      << "\n";
+  out << "[CONFIG][DBG] quiet_pipeline=" << (cfg.quiet_pipeline ? "true" : "false")
+      << " quiet_logs=" << (cfg.quiet_logs ? "true" : "false")
+      << " trace_enable=" << (cfg.base_params.debug_trace.enable ? "true" : "false")
+      << " trace_row=" << cfg.base_params.debug_trace.row
+      << " trace_col=" << cfg.base_params.debug_trace.col
+      << " trace_log_read=" << (cfg.base_params.debug_trace.log_read_mapping ? "true" : "false")
+      << " trace_log_write=" << (cfg.base_params.debug_trace.log_write_mapping ? "true" : "false")
+      << " trace_log_mismatch=" << (cfg.base_params.debug_trace.log_mismatch ? "true" : "false")
+      << "\n";
+  out << std::flush;
 
   const std::string csv_path =
       (data_dir / ("ofec_sweep_results_" + run_id + ".csv")).string();

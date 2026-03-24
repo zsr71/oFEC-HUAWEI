@@ -246,6 +246,8 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
                   scenario.chase_n_test = chase_n_test;
                   scenario.chase_topk_keep = topk_keep;
                   scenario.chase_group_minima_bits = group_minima_bits;
+                  scenario.mux_group_g = config.mux_group_g;
+                  scenario.mux_bypass_scheme = config.mux_bypass_scheme;
                   scenario.early_stop_condition_mode = condition_mode;
                   scenario.early_stop_action_mode = action_mode;
                   scenario.early_stop_cond_v1_require_bch = v1_require_bch;
@@ -360,6 +362,8 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
           scenario.chase_n_test = chase_n_test;
           scenario.chase_topk_keep = topk_keep;
           scenario.chase_group_minima_bits = group_minima_bits;
+          scenario.mux_group_g = config.mux_group_g;
+          scenario.mux_bypass_scheme = config.mux_bypass_scheme;
           scenario.early_stop_condition_mode = condition_mode;
           scenario.early_stop_action_mode = action_mode;
           scenario.early_stop_cond_v1_require_bch = v1_require_bch;

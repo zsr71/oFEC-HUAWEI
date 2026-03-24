@@ -35,6 +35,8 @@ struct SweepScenario {
   int chase_n_test = 0;
   int chase_topk_keep = 8;
   int chase_group_minima_bits = 3;
+  int mux_group_g = 1;
+  int mux_bypass_scheme = 0;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
   bool early_stop_cond_v1_require_bch = true;
@@ -65,6 +67,8 @@ struct ScenarioOutput {
   int chase_n_test = 0;
   int chase_topk_keep = 8;
   int chase_group_minima_bits = 3;
+  int mux_group_g = 1;
+  int mux_bypass_scheme = 0;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
   bool early_stop_cond_v1_require_bch = true;

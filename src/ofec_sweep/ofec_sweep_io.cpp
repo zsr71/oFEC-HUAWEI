@@ -9,7 +9,14 @@ namespace detail {
 
 DualOut::DualOut(std::ostream& console, const std::string& filepath, bool mirror_console)
     : console_(mirror_console ? &console : nullptr),
-      file_(filepath, std::ios::out | std::ios::app) {}
+      file_(filepath, std::ios::out | std::ios::app) {
+  if (console_) {
+    *console_ << std::unitbuf;
+  }
+  if (file_) {
+    file_ << std::unitbuf;
+  }
+}
 
 DualOut& DualOut::operator<<(std::ostream& (*pf)(std::ostream&)) {
   if (console_) {
@@ -31,7 +38,7 @@ void ensure_csv_header(const std::string& csv_path) {
   fout << "timestamp,run_id,scenario,decoder_name,"
           "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
           "early_stop_action_hard_llr_mag,"
-          "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,bitgen_seed,channel_seed,ebn0_db,ALPHA_LIST,beta_list,"
+          "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,mux_group_g,mux_bypass_scheme,bitgen_seed,channel_seed,ebn0_db,ALPHA_LIST,beta_list,"
           "early_stop_beta_list,early_stop_condition_mode,early_stop_action_mode,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,"
@@ -114,6 +121,8 @@ void write_csv_row(std::ostream& csv,
         << scenario.chase_n_test << ","
         << scenario.chase_topk_keep << ","
         << scenario.chase_group_minima_bits << ","
+        << scenario.mux_group_g << ","
+        << scenario.mux_bypass_scheme << ","
         << scenario.bitgen_seed << ","
         << scenario.channel_seed << ","
         << scenario.ebn0_db << ","

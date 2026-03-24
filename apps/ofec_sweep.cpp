@@ -62,7 +62,7 @@ static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBet
 };
 
 // 早停参数：总开关 -> 条件 -> 条件细参 -> 动作 -> 动作细参
-static constexpr bool        kEnableEarlyStop               = false;      // 是否启用 early-stop 总开关
+static constexpr bool        kEnableEarlyStop               = true;      // 是否启用 early-stop 总开关
 static constexpr int         kEarlyStopConditionMode        = 1;          // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionCandidates = {};    // 早停条件候选列表
 static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag
@@ -167,6 +167,7 @@ int main() {
   config.siso_active_list = kSisoActiveList;
   config.mux_group_g = kMuxGroupG;
   config.mux_enable_reconfig = kMuxEnableReconfig;
+  config.mux_bypass_scheme = kMuxBypassScheme;
   config.mux_extra_bypass_edges = selected_mux_bypass_edges;
   config.chase_l_candidates = kChaseLCandidates;
 
