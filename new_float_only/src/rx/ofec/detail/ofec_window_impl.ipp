@@ -55,14 +55,21 @@ void process_window_impl(matrix::Matrix<float>& work_llr,
 
   for (size_t t = 0; t < TILES_PER_WIN; ++t)
   {
+        // 当前 tile 在全局矩阵中的上下边界。window 从底部往上逐个取 tile，
+        // 相邻 tile 之间按 tile_stride_rows 错开。
         const size_t tile_bottom_row = win_end  - t * tile_stride_rows;
         const size_t tile_top_row    = tile_bottom_row + 1 - tile_height_rows;
 
+        // 当前实现下 tile 高度通常是固定值，这里仍按实际边界重新算一次，
+        // 便于后续构造与当前 tile 对齐的局部输入矩阵。
         const size_t tile_height_rows_actual = tile_bottom_row - tile_top_row + 1;
         matrix::Matrix<float> tile_in(tile_height_rows_actual, N);
         matrix::Matrix<float> ch_tile(tile_height_rows_actual, N);
 
         const bool use_hard = hard_tile_mask[t];
+        // 对 hard tile，如果它位于最后一个 soft tile 之后，就不再从当前 work_llr
+        // 取历史，而是改用 last_tile_history_accum 中累积的最后 soft tile history。
+        // 这样做是为了让后续 hard tile 直接吃到“最后一层软译码写回后的历史结果”。
         const bool use_history_input =
             use_hard && last_tile_history_accum &&
             last_soft_tile_idx >= 0 &&
@@ -72,11 +79,14 @@ void process_window_impl(matrix::Matrix<float>& work_llr,
             for (size_t c = 0; c < N; ++c) {
                 const size_t global_row = tile_top_row + r;
                 if (use_history_input) {
+                    // hard tile 的 history 输入改取最后 soft tile 的累计历史。
                     const float hist = (*last_tile_history_accum)[global_row][c];
                     tile_in[r][c] = hist;
                 } else {
+                    // 普通情况下，tile 输入 history 直接来自当前工作矩阵。
                     tile_in[r][c]  = work_llr[global_row][c];
                 }
+                // 信道项始终直接从全局 channel_llr 中按相同行列切片。
                 ch_tile[r][c]  = channel_llr[global_row][c];
             }
         }

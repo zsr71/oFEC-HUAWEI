@@ -74,7 +74,7 @@ matrix::Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const new_
              + col_in_t;
     };
 
-    // —— 将 WR(128..255) 写回到 V 展开矩阵：与 MATLAB 一致 —— 
+    // —— 将 WR(128..255) 写回到 V 展开矩阵：
     auto write_right_to_mat = [&](long R, int r, int k128, uint8_t bit) {
         // MATLAB:
         //   Ct = floor((k-128)/16);

@@ -41,7 +41,7 @@ qam_modulate(const std::vector<uint8_t>& bits, unsigned n_bps)
         for (size_t s = 0; s < n_sym; ++s)
         {
             const uint8_t bit = (p < bits.size()) ? (bits[p++] & 1u) : 0u;
-            const float I = 1.0f - 2.0f * float(bit);
+            const float I = 1.0f - 2.0f * float(bit); // BPSK: bit 0 -> +1, bit 1 -> -1
             syms.emplace_back(I, 0.0f); // BPSK 沿实轴
         }
         return syms;

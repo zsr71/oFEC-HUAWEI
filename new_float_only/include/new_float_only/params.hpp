@@ -23,7 +23,7 @@ struct DecoderConfig {
   static constexpr std::size_t BCH_PARITY_BITS = BCH_N - BCH_K - 1;
   static constexpr std::size_t BCH_OVERALL_IDX = BCH_N - 1;
 
-  std::size_t NUM_INFO_BITS = 32 * 132 * 16 * 111;
+  std::size_t NUM_INFO_BITS = 6 * 88 * 16 * 111;
   bool NORMALIZE_KNOWN_PREFIX_TAIL = false;
   std::size_t NUM_GUARD_SUBROWS = 2;
   bool DUMP_WORK_LLR = false;

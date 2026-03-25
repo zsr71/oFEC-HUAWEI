@@ -58,6 +58,7 @@ TilePrepared prepare_tile_inputs(const matrix::Matrix<float>& tile_in,
   (void)W;
 
   TileTraceContext trace_ctx;
+  // 先把 tile 级 trace 开关整理成几个布尔状态，后面映射过程中直接复用。
   trace_ctx.trace_cfg = p.debug_trace;
   trace_ctx.trace_has_coords = (trace_ctx.trace_cfg.row >= 0 && trace_ctx.trace_cfg.col >= 0);
   trace_ctx.trace_has_targets = !trace_ctx.trace_cfg.targets.empty();
@@ -68,6 +69,7 @@ TilePrepared prepare_tile_inputs(const matrix::Matrix<float>& tile_in,
   trace_ctx.trace_col = trace_ctx.trace_has_coords ? trace_ctx.trace_cfg.col : -1;
 
   new_float_only::Params params_for_core = p;
+  // 清掉上一轮/上一 tile 残留的 Chase trace 状态，避免污染当前 tile。
   params_for_core.debug_trace.active_chase_entries.clear();
   if (params_for_core.debug_trace.chase_expected_bits) {
     params_for_core.debug_trace.chase_expected_bits.reset();
@@ -76,10 +78,15 @@ TilePrepared prepare_tile_inputs(const matrix::Matrix<float>& tile_in,
 
   std::shared_ptr<std::vector<std::vector<int8_t>>> expected_bits;
   if (tx_llr_ref) {
+    // 若给了发送端参考 LLR，就为每个待译码行准备一份 256 位期望比特，
+    // 供后续 Chase trace CSV 直接对照真值。
     expected_bits = std::make_shared<std::vector<std::vector<int8_t>>>(
         rows_to_decode, std::vector<int8_t>(static_cast<size_t>(2 * N), -1));
   }
 
+  // Chase core 的输入由两部分组成：
+  // - lin_matrix: 当前总输入 = channel + a priori
+  // - lch_matrix: 仅保留 channel，后续做 extrinsic 时要单独用到
   matrix::Matrix<float> lin_matrix(rows_to_decode, static_cast<size_t>(2 * N));
   matrix::Matrix<float> lch_matrix(rows_to_decode, static_cast<size_t>(2 * N));
   std::vector<size_t> row_local_lookup(rows_to_decode, 0);
@@ -145,6 +152,7 @@ TilePrepared prepare_tile_inputs(const matrix::Matrix<float>& tile_in,
   };
 
   for (int s = 0; s < SBR; ++s){
+    // 只处理 tile 底部的 SBR 个 16 行块，这些行会被送进当前轮 Chase 译码。
     const size_t sbr_row0_local = H - static_cast<size_t>((SBR-s) * B);
     for (int r_off = 0; r_off < B; ++r_off)
     {
@@ -160,6 +168,8 @@ TilePrepared prepare_tile_inputs(const matrix::Matrix<float>& tile_in,
 
       for (int k = 0; k < N; ++k)
       {
+        // 左半边 k=0..127 对应 history 区。这里按 oFEC 的历史连接公式，从当前
+        // 待译码行反查出“这个 history bit 在全局矩阵里来自哪里”。
         const long br = (R ^ 1L)
                       - static_cast<long>(2 * p.NUM_GUARD_SUBROWS)
                       - static_cast<long>(2 * (N / B))
@@ -183,6 +193,7 @@ TilePrepared prepare_tile_inputs(const matrix::Matrix<float>& tile_in,
         if (rr_local2 >= 0 && rr_local2 < static_cast<long>(H) &&
             cc_local2 >= 0 && cc_local2 < static_cast<long>(W))
         {
+          // lin 保存总输入，lch 单独保存信道项。
           const float Lch = ch_tile[static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)];
           const float La  = tile_in [static_cast<size_t>(rr_local2)][static_cast<size_t>(cc_local2)];
           lin_matrix[row_idx][static_cast<size_t>(k)] = Lch + La;
@@ -203,6 +214,8 @@ TilePrepared prepare_tile_inputs(const matrix::Matrix<float>& tile_in,
 
       for (int i = 0; i < TAKE_BITS; ++i) {
         const int k = N + i;
+        // 接下来拼当前行的新信息位。来源仍是当前 row_local 这一行，只是列索引
+        // 需要按 (k % B) ^ r 做行内重排。
         const size_t Ct = static_cast<size_t>((k - N) / B);
         const size_t ct = static_cast<size_t>((k % B) ^ r);
         const size_t src_col = Ct * static_cast<size_t>(B) + ct;
@@ -226,6 +239,7 @@ TilePrepared prepare_tile_inputs(const matrix::Matrix<float>& tile_in,
 
       for (int j = 0; j < BCH_PAR; ++j) {
         const int k = K + j;
+        // 再拼 16 位 BCH parity。它们和信息位一样来自当前行的不同列区间。
         const size_t Ct = static_cast<size_t>((k - N) / B);
         const size_t ct = static_cast<size_t>((k % B) ^ r);
         const size_t src_col = Ct * static_cast<size_t>(B) + ct;
@@ -244,6 +258,7 @@ TilePrepared prepare_tile_inputs(const matrix::Matrix<float>& tile_in,
 
       {
         const int k = OVR_IDX;
+        // 最后一位是 overall parity，对应扩展 BCH 的第 256 位。
         const size_t Ct = static_cast<size_t>((k - N) / B);
         const size_t ct = static_cast<size_t>((k % B) ^ r);
         const size_t src_col = Ct * static_cast<size_t>(B) + ct;
@@ -263,11 +278,14 @@ TilePrepared prepare_tile_inputs(const matrix::Matrix<float>& tile_in,
   }
 
   if (expected_bits) {
+    // 把期望比特表挂到 core 参数里，后续 trace 导出时可直接引用。
     params_for_core.debug_trace.chase_expected_bits = expected_bits;
   } else {
     params_for_core.debug_trace.chase_expected_bits.reset();
   }
   if (!params_for_core.debug_trace.active_chase_entries.empty()) {
+    // 如果当前 tile 命中了被跟踪目标，就把首个命中的 Chase 行/列记下来，
+    // 便于 decoder core 只对相关位置做更细粒度输出。
     params_for_core.debug_trace.chase_decoder_row =
         params_for_core.debug_trace.active_chase_entries.front().row_index;
     params_for_core.debug_trace.chase_decoder_col =

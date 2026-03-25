@@ -5,14 +5,14 @@
 
 namespace {
 constexpr const char* kLabel = "float_plain_demo";
-constexpr float kEbN0Db = 3.13f;
+constexpr float kEbN0Db = 3.07f;
 constexpr int kBitgenSeed = 1521867291;
 constexpr int kChannelSeed = 998258255;
 constexpr unsigned kBitsPerSymbol = 1;
-constexpr bool kGenerateRandomBits = false;
-constexpr bool kNormalizeExtrinsic = false;
+constexpr bool kGenerateRandomBits = true;
+constexpr bool kNormalizeExtrinsic = true;
 constexpr bool kNormalizeKnownPrefixTail = false;
-constexpr bool kDumpWorkLlr = true;
+constexpr bool kDumpWorkLlr = false;
 constexpr const char* kWorkLlrPath = "data/llr/work_llr_float.txt";
 constexpr long kTraceBitIndex = 1048514;
 constexpr const char* kTraceLabel = "bit1048514";
