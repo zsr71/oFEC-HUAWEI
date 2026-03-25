@@ -19,9 +19,9 @@
 
 namespace {
 
-constexpr size_t kTilesPerWindow = 2;
+constexpr size_t kTilesPerWindow = 4;
 constexpr float  kEvalEbN0       = 3.07f;
-constexpr size_t kStage1Bits     = 4 * 110 * 16 * 111;
+constexpr size_t kStage1Bits     = 5 * 110 * 16 * 111;
 constexpr size_t kStage2Bits     = 16 * 110 * 16 * 111;
 constexpr float  kKeepRatio      = 0.20f;
 
@@ -29,19 +29,19 @@ static constexpr const char* kInterleaverName          = "identity";
 static constexpr const char* kDecoderName             = "chase_baseline";
 static constexpr int         kChaseTopkKeep           = 8;
 static constexpr unsigned    kBitsPerSymbol           = 1;
-static constexpr bool        kNormalizeExtrinsic      = true;
+static constexpr bool        kNormalizeExtrinsic      = false;
 static constexpr bool        kGenerateRandomBits      = true;
-static constexpr bool        kNormalizeKnownPrefixTail = true;
-static constexpr std::size_t kLlrBits                 = 16;
-static constexpr float       kQuantClipRatio          = 0.0f;
-const std::vector<int> kSisoActiveList                = {32, 30};
+static constexpr bool        kNormalizeKnownPrefixTail = false;
+static constexpr std::size_t kLlrBits                 = 6;
+static constexpr float       kQuantClipRatio          = 0.5f;
+const std::vector<int> kSisoActiveList                = {32,32,32,32};
 
-const std::vector<float> kAlphaLowGrid   = utils::linspace(0.00f, 1.50f, 3);
-const std::vector<float> kAlphaHighGrid  = utils::linspace(0.00f, 1.50f, 3);
-const std::vector<float> kBetaLowGrid    = utils::linspace(0.00f, 1.50f, 3);
-const std::vector<float> kBetaHighGrid   = utils::linspace(0.00f, 1.50f, 3);
-const std::vector<float> kGammaAlphaGrid = utils::linspace(0.70f, 1.30f, 1);
-const std::vector<float> kGammaBetaGrid  = utils::linspace(0.70f, 1.30f, 1);
+const std::vector<float> kAlphaLowGrid   = utils::linspace(0.00f, 1.50f, 7);
+const std::vector<float> kAlphaHighGrid  = utils::linspace(0.00f, 1.50f, 7);
+const std::vector<float> kBetaLowGrid    = utils::linspace(0.00f, 1.50f, 7);
+const std::vector<float> kBetaHighGrid   = utils::linspace(0.00f, 1.50f, 7);
+const std::vector<float> kGammaAlphaGrid = utils::linspace(0.70f, 1.30f, 3);
+const std::vector<float> kGammaBetaGrid  = utils::linspace(0.70f, 1.30f, 3);
 
 struct Shape {
   float alpha_low;
@@ -160,30 +160,33 @@ struct Evaluation {
   Shape shape;
 };
 
-ofec_sweep::detail::SweepScenario make_scenario(
-    const ofec_sweep::ExplicitAlphaBetaPattern& pattern,
-    const Shape& shape,
-    const ofec_sweep::SweepParameterConfig& config) {
-  ofec_sweep::detail::SweepScenario sc;
-  sc.name = pattern.label;
-  sc.decoder_name = config.decoder_name;
-  sc.alpha_list = pattern.alpha_list;
-  sc.beta_list = pattern.beta_list;
-  if (!sc.alpha_list.empty()) sc.alpha_start = sc.alpha_list.front();
-  if (!sc.beta_list.empty()) sc.beta_start = sc.beta_list.front();
-  sc.alpha_low = shape.alpha_low;
-  sc.alpha_high = shape.alpha_high;
-  sc.gamma_alpha = shape.gamma_alpha;
-  sc.beta_low = shape.beta_low;
-  sc.beta_high = shape.beta_high;
-  sc.gamma_beta = shape.gamma_beta;
-  sc.chase_L = config.base_params.CHASE_L;
-  sc.chase_n_test = 1 << sc.chase_L;
-  sc.chase_topk_keep = config.chase_topk_keep;
-  sc.bitgen_seed = config.base_params.BITGEN_SEED;
-  sc.channel_seed = config.base_params.CHANNEL_SEED;
-  sc.ebn0_db = kEvalEbN0;
-  return sc;
+std::vector<ofec_sweep::detail::SweepScenario> build_stage_scenarios(
+    const std::vector<ofec_sweep::ExplicitAlphaBetaPattern>& patterns,
+    const std::vector<Shape>& shapes,
+    const ofec_sweep::SweepParameterConfig& config_template) {
+  ofec_sweep::SweepParameterConfig config = config_template;
+  config.explicit_patterns = patterns;
+
+  const std::vector<float> ebn0_values =
+      ofec_sweep::detail::build_ebn0_values(config);
+  const std::vector<int> bitgen_seeds = {config.base_params.BITGEN_SEED};
+  const std::vector<int> channel_seeds = {config.base_params.CHANNEL_SEED};
+
+  auto scenarios = ofec_sweep::detail::build_scenarios(
+      config, ebn0_values, bitgen_seeds, channel_seeds);
+
+  if (scenarios.size() == patterns.size() && shapes.size() == patterns.size()) {
+    for (size_t idx = 0; idx < scenarios.size(); ++idx) {
+      scenarios[idx].alpha_low = shapes[idx].alpha_low;
+      scenarios[idx].alpha_high = shapes[idx].alpha_high;
+      scenarios[idx].gamma_alpha = shapes[idx].gamma_alpha;
+      scenarios[idx].beta_low = shapes[idx].beta_low;
+      scenarios[idx].beta_high = shapes[idx].beta_high;
+      scenarios[idx].gamma_beta = shapes[idx].gamma_beta;
+    }
+  }
+
+  return scenarios;
 }
 
 std::vector<Evaluation> run_stage(const std::vector<ofec_sweep::ExplicitAlphaBetaPattern>& patterns,
@@ -203,11 +206,9 @@ std::vector<Evaluation> run_stage(const std::vector<ofec_sweep::ExplicitAlphaBet
   log << "[INFO] Stage " << stage_tag << " evaluating " << patterns.size()
       << " patterns with NUM_INFO_BITS=" << num_bits << "\n";
 
-  std::vector<ofec_sweep::detail::SweepScenario> scenarios;
-  scenarios.reserve(patterns.size());
-  for (size_t idx = 0; idx < patterns.size(); ++idx) {
-    scenarios.push_back(make_scenario(patterns[idx], shapes[idx], config));
-  }
+  auto scenarios = build_stage_scenarios(patterns, shapes, config);
+  log << "[INFO] Stage " << stage_tag << " expanded to " << scenarios.size()
+      << " runnable scenarios after standard scenario build\n";
 
   auto scenario_outputs = ofec_sweep::detail::run_scenarios_parallel(
       scenarios, config, /*max_workers_hint=*/0, stage_tag, &log);

@@ -31,7 +31,7 @@ constexpr bool kQuietPipeline = true;
 constexpr bool kQuietLogs = false;
 
 constexpr bool kNormalizeKnownPrefixTail = false;
-constexpr int kChaseL = 6;
+constexpr int kChaseL = 8;
 
 // 下面这组常量控制扫描网格生成方式：只需要指定起始值、终点值和总点数。
 // 程序会自动用线性插值生成 alpha/beta/gamma 的候选取值。
@@ -138,6 +138,34 @@ std::string format_sequence(const std::vector<float>& seq) {
   return oss.str();
 }
 
+std::string format_int_sequence(const std::vector<int>& seq) {
+  // 功能：把整数列表转成可写入 CSV 的文本。
+  // 输入：seq 为 HARD_TILE_LIST 这类整型配置列表。
+  // 输出：返回以 ';' 拼接的字符串，便于在结果表中复现实验配置。
+  std::ostringstream oss;
+  for (std::size_t i = 0; i < seq.size(); ++i) {
+    if (i) {
+      oss << ';';
+    }
+    oss << seq[i];
+  }
+  return oss.str();
+}
+
+std::string format_seed_schedule(const std::vector<new_float_only::SweepSeedPair>& seed_schedule) {
+  // 功能：把本次扫描实际使用的 seed 调度表压成一列文本。
+  // 输入：seed_schedule 为 pattern 之间共享的 bitgen/channel seed 列表。
+  // 输出：返回形如 "bitgen:channel;..." 的字符串，便于完整复现任务输入。
+  std::ostringstream oss;
+  for (std::size_t i = 0; i < seed_schedule.size(); ++i) {
+    if (i) {
+      oss << ';';
+    }
+    oss << seed_schedule[i].bitgen_seed << ':' << seed_schedule[i].channel_seed;
+  }
+  return oss.str();
+}
+
 std::vector<Shape> build_shapes() {
   // 功能：把 low/high/gamma 网格展开成所有候选 shape。
   // 输入：读取文件顶部定义好的 alpha/beta/gamma 网格常量，不额外接收参数。
@@ -234,8 +262,19 @@ void write_summary_csv_header(std::ofstream& csv) {
   // 功能：写 summary CSV 的表头。
   // 输入：csv 为已经打开的输出文件流。
   // 输出：无返回值；副作用是向文件写入列名，覆盖 stage/rank/shape/BER 等字段。
-  csv << "run_id,label,stage,rank,pattern_index,pattern_label,ebn0_db,trial_count,max_workers,"
-         "num_info_bits,"
+  csv << "run_id,label,stage,rank,pattern_index,pattern_label,"
+         "ebn0_db,bits_per_symbol,generate_random_bits,normalize_extrinsic,"
+         "max_workers,max_workers_override,quiet_pipeline,quiet_logs,"
+         "stage1_bits,stage2_bits,stage2_keep_count,"
+         "seed_count_requested,trials_completed,bitgen_seed_base,channel_seed_base,seed_schedule,"
+         "num_info_bits,tiles_per_win,normalize_known_prefix_tail,"
+         "chase_l,chase_ntest,hard_decode_default,hard_tile_list,dump_work_llr,debug_trace_enable,"
+         "alpha_low_start,alpha_low_end,alpha_low_count,"
+         "alpha_high_start,alpha_high_end,alpha_high_count,"
+         "beta_low_start,beta_low_end,beta_low_count,"
+         "beta_high_start,beta_high_end,beta_high_count,"
+         "gamma_alpha_start,gamma_alpha_end,gamma_alpha_count,"
+         "gamma_beta_start,gamma_beta_end,gamma_beta_count,"
          "alpha_low,alpha_high,gamma_alpha,beta_low,beta_high,gamma_beta,"
          "alpha_list,beta_list,"
          "pre_ber,pre_errors,pre_total,pre_frame_error_trials,"
@@ -249,6 +288,7 @@ void write_summary_csv_row(std::ofstream& csv,
                            std::size_t num_info_bits,
                            unsigned max_workers,
                            const new_float_only::SweepTaskRunnerConfig& config,
+                           const std::vector<new_float_only::SweepSeedPair>& seed_schedule,
                            const StageEvaluation& evaluation) {
   // 功能：把单个 pattern 在某个 stage 的结果写成一行 CSV。
   // 输入：run_id/stage_name/rank 标识本轮扫描位置；config 给出公共运行参数；
@@ -256,6 +296,7 @@ void write_summary_csv_row(std::ofstream& csv,
   // 输出：无返回值；副作用是向 csv 追加一行可复盘记录。
   const Shape& shape = evaluation.candidate.shape;
   const auto& summary = evaluation.summary;
+  const auto& decoder = config.base_decoder;
 
   csv << run_id << ","
       << '"' << config.label << '"' << ","
@@ -264,9 +305,48 @@ void write_summary_csv_row(std::ofstream& csv,
       << summary.pattern_index << ","
       << '"' << summary.pattern_label << '"' << ","
       << config.ebn0_db << ","
-      << summary.trials_completed << ","
+      << config.bits_per_symbol << ","
+      << (config.generate_random_bits ? 1 : 0) << ","
+      << (config.normalize_extrinsic ? 1 : 0) << ","
       << max_workers << ","
+      << config.max_workers_override << ","
+      << (config.quiet_pipeline ? 1 : 0) << ","
+      << (config.quiet_logs ? 1 : 0) << ","
+      << kStage1Bits << ","
+      << kStage2Bits << ","
+      << kStage2KeepCount << ","
+      << seed_schedule.size() << ","
+      << summary.trials_completed << ","
+      << kBitgenSeedBase << ","
+      << kChannelSeedBase << ","
+      << '"' << format_seed_schedule(seed_schedule) << '"' << ","
       << num_info_bits << ","
+      << decoder.TILES_PER_WIN << ","
+      << (decoder.NORMALIZE_KNOWN_PREFIX_TAIL ? 1 : 0) << ","
+      << decoder.CHASE_L << ","
+      << decoder.CHASE_NTEST << ","
+      << (decoder.HARD_DECODE_DEFAULT ? 1 : 0) << ","
+      << '"' << format_int_sequence(decoder.HARD_TILE_LIST) << '"' << ","
+      << (decoder.DUMP_WORK_LLR ? 1 : 0) << ","
+      << (decoder.debug_trace.enable ? 1 : 0) << ","
+      << kAlphaLowStart << ","
+      << kAlphaLowEnd << ","
+      << kAlphaLowCount << ","
+      << kAlphaHighStart << ","
+      << kAlphaHighEnd << ","
+      << kAlphaHighCount << ","
+      << kBetaLowStart << ","
+      << kBetaLowEnd << ","
+      << kBetaLowCount << ","
+      << kBetaHighStart << ","
+      << kBetaHighEnd << ","
+      << kBetaHighCount << ","
+      << kGammaAlphaStart << ","
+      << kGammaAlphaEnd << ","
+      << kGammaAlphaCount << ","
+      << kGammaBetaStart << ","
+      << kGammaBetaEnd << ","
+      << kGammaBetaCount << ","
       << shape.alpha_low << ","
       << shape.alpha_high << ","
       << shape.gamma_alpha << ","
@@ -371,6 +451,7 @@ std::vector<StageEvaluation> run_stage(const std::string& stage_name,
                           num_info_bits,
                           max_workers,
                           config,
+                          seed_schedule,
                           evaluations[rank]);
   }
 
