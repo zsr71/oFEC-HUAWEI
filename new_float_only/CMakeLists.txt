@@ -47,6 +47,7 @@ add_library(new_float_only_core STATIC
   src/tx/qam/qam.cpp
   src/ofec_single/ofec_single_runner.cpp
   src/ofec_single/ofec_single_dual_writer.cpp
+  src/seed_sweep/ebn0_sweep_runner.cpp
   src/seed_sweep/seed_sweep_runner.cpp
   src/seed_sweep/sweep_task_runner.cpp
 )
@@ -62,3 +63,6 @@ target_link_libraries(ofec_seed_sweep_float PRIVATE new_float_only_core)
 
 add_executable(ofec_alpha_beta_sweep_float apps/ofec_alpha_beta_sweep_float.cpp)
 target_link_libraries(ofec_alpha_beta_sweep_float PRIVATE new_float_only_core)
+
+add_executable(ofec_ebn0_sweep_float apps/ofec_ebn0_sweep_float.cpp)
+target_link_libraries(ofec_ebn0_sweep_float PRIVATE new_float_only_core)

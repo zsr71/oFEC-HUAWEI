@@ -627,6 +627,87 @@ int run_sweep(const SweepParameterConfig& config) {
       << "\n";
   out << std::flush;
 
+  ExtendedCsvConfigSnapshot csv_snapshot;
+  csv_snapshot.interleaver_name = cfg.interleaver_name;
+  csv_snapshot.bits_per_symbol = cfg.bits_per_symbol;
+  csv_snapshot.generate_random_bits = cfg.generate_random_bits;
+  csv_snapshot.bitgen_seed = cfg.base_params.BITGEN_SEED;
+  csv_snapshot.bitgen_seed_count = cfg.bitgen_seed_count;
+  csv_snapshot.bitgen_seed_candidates = join_compact(cfg.bitgen_seed_candidates);
+  csv_snapshot.ebn0_start = cfg.ebn0_start;
+  csv_snapshot.ebn0_end = cfg.ebn0_end;
+  csv_snapshot.ebn0_points = cfg.ebn0_points;
+  csv_snapshot.ebn0_candidates = join_compact(cfg.ebn0_candidates);
+  csv_snapshot.channel_seed = cfg.base_params.CHANNEL_SEED;
+  csv_snapshot.channel_seed_count = cfg.channel_seed_count;
+  csv_snapshot.channel_seed_candidates = join_compact(cfg.channel_seed_candidates);
+  csv_snapshot.llr_bits = cfg.base_params.LLR_BITS;
+  csv_snapshot.quant_clip_ratio = cfg.quant_clip_ratio;
+  csv_snapshot.normalize_extrinsic = cfg.normalize_extrinsic;
+  csv_snapshot.normalize_known_prefix_tail = cfg.normalize_known_prefix_tail;
+  csv_snapshot.decoder_name_candidates = join_compact(cfg.decoder_name_candidates);
+  csv_snapshot.chase_l_candidates = join_compact(cfg.chase_l_candidates);
+  csv_snapshot.chase_n_test = cfg.chase_n_test;
+  csv_snapshot.chase_n_test_candidates = join_compact(cfg.chase_n_test_candidates);
+  csv_snapshot.chase_topk_keep = cfg.chase_topk_keep;
+  csv_snapshot.chase_topk_keep_candidates = join_compact(cfg.chase_topk_keep_candidates);
+  csv_snapshot.chase_group_minima_bits = cfg.chase_group_minima_bits;
+  csv_snapshot.chase_group_minima_bits_candidates =
+      join_compact(cfg.chase_group_minima_bits_candidates);
+  csv_snapshot.alpha_start_candidates = join_compact(cfg.alpha_start_candidates);
+  csv_snapshot.alpha_step_candidates = join_compact(cfg.alpha_step_candidates);
+  csv_snapshot.beta_start_candidates = join_compact(cfg.beta_start_candidates);
+  csv_snapshot.beta_step_candidates = join_compact(cfg.beta_step_candidates);
+  csv_snapshot.explicit_patterns = summarize_patterns(cfg.explicit_patterns);
+  csv_snapshot.siso_active_list = cfg.siso_active_list;
+  csv_snapshot.mux_group_g = cfg.mux_group_g;
+  csv_snapshot.mux_enable_reconfig = cfg.mux_enable_reconfig;
+  csv_snapshot.mux_bypass_scheme = cfg.mux_bypass_scheme;
+  csv_snapshot.enable_early_stop = cfg.enable_early_stop;
+  csv_snapshot.early_stop_condition_mode = cfg.early_stop_condition_mode;
+  csv_snapshot.early_stop_condition_candidates =
+      join_compact(cfg.early_stop_condition_candidates);
+  csv_snapshot.early_stop_action_mode = cfg.early_stop_action_mode;
+  csv_snapshot.early_stop_action_candidates =
+      join_compact(cfg.early_stop_action_candidates);
+  csv_snapshot.early_stop_cond_v1_require_bch = cfg.early_stop_cond_v1_require_bch;
+  csv_snapshot.early_stop_cond_v1_require_bch_candidates =
+      join_compact(cfg.early_stop_cond_v1_require_bch_candidates);
+  csv_snapshot.early_stop_cond_v1_require_overall =
+      cfg.early_stop_cond_v1_require_overall;
+  csv_snapshot.early_stop_cond_v1_require_overall_candidates =
+      join_compact(cfg.early_stop_cond_v1_require_overall_candidates);
+  csv_snapshot.early_stop_v2_llr_abs_threshold =
+      cfg.early_stop_v2_llr_abs_threshold;
+  csv_snapshot.early_stop_v2_llr_abs_threshold_candidates =
+      join_compact(cfg.early_stop_v2_llr_abs_threshold_candidates);
+  csv_snapshot.early_stop_v2_max_unreliable_bits =
+      cfg.early_stop_v2_max_unreliable_bits;
+  csv_snapshot.early_stop_v2_max_unreliable_bits_candidates =
+      join_compact(cfg.early_stop_v2_max_unreliable_bits_candidates);
+  csv_snapshot.early_stop_cond_v2_include_overall =
+      cfg.early_stop_cond_v2_include_overall;
+  csv_snapshot.early_stop_action_sign_beta_fill =
+      cfg.early_stop_action_sign_beta_fill;
+  csv_snapshot.early_stop_action_beta_start_candidates =
+      join_compact(cfg.early_stop_action_beta_start_candidates);
+  csv_snapshot.early_stop_action_beta_step_candidates =
+      join_compact(cfg.early_stop_action_beta_step_candidates);
+  csv_snapshot.early_stop_action_residual_divisor =
+      cfg.early_stop_action_residual_divisor;
+  csv_snapshot.early_stop_action_hard_llr_mag =
+      cfg.early_stop_action_hard_llr_mag;
+  csv_snapshot.early_stop_action_hard_llr_mag_candidates =
+      join_compact(cfg.early_stop_action_hard_llr_mag_candidates);
+  csv_snapshot.quiet_pipeline = cfg.quiet_pipeline;
+  csv_snapshot.quiet_logs = cfg.quiet_logs;
+  csv_snapshot.trace_enable = cfg.base_params.debug_trace.enable;
+  csv_snapshot.trace_row = cfg.base_params.debug_trace.row;
+  csv_snapshot.trace_col = cfg.base_params.debug_trace.col;
+  csv_snapshot.trace_log_read = cfg.base_params.debug_trace.log_read_mapping;
+  csv_snapshot.trace_log_write = cfg.base_params.debug_trace.log_write_mapping;
+  csv_snapshot.trace_log_mismatch = cfg.base_params.debug_trace.log_mismatch;
+
   const std::string csv_path =
       (data_dir / ("ofec_sweep_results_" + run_id + ".csv")).string();
   ensure_csv_header(csv_path);
@@ -745,7 +826,8 @@ int run_sweep(const SweepParameterConfig& config) {
                   0 /*num_bits*/,
                   scenarios[pack.idx],
                   result,
-                  CsvFormat::Basic);
+                  CsvFormat::Basic,
+                  &csv_snapshot);
 
     if (result.post_fec.total > 0 && result.post_fec.ber < best_post_ber) {
       best_post_ber = result.post_fec.ber;

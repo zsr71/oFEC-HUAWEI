@@ -7,6 +7,21 @@
 namespace ofec_sweep {
 namespace detail {
 
+namespace {
+
+std::string join_vec_int(const std::vector<int>& values, char sep) {
+  std::ostringstream oss;
+  for (size_t i = 0; i < values.size(); ++i) {
+    oss << values[i];
+    if (i + 1 < values.size()) {
+      oss << sep;
+    }
+  }
+  return oss.str();
+}
+
+}  // namespace
+
 DualOut::DualOut(std::ostream& console, const std::string& filepath, bool mirror_console)
     : console_(mirror_console ? &console : nullptr),
       file_(filepath, std::ios::out | std::ios::app) {
@@ -43,7 +58,24 @@ void ensure_csv_header(const std::string& csv_path) {
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,"
           "early_stop_cond_v2_include_overall,"
-          "early_stop_mean_pct,early_stop_row_mean_pct,early_stop_list,early_stop_row_list\n";
+          "early_stop_mean_pct,early_stop_row_mean_pct,early_stop_list,early_stop_row_list,"
+          "interleaver_name,bits_per_symbol,generate_random_bits,bitgen_seed_cfg,bitgen_seed_count,bitgen_seed_candidates,"
+          "ebn0_start,ebn0_end,ebn0_points,ebn0_candidates,channel_seed_cfg,channel_seed_count,channel_seed_candidates,"
+          "llr_bits,quant_clip_ratio,normalize_extrinsic,normalize_known_prefix_tail,"
+          "decoder_name_candidates,chase_l_candidates,chase_n_test_cfg,chase_n_test_candidates,"
+          "chase_topk_keep_cfg,chase_topk_keep_candidates,chase_group_minima_bits_cfg,chase_group_minima_bits_candidates,"
+          "alpha_start_candidates,alpha_step_candidates,beta_start_candidates,beta_step_candidates,"
+          "explicit_patterns,siso_active_list,mux_group_g_cfg,mux_enable_reconfig,mux_bypass_scheme_cfg,"
+          "enable_early_stop,early_stop_condition_mode_cfg,early_stop_condition_candidates,"
+          "early_stop_action_mode_cfg,early_stop_action_candidates,"
+          "early_stop_cond_v1_require_bch_cfg,early_stop_cond_v1_require_bch_candidates,"
+          "early_stop_cond_v1_require_overall_cfg,early_stop_cond_v1_require_overall_candidates,"
+          "early_stop_v2_llr_abs_threshold_cfg,early_stop_v2_llr_abs_threshold_candidates,"
+          "early_stop_v2_max_unreliable_bits_cfg,early_stop_v2_max_unreliable_bits_candidates,"
+          "early_stop_cond_v2_include_overall_cfg,early_stop_action_sign_beta_fill,"
+          "early_stop_action_beta_start_candidates,early_stop_action_beta_step_candidates,"
+          "early_stop_action_residual_divisor,early_stop_action_hard_llr_mag_cfg,early_stop_action_hard_llr_mag_candidates,"
+          "quiet_pipeline,quiet_logs,trace_enable,trace_row,trace_col,trace_log_read,trace_log_write,trace_log_mismatch\n";
 }
 
 void ensure_csv_header_v2(const std::string& csv_path) {
@@ -54,6 +86,10 @@ void ensure_csv_header_v2(const std::string& csv_path) {
 
   std::ofstream fout(csv_path, std::ios::out | std::ios::app);
   fout << "timestamp,run_id,stage,num_bits,label,"
+          "tiles_per_window,eval_ebn0_db,stage1_bits,stage2_bits,keep_ratio,"
+          "interleaver_name,bits_per_symbol,normalize_extrinsic,generate_random_bits,"
+          "normalize_known_prefix_tail,llr_bits,quant_clip_ratio,siso_active_list,"
+          "alpha_low_grid,alpha_high_grid,beta_low_grid,beta_high_grid,gamma_alpha_grid,gamma_beta_grid,"
           "decoder_name,"
           "alpha_low,alpha_high,gamma_alpha,beta_low,beta_high,gamma_beta,"
           "early_stop_beta_start,early_stop_beta_step,"
@@ -101,9 +137,13 @@ void write_csv_row(std::ostream& csv,
                    std::size_t num_bits,
                    const SweepScenario& scenario,
                    const newcode::PipelineResult& result,
-                   CsvFormat format) {
+                   CsvFormat format,
+                   const ExtendedCsvConfigSnapshot* snapshot) {
   const auto prev_prec = csv.precision();
   if (format == CsvFormat::Basic) {
+    const ExtendedCsvConfigSnapshot empty_snapshot{};
+    const ExtendedCsvConfigSnapshot& cfg =
+        snapshot ? *snapshot : empty_snapshot;
     const double es_mean = mean(result.tile_early_stop_pct);
     const double es_row_mean = mean(result.tile_row_early_stop_pct);
     csv << timestamp << ","
@@ -150,13 +190,97 @@ void write_csv_row(std::ostream& csv,
       csv.precision(prev_prec);
     }
     csv << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\","
-        << '"' << join_vec(result.tile_row_early_stop_pct, '|', 1) << "\"\n";
+        << '"' << join_vec(result.tile_row_early_stop_pct, '|', 1) << "\","
+        << '"' << cfg.interleaver_name << '"' << ","
+        << cfg.bits_per_symbol << ","
+        << (cfg.generate_random_bits ? 1 : 0) << ","
+        << cfg.bitgen_seed << ","
+        << cfg.bitgen_seed_count << ","
+        << '"' << cfg.bitgen_seed_candidates << '"' << ","
+        << cfg.ebn0_start << ","
+        << cfg.ebn0_end << ","
+        << cfg.ebn0_points << ","
+        << '"' << cfg.ebn0_candidates << '"' << ","
+        << cfg.channel_seed << ","
+        << cfg.channel_seed_count << ","
+        << '"' << cfg.channel_seed_candidates << '"' << ","
+        << cfg.llr_bits << ","
+        << cfg.quant_clip_ratio << ","
+        << (cfg.normalize_extrinsic ? 1 : 0) << ","
+        << (cfg.normalize_known_prefix_tail ? 1 : 0) << ","
+        << '"' << cfg.decoder_name_candidates << '"' << ","
+        << '"' << cfg.chase_l_candidates << '"' << ","
+        << cfg.chase_n_test << ","
+        << '"' << cfg.chase_n_test_candidates << '"' << ","
+        << cfg.chase_topk_keep << ","
+        << '"' << cfg.chase_topk_keep_candidates << '"' << ","
+        << cfg.chase_group_minima_bits << ","
+        << '"' << cfg.chase_group_minima_bits_candidates << '"' << ","
+        << '"' << cfg.alpha_start_candidates << '"' << ","
+        << '"' << cfg.alpha_step_candidates << '"' << ","
+        << '"' << cfg.beta_start_candidates << '"' << ","
+        << '"' << cfg.beta_step_candidates << '"' << ","
+        << '"' << cfg.explicit_patterns << '"' << ","
+        << '"' << join_vec_int(cfg.siso_active_list, '|') << '"' << ","
+        << cfg.mux_group_g << ","
+        << (cfg.mux_enable_reconfig ? 1 : 0) << ","
+        << cfg.mux_bypass_scheme << ","
+        << (cfg.enable_early_stop ? 1 : 0) << ","
+        << cfg.early_stop_condition_mode << ","
+        << '"' << cfg.early_stop_condition_candidates << '"' << ","
+        << cfg.early_stop_action_mode << ","
+        << '"' << cfg.early_stop_action_candidates << '"' << ","
+        << (cfg.early_stop_cond_v1_require_bch ? 1 : 0) << ","
+        << '"' << cfg.early_stop_cond_v1_require_bch_candidates << '"' << ","
+        << (cfg.early_stop_cond_v1_require_overall ? 1 : 0) << ","
+        << '"' << cfg.early_stop_cond_v1_require_overall_candidates << '"' << ","
+        << cfg.early_stop_v2_llr_abs_threshold << ","
+        << '"' << cfg.early_stop_v2_llr_abs_threshold_candidates << '"' << ","
+        << cfg.early_stop_v2_max_unreliable_bits << ","
+        << '"' << cfg.early_stop_v2_max_unreliable_bits_candidates << '"' << ","
+        << (cfg.early_stop_cond_v2_include_overall ? 1 : 0) << ","
+        << cfg.early_stop_action_sign_beta_fill << ","
+        << '"' << cfg.early_stop_action_beta_start_candidates << '"' << ","
+        << '"' << cfg.early_stop_action_beta_step_candidates << '"' << ","
+        << cfg.early_stop_action_residual_divisor << ","
+        << cfg.early_stop_action_hard_llr_mag << ","
+        << '"' << cfg.early_stop_action_hard_llr_mag_candidates << '"' << ","
+        << (cfg.quiet_pipeline ? 1 : 0) << ","
+        << (cfg.quiet_logs ? 1 : 0) << ","
+        << (cfg.trace_enable ? 1 : 0) << ","
+        << cfg.trace_row << ","
+        << cfg.trace_col << ","
+        << (cfg.trace_log_read ? 1 : 0) << ","
+        << (cfg.trace_log_write ? 1 : 0) << ","
+        << (cfg.trace_log_mismatch ? 1 : 0) << "\n";
   } else {
+    const ExtendedCsvConfigSnapshot empty_snapshot{};
+    const ExtendedCsvConfigSnapshot& cfg =
+        snapshot ? *snapshot : empty_snapshot;
     csv << timestamp << ","
         << run_id << ","
         << stage_tag << ","
         << num_bits << ","
         << '"' << scenario.name << "\","
+        << cfg.tiles_per_window << ","
+        << cfg.eval_ebn0_db << ","
+        << cfg.stage1_bits << ","
+        << cfg.stage2_bits << ","
+        << cfg.keep_ratio << ","
+        << '"' << cfg.interleaver_name << '"' << ","
+        << cfg.bits_per_symbol << ","
+        << (cfg.normalize_extrinsic ? 1 : 0) << ","
+        << (cfg.generate_random_bits ? 1 : 0) << ","
+        << (cfg.normalize_known_prefix_tail ? 1 : 0) << ","
+        << cfg.llr_bits << ","
+        << cfg.quant_clip_ratio << ","
+        << '"' << join_vec_int(cfg.siso_active_list, '|') << '"' << ","
+        << '"' << join_vec(cfg.alpha_low_grid, '|', 6) << '"' << ","
+        << '"' << join_vec(cfg.alpha_high_grid, '|', 6) << '"' << ","
+        << '"' << join_vec(cfg.beta_low_grid, '|', 6) << '"' << ","
+        << '"' << join_vec(cfg.beta_high_grid, '|', 6) << '"' << ","
+        << '"' << join_vec(cfg.gamma_alpha_grid, '|', 6) << '"' << ","
+        << '"' << join_vec(cfg.gamma_beta_grid, '|', 6) << '"' << ","
         << scenario.decoder_name << ","
         << scenario.alpha_low << ","
         << scenario.alpha_high << ","
@@ -191,7 +315,69 @@ void write_csv_row(std::ostream& csv,
         << result.post_fec.errors << ","
         << result.post_fec.total << ","
         << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\","
-        << '"' << join_vec(result.tile_row_early_stop_pct, '|', 1) << "\"\n";
+        << '"' << join_vec(result.tile_row_early_stop_pct, '|', 1) << "\","
+        << '"' << cfg.interleaver_name << '"' << ","
+        << cfg.bits_per_symbol << ","
+        << (cfg.generate_random_bits ? 1 : 0) << ","
+        << cfg.bitgen_seed << ","
+        << cfg.bitgen_seed_count << ","
+        << '"' << cfg.bitgen_seed_candidates << '"' << ","
+        << cfg.ebn0_start << ","
+        << cfg.ebn0_end << ","
+        << cfg.ebn0_points << ","
+        << '"' << cfg.ebn0_candidates << '"' << ","
+        << cfg.channel_seed << ","
+        << cfg.channel_seed_count << ","
+        << '"' << cfg.channel_seed_candidates << '"' << ","
+        << cfg.llr_bits << ","
+        << cfg.quant_clip_ratio << ","
+        << (cfg.normalize_extrinsic ? 1 : 0) << ","
+        << (cfg.normalize_known_prefix_tail ? 1 : 0) << ","
+        << '"' << cfg.decoder_name_candidates << '"' << ","
+        << '"' << cfg.chase_l_candidates << '"' << ","
+        << cfg.chase_n_test << ","
+        << '"' << cfg.chase_n_test_candidates << '"' << ","
+        << cfg.chase_topk_keep << ","
+        << '"' << cfg.chase_topk_keep_candidates << '"' << ","
+        << cfg.chase_group_minima_bits << ","
+        << '"' << cfg.chase_group_minima_bits_candidates << '"' << ","
+        << '"' << cfg.alpha_start_candidates << '"' << ","
+        << '"' << cfg.alpha_step_candidates << '"' << ","
+        << '"' << cfg.beta_start_candidates << '"' << ","
+        << '"' << cfg.beta_step_candidates << '"' << ","
+        << '"' << cfg.explicit_patterns << '"' << ","
+        << '"' << join_vec_int(cfg.siso_active_list, '|') << '"' << ","
+        << cfg.mux_group_g << ","
+        << (cfg.mux_enable_reconfig ? 1 : 0) << ","
+        << cfg.mux_bypass_scheme << ","
+        << (cfg.enable_early_stop ? 1 : 0) << ","
+        << cfg.early_stop_condition_mode << ","
+        << '"' << cfg.early_stop_condition_candidates << '"' << ","
+        << cfg.early_stop_action_mode << ","
+        << '"' << cfg.early_stop_action_candidates << '"' << ","
+        << (cfg.early_stop_cond_v1_require_bch ? 1 : 0) << ","
+        << '"' << cfg.early_stop_cond_v1_require_bch_candidates << '"' << ","
+        << (cfg.early_stop_cond_v1_require_overall ? 1 : 0) << ","
+        << '"' << cfg.early_stop_cond_v1_require_overall_candidates << '"' << ","
+        << cfg.early_stop_v2_llr_abs_threshold << ","
+        << '"' << cfg.early_stop_v2_llr_abs_threshold_candidates << '"' << ","
+        << cfg.early_stop_v2_max_unreliable_bits << ","
+        << '"' << cfg.early_stop_v2_max_unreliable_bits_candidates << '"' << ","
+        << (cfg.early_stop_cond_v2_include_overall ? 1 : 0) << ","
+        << cfg.early_stop_action_sign_beta_fill << ","
+        << '"' << cfg.early_stop_action_beta_start_candidates << '"' << ","
+        << '"' << cfg.early_stop_action_beta_step_candidates << '"' << ","
+        << cfg.early_stop_action_residual_divisor << ","
+        << cfg.early_stop_action_hard_llr_mag << ","
+        << '"' << cfg.early_stop_action_hard_llr_mag_candidates << '"' << ","
+        << (cfg.quiet_pipeline ? 1 : 0) << ","
+        << (cfg.quiet_logs ? 1 : 0) << ","
+        << (cfg.trace_enable ? 1 : 0) << ","
+        << cfg.trace_row << ","
+        << cfg.trace_col << ","
+        << (cfg.trace_log_read ? 1 : 0) << ","
+        << (cfg.trace_log_write ? 1 : 0) << ","
+        << (cfg.trace_log_mismatch ? 1 : 0) << "\n";
     csv.precision(prev_prec);
   }
 }

@@ -23,7 +23,7 @@ struct DecoderConfig {
   static constexpr std::size_t BCH_PARITY_BITS = BCH_N - BCH_K - 1;
   static constexpr std::size_t BCH_OVERALL_IDX = BCH_N - 1;
 
-  std::size_t NUM_INFO_BITS = 6 * 88 * 16 * 111;
+  std::size_t NUM_INFO_BITS = 24 * 88 * 16 * 111;
   bool NORMALIZE_KNOWN_PREFIX_TAIL = false;
   std::size_t NUM_GUARD_SUBROWS = 2;
   bool DUMP_WORK_LLR = false;
@@ -44,7 +44,7 @@ struct DecoderConfig {
   std::vector<float> beta_list = {0.2f, 0.4f, 0.6f, 0.8f};
 
   bool HARD_DECODE_DEFAULT = false;
-  std::vector<int> HARD_TILE_LIST = {0, 0, 0, 0, 1};
+  std::vector<int> HARD_TILE_LIST = {0, 0, 0, 0, 0};
   float HARD_LLR_MAG = 1.0f;
 
   /**

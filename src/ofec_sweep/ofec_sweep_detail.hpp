@@ -141,6 +141,82 @@ enum class CsvFormat {
   Extended
 };
 
+struct ExtendedCsvConfigSnapshot {
+  std::string bitgen_seed_candidates;
+  std::string channel_seed_candidates;
+  std::string ebn0_candidates;
+  std::string decoder_name_candidates;
+  std::string chase_l_candidates;
+  std::string chase_n_test_candidates;
+  std::string chase_topk_keep_candidates;
+  std::string chase_group_minima_bits_candidates;
+  std::string alpha_start_candidates;
+  std::string alpha_step_candidates;
+  std::string beta_start_candidates;
+  std::string beta_step_candidates;
+  std::string explicit_patterns;
+  std::string early_stop_condition_candidates;
+  std::string early_stop_action_candidates;
+  std::string early_stop_cond_v1_require_bch_candidates;
+  std::string early_stop_cond_v1_require_overall_candidates;
+  std::string early_stop_v2_llr_abs_threshold_candidates;
+  std::string early_stop_v2_max_unreliable_bits_candidates;
+  std::string early_stop_action_beta_start_candidates;
+  std::string early_stop_action_beta_step_candidates;
+  std::string early_stop_action_hard_llr_mag_candidates;
+  std::size_t tiles_per_window = 0;
+  float eval_ebn0_db = 0.0f;
+  std::size_t stage1_bits = 0;
+  std::size_t stage2_bits = 0;
+  float keep_ratio = 0.0f;
+  std::string interleaver_name;
+  int bitgen_seed = 0;
+  int bitgen_seed_count = 0;
+  float ebn0_start = 0.0f;
+  float ebn0_end = 0.0f;
+  int ebn0_points = 0;
+  int channel_seed = 0;
+  int channel_seed_count = 0;
+  unsigned bits_per_symbol = 0;
+  bool normalize_extrinsic = false;
+  bool generate_random_bits = false;
+  bool normalize_known_prefix_tail = false;
+  std::size_t llr_bits = 0;
+  float quant_clip_ratio = 0.0f;
+  int chase_n_test = 0;
+  int chase_topk_keep = 0;
+  int chase_group_minima_bits = 0;
+  std::vector<int> siso_active_list;
+  int mux_group_g = 0;
+  bool mux_enable_reconfig = false;
+  int mux_bypass_scheme = 0;
+  bool enable_early_stop = false;
+  int early_stop_condition_mode = 0;
+  int early_stop_action_mode = 0;
+  bool early_stop_cond_v1_require_bch = false;
+  bool early_stop_cond_v1_require_overall = false;
+  float early_stop_v2_llr_abs_threshold = 0.0f;
+  int early_stop_v2_max_unreliable_bits = 0;
+  bool early_stop_cond_v2_include_overall = false;
+  float early_stop_action_sign_beta_fill = 0.0f;
+  float early_stop_action_residual_divisor = 0.0f;
+  float early_stop_action_hard_llr_mag = 0.0f;
+  bool quiet_pipeline = false;
+  bool quiet_logs = false;
+  bool trace_enable = false;
+  long trace_row = -1;
+  long trace_col = -1;
+  bool trace_log_read = false;
+  bool trace_log_write = false;
+  bool trace_log_mismatch = false;
+  std::vector<float> alpha_low_grid;
+  std::vector<float> alpha_high_grid;
+  std::vector<float> beta_low_grid;
+  std::vector<float> beta_high_grid;
+  std::vector<float> gamma_alpha_grid;
+  std::vector<float> gamma_beta_grid;
+};
+
 void write_csv_row(std::ostream& csv,
                    const std::string& timestamp,
                    const std::string& run_id,
@@ -148,7 +224,8 @@ void write_csv_row(std::ostream& csv,
                    std::size_t num_bits,
                    const SweepScenario& scenario,
                    const newcode::PipelineResult& result,
-                   CsvFormat format);
+                   CsvFormat format,
+                   const ExtendedCsvConfigSnapshot* snapshot = nullptr);
 
 std::vector<ScenarioOutput> run_scenarios_parallel(
     const std::vector<SweepScenario>& scenarios,

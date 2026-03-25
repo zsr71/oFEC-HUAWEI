@@ -195,6 +195,7 @@ std::vector<Evaluation> run_stage(const std::vector<ofec_sweep::ExplicitAlphaBet
                                   size_t num_bits,
                                   const std::string& stage_tag,
                                   const std::string& run_id,
+                                  const ofec_sweep::detail::ExtendedCsvConfigSnapshot& csv_snapshot,
                                   ofec_sweep::detail::DualOut& log,
                                   std::ofstream& csv) {
   if (patterns.empty()) return {};
@@ -235,7 +236,8 @@ std::vector<Evaluation> run_stage(const std::vector<ofec_sweep::ExplicitAlphaBet
                                       num_bits,
                                       scenario,
                                       result,
-                                      ofec_sweep::detail::CsvFormat::Extended);
+                                      ofec_sweep::detail::CsvFormat::Extended,
+                                      &csv_snapshot);
 
     evaluations.push_back(Evaluation{patterns[idx], result, shapes[idx]});
   }
@@ -298,6 +300,27 @@ int main() {
   csv.setf(std::ios::fixed);
   csv << std::setprecision(8);
 
+  ofec_sweep::detail::ExtendedCsvConfigSnapshot csv_snapshot;
+  csv_snapshot.tiles_per_window = kTilesPerWindow;
+  csv_snapshot.eval_ebn0_db = kEvalEbN0;
+  csv_snapshot.stage1_bits = kStage1Bits;
+  csv_snapshot.stage2_bits = kStage2Bits;
+  csv_snapshot.keep_ratio = kKeepRatio;
+  csv_snapshot.interleaver_name = kInterleaverName;
+  csv_snapshot.bits_per_symbol = kBitsPerSymbol;
+  csv_snapshot.normalize_extrinsic = kNormalizeExtrinsic;
+  csv_snapshot.generate_random_bits = kGenerateRandomBits;
+  csv_snapshot.normalize_known_prefix_tail = kNormalizeKnownPrefixTail;
+  csv_snapshot.llr_bits = kLlrBits;
+  csv_snapshot.quant_clip_ratio = kQuantClipRatio;
+  csv_snapshot.siso_active_list = kSisoActiveList;
+  csv_snapshot.alpha_low_grid = kAlphaLowGrid;
+  csv_snapshot.alpha_high_grid = kAlphaHighGrid;
+  csv_snapshot.beta_low_grid = kBetaLowGrid;
+  csv_snapshot.beta_high_grid = kBetaHighGrid;
+  csv_snapshot.gamma_alpha_grid = kGammaAlphaGrid;
+  csv_snapshot.gamma_beta_grid = kGammaBetaGrid;
+
   auto shapes = build_shapes();
   auto patterns = build_schedule(shapes);
   log << "[INFO] Stage 1 candidate count: " << patterns.size() << "\n";
@@ -306,7 +329,7 @@ int main() {
       << ofec_sweep::detail::resolve_worker_count(config) << "\n";
 
   auto stage1_results = run_stage(patterns, shapes, config, kStage1Bits,
-                                  "stage1", run_id, log, csv);
+                                  "stage1", run_id, csv_snapshot, log, csv);
   if (stage1_results.empty()) {
     log << "[ERROR] Stage 1 produced no results\n";
     return 1;
@@ -315,7 +338,7 @@ int main() {
   auto top_patterns = select_top_patterns(stage1_results, shapes);
   log << "[INFO] Stage 2 candidate count: " << top_patterns.size() << "\n";
   auto stage2_results = run_stage(top_patterns, shapes, config, kStage2Bits,
-                                  "stage2", run_id, log, csv);
+                                  "stage2", run_id, csv_snapshot, log, csv);
   if (stage2_results.empty()) {
     log << "[ERROR] Stage 2 produced no results\n";
     return 1;

@@ -1,9 +1,10 @@
 # `new_float_only/apps` 运行说明
 
-本文说明如何用命令行构建并运行 [`new_float_only/apps`](/home/zsr71/projects/newcode/new_float_only/apps) 里的 3 个入口程序：
+本文说明如何用命令行构建并运行 [`new_float_only/apps`](/home/zsr71/projects/newcode/new_float_only/apps) 里的 4 个入口程序：
 
 - `ofec_single_float.cpp`
 - `ofec_seed_sweep_float.cpp`
+- `ofec_ebn0_sweep_float.cpp`
 - `ofec_alpha_beta_sweep_float.cpp`
 
 ## 1. 先进入工程目录
@@ -88,7 +89,39 @@ cmake --build build -j
 - summary CSV：`data/seed_sweep_results_<timestamp>.csv`
 - per-trial CSV：`data/seed_sweep_trials_<timestamp>.csv`
 
-## 5. 运行 `alpha/beta` 参数扫描 `ofec_alpha_beta_sweep_float`
+## 5. 运行固定参数的 `Eb/N0` 扫描 `ofec_ebn0_sweep_float`
+
+对应源码：
+
+- [`ofec_ebn0_sweep_float.cpp`](/home/zsr71/projects/newcode/new_float_only/apps/ofec_ebn0_sweep_float.cpp)
+
+运行命令：
+
+```bash
+./build/ofec_ebn0_sweep_float
+```
+
+用途：
+
+- 固定一组 float plain decoder 参数
+- 扫描一段 `Eb/N0`
+- 把 `(ebn0, seed)` 展开成 task 并行执行
+- 按 `Eb/N0` 聚合 pre/post BER
+
+默认特点：
+
+- 当前示例默认扫描 `3.07 dB ~ 3.37 dB`
+- 当前示例默认取 `30` 个 `Eb/N0` 点
+- 当前示例默认每个 `Eb/N0` 点跑 `4` 个 seed trial
+
+常见输出：
+
+- 控制台进度
+- 控制台每个 `Eb/N0` 点的聚合 BER
+- summary CSV：`data/ebn0_sweep_results_<timestamp>.csv`
+- per-trial CSV：`data/ebn0_sweep_trials_<timestamp>.csv`
+
+## 6. 运行 `alpha/beta` 参数扫描 `ofec_alpha_beta_sweep_float`
 
 对应源码：
 
@@ -119,19 +152,20 @@ cmake --build build -j
 - 控制台 pattern 排名
 - summary CSV：`data/ofec_alpha_beta_sweep_float_<timestamp>.csv`
 
-## 6. 只编译某一个目标
+## 7. 只编译某一个目标
 
 如果你只想编译其中一个程序，可以用：
 
 ```bash
 cmake --build build --target ofec_single_float -j
 cmake --build build --target ofec_seed_sweep_float -j
+cmake --build build --target ofec_ebn0_sweep_float -j
 cmake --build build --target ofec_alpha_beta_sweep_float -j
 ```
 
-## 7. 修改实验参数的方法
+## 8. 修改实验参数的方法
 
-这 3 个程序当前都没有命令行参数解析，配置方式是：
+这 4 个程序当前都没有命令行参数解析，配置方式是：
 
 1. 直接修改对应 `cpp` 文件顶部的常量
 2. 重新编译
@@ -140,6 +174,7 @@ cmake --build build --target ofec_alpha_beta_sweep_float -j
 例如常改的参数有：
 
 - `Eb/N0`
+- `Eb/N0 points`
 - `CHASE_L`
 - `trial_count`
 - `bitgen/channel seed`
@@ -147,7 +182,15 @@ cmake --build build --target ofec_alpha_beta_sweep_float -j
 - `beta_list`
 - `alpha/beta` 扫描网格
 
-## 8. 一个完整示例
+## 9. 一个完整示例
+
+从头到尾跑一次固定参数 `Eb/N0` sweep：
+
+```bash
+cd /home/zsr71/projects/newcode/new_float_only
+cmake --build build -j
+./build/ofec_ebn0_sweep_float
+```
 
 从头到尾跑一次 `alpha/beta` 扫描：
 

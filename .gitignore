@@ -17,6 +17,7 @@ Makefile
 # Generated data / logs
 *.csv
 *.CSV
+*.json
 *.log
 *.LOG
 logs/

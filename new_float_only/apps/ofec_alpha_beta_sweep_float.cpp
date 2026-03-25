@@ -18,8 +18,8 @@ namespace {
 constexpr const char* kLabel = "alpha_beta_sweep_float";
 constexpr float kEbN0Db = 3.07f;
 constexpr std::size_t kTrialCount = 1;
-constexpr std::size_t kStage1Bits = 16 * 132 * 16 * 111;
-constexpr std::size_t kStage2Bits = 32 * 132 * 16 * 111;
+constexpr std::size_t kStage1Bits = 8 * 132 * 16 * 111;
+constexpr std::size_t kStage2Bits = 8 * 132 * 16 * 111;
 constexpr std::size_t kStage2KeepCount = 8;
 constexpr int kBitgenSeedBase = 1521867291;
 constexpr int kChannelSeedBase = 998258255;
@@ -31,25 +31,25 @@ constexpr bool kQuietPipeline = true;
 constexpr bool kQuietLogs = false;
 
 constexpr bool kNormalizeKnownPrefixTail = false;
-constexpr int kChaseL = 8;
+constexpr int kChaseL = 6;
 
 // 下面这组常量控制扫描网格生成方式：只需要指定起始值、终点值和总点数。
 // 程序会自动用线性插值生成 alpha/beta/gamma 的候选取值。
 constexpr float kAlphaLowStart = 0.1f;
 constexpr float kAlphaLowEnd = 0.4f;
-constexpr std::size_t kAlphaLowCount = 4;
+constexpr std::size_t kAlphaLowCount = 2;
 
 constexpr float kAlphaHighStart = 0.6f;
 constexpr float kAlphaHighEnd = 1.1f;
-constexpr std::size_t kAlphaHighCount = 6;
+constexpr std::size_t kAlphaHighCount = 2;
 
 constexpr float kBetaLowStart = 0.1f;
 constexpr float kBetaLowEnd = 0.4f;
-constexpr std::size_t kBetaLowCount = 4;
+constexpr std::size_t kBetaLowCount = 2;
 
 constexpr float kBetaHighStart = 0.6f;
 constexpr float kBetaHighEnd = 1.1f;
-constexpr std::size_t kBetaHighCount = 6;
+constexpr std::size_t kBetaHighCount = 2;
 
 constexpr float kGammaAlphaStart = 1.0f;
 constexpr float kGammaAlphaEnd = 1.0f;
