@@ -9,18 +9,18 @@
 // 发射端参数
 static constexpr const char* kLabel              = "debug_L6";    // 运行标签：日志名、输出文件名前缀都会带这个名字
 static constexpr int         kChaseL_override    = 6;             // Chase L，-1 表示使用 Params 里的默认值
-static constexpr int         kBitgenSeed         = 1521867291;    // 比特生成随机种子，固定后可复现实验
-static constexpr bool        kGenerateRandomBits = true;          // true=发送随机信息比特，false=发送全 0 比特
+static constexpr int         kBitgenSeed         = 20260319;    // 比特生成随机种子，固定后可复现实验
+static constexpr bool        kGenerateRandomBits = false;          // true=发送随机信息比特，false=发送全 0 比特
 
 // 信道参数
 static constexpr float       kEbN0_db                      = 3.13f;   // 信道 Eb/N0，单位 dB
-static constexpr int         kChannelSeed                  = 9982582558; // 信道噪声随机种子，固定后可复现实验
+static constexpr int         kChannelSeed                  = 3192026; // 信道噪声随机种子，固定后可复现实验
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
 //早停参数
 static constexpr bool        kEnableEarlyStop              = false;   // true=启用早停，false=完全关闭早停路径
-static constexpr int         kEarlyStopConditionMode       = 2;       // 早停条件编号：1=v1，2=v2
-static constexpr int         kEarlyStopActionMode          = 1;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag
+static constexpr int         kEarlyStopConditionMode       = 1;       // 早停条件编号：1=v1，2=v2
+static constexpr int         kEarlyStopActionMode          = 4;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha
 
 static constexpr bool        kEarlyStopCondV1RequireBch    = true;    // 条件1里是否要求 BCH syndrome 为 0
 static constexpr bool        kEarlyStopCondV1RequireOverall = true;   // 条件1里是否要求 overall parity 一致
@@ -35,7 +35,7 @@ static constexpr float       kQuantClipRatio = 0.5f;   // 动态裁剪比例，0
 
 // 解码主参数
 static constexpr const char* kInterleaverName          = "identity"; // 交织器名称，identity 表示不改变比特顺序
-static constexpr const char* kDecoderName              = "chase_topk_pruned"; 
+static constexpr const char* kDecoderName              = "chase_baseline"; 
 // 解码器名称：chase_baseline=逐 bit 搜索 Cplus/Cminus 的基线 Chase；
 //chase_topk_pruned=Top-K 裁剪版（pruned=裁剪，只保留前 K 个 good 候选参与后续外信息计算）
 //；chase_global_pair=全局固定一对 best/second 来计算各 bit 可靠度；
@@ -64,7 +64,7 @@ static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chas
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
   8.571428,10.037715,16.865997,31.428572
 };
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kSisoActiveList = {64, 64, 64, 64}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                     // MUX 分组粒度，1 表示全局池化
 static constexpr bool kMuxEnableReconfig  = false;                 // true 表示启用重配置版 MUX 调度
 static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边集合方案编号：1=scheme1，2=scheme2
@@ -83,10 +83,10 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = { // 需要重点跟踪的目标比特列表
-    {1143884, "bit1143884"},
-    {1148431, "bit1148431"},
-    {5544508, "bit5544508"},
-    {5563798, "bit5563798"},
+    {989264, "bit989264"},
+    {1015884, "bit1015884"},
+    {1054555, "bit1054555"},
+    {2042077, "bit2042077"},
 };
 } 
 

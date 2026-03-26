@@ -60,7 +60,8 @@ void append_common_name(std::ostringstream& oss, const SweepScenario& scenario) 
         << "_v2ov" << (scenario.early_stop_cond_v2_include_overall ? 1 : 0)
         << std::defaultfloat;
   }
-  if (scenario.early_stop_action_mode == 1) {
+  if (scenario.early_stop_action_mode == 1 ||
+      scenario.early_stop_action_mode == 4) {
     oss << "_esBetaS" << std::fixed << std::setprecision(3)
         << scenario.early_stop_beta_start
         << "_d" << scenario.early_stop_beta_step
@@ -265,7 +266,7 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
                   scenario.beta_list =
                       generate_sequence(beta_start, beta_step, len);
 
-                  if (action_mode == 1) {
+                  if (action_mode == 1 || action_mode == 4) {
                     const auto early_stop_beta_start_values =
                         choose_candidates(
                             config.early_stop_action_beta_start_candidates,
@@ -377,7 +378,7 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
           scenario.channel_seed = channel_seed;
           scenario.ebn0_db = ebn0_db;
 
-          if (action_mode == 1 &&
+          if ((action_mode == 1 || action_mode == 4) &&
               pattern.early_stop_action_sign_beta_list.size() == len) {
             scenario.early_stop_action_sign_beta_list =
                 pattern.early_stop_action_sign_beta_list;

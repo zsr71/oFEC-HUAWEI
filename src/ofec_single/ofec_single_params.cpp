@@ -43,8 +43,9 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   }
   if (cfg.early_stop_action_mode != 1 &&
       cfg.early_stop_action_mode != 2 &&
-      cfg.early_stop_action_mode != 3) {
-    log << "[ERROR] early_stop_action_mode 目前必须是 1、2 或 3\n";
+      cfg.early_stop_action_mode != 3 &&
+      cfg.early_stop_action_mode != 4) {
+    log << "[ERROR] early_stop_action_mode 目前必须是 1、2、3 或 4\n";
     return std::nullopt;
   }
   if (cfg.early_stop_v2_llr_abs_threshold < 0.0f) {

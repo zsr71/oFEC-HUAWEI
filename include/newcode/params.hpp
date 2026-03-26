@@ -21,7 +21,7 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     =  32 * 110 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     =  64 * 110 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 56456;                 // 随机种子
   int    CHANNEL_SEED      = BITGEN_SEED + 656;    // 信道噪声随机种子
   bool   BITGEN_RANDOM_BITS = true;             // true=随机比特，false=全 0
@@ -49,7 +49,7 @@ struct Params {
   int CHASE_SBR   = 2;  // 每个 tile 底部解码的子块行数（1 或 2）
   bool ENABLE_EARLY_STOP = true;  // 是否启用 tile/row 级早停判定
   int EARLY_STOP_CONDITION_MODE = 1;  // 1=detect_tile_early_stop_v1, 2=detect_tile_early_stop_v2
-  int EARLY_STOP_ACTION_MODE = 1;     // 1=sign beta, 2=residual only, 3=hard-decode sign LLR
+  int EARLY_STOP_ACTION_MODE = 1;     // 1=sign beta, 2=residual only, 3=hard-decode sign LLR, 4=sign beta pre-div alpha
   bool EARLY_STOP_COND_V1_REQUIRE_BCH = true;
   bool EARLY_STOP_COND_V1_REQUIRE_OVERALL = true;
   float EARLY_STOP_V2_LLR_ABS_THRESHOLD = 0.5f;

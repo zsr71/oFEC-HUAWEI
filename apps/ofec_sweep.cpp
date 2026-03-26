@@ -31,7 +31,7 @@ static constexpr float       kQuantClipRatio                = 0.5f;       // 动
 // chase_global_pair=全局固定一对 best/second 来算所有 bit 的可靠度
 // chase_group_minima=分组组内最优版（minima=每组里度量最小/score 最大的代表）
 // chase_overall_parity_search=把 overall parity 也纳入搜索的变体
-static constexpr const char* kDecoderName                   = "chase_group_minima";
+static constexpr const char* kDecoderName                   = "chase_baseline";
 static const std::vector<const char*> kDecoderNameCandidates = {};         // decoder_name 扫描候选，空表示只跑固定解码器；非空时会优先按这里展开多个解码方法
 static constexpr bool        kNormalizeExtrinsic            = false;      // 是否对 extrinsic 做归一化
 static constexpr bool        kNormalizeKnownPrefixTail      = false;      // 是否对 known-prefix 之后的尾部做归一化
@@ -50,9 +50,9 @@ static const std::vector<float> kAlphaStepCandidates        = utils::linspace(0.
 static const std::vector<float> kBetaStartCandidates        = utils::linspace(0.0f, 0.2f, 2); // Chase beta 起点候选
 static const std::vector<float> kBetaStepCandidates         = utils::linspace(0.0f, 0.2f, 2); // Chase beta 步进候选
 
-static const std::vector<int> kSisoActiveList               = {32, 32, 32, 16}; // 每个 tile 的 SISO 行数预算
-static constexpr int         kMuxGroupG                     = 2;          // MUX 分组粒度，1 表示全局池化
-static constexpr bool        kMuxEnableReconfig             = true;      // 是否启用重配置版 MUX 调度
+static const std::vector<int> kSisoActiveList               = {32, 32, 32, 32}; // 每个 tile 的 SISO 行数预算
+static constexpr int         kMuxGroupG                     = 1;          // MUX 分组粒度，1 表示全局池化
+static constexpr bool        kMuxEnableReconfig             = false;      // 是否启用重配置版 MUX 调度
 static constexpr int         kMuxBypassScheme               = 3;          // 旁路边集合方案编号：1=scheme1，2=scheme2
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = { // 显式给出 alpha/beta/early-stop beta 列表的方案集合
  {"custom_label",
@@ -62,10 +62,10 @@ static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBet
 };
 
 // 早停参数：总开关 -> 条件 -> 条件细参 -> 动作 -> 动作细参
-static constexpr bool        kEnableEarlyStop               = true;      // 是否启用 early-stop 总开关
+static constexpr bool        kEnableEarlyStop               = false;      // 是否启用 early-stop 总开关
 static constexpr int         kEarlyStopConditionMode        = 1;          // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionCandidates = {};    // 早停条件候选列表
-static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag
+static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha
 static const std::vector<int> kEarlyStopActionCandidates    = {}; // 早停动作候选列表
 
 static constexpr bool        kEarlyStopCondV1RequireBch     = true;       // 条件1里是否要求 BCH syndrome 为 0
