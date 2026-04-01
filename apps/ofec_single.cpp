@@ -18,9 +18,9 @@ static constexpr int         kChannelSeed                  = 3192026; // 信道�
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
 //早停参数
-static constexpr bool        kEnableEarlyStop              = false;   // true=启用早停，false=完全关闭早停路径
+static constexpr bool        kEnableEarlyStop              = true;   // true=启用早停，false=完全关闭早停路径
 static constexpr int         kEarlyStopConditionMode       = 1;       // 早停条件编号：1=v1，2=v2
-static constexpr int         kEarlyStopActionMode          = 4;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha
+static constexpr int         kEarlyStopActionMode          = 4;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta
 
 static constexpr bool        kEarlyStopCondV1RequireBch    = true;    // 条件1里是否要求 BCH syndrome 为 0
 static constexpr bool        kEarlyStopCondV1RequireOverall = true;   // 条件1里是否要求 overall parity 一致
@@ -62,7 +62,7 @@ static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chas
   8.571428,10.037715,16.865997,31.428572
 };
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
-  8.571428,10.037715,16.865997,31.428572
+  2*8.571428,2*10.037715,2*16.865997,2*31.428572
 };
 static const std::vector<int> kSisoActiveList = {64, 64, 64, 64}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                     // MUX 分组粒度，1 表示全局池化
@@ -83,10 +83,9 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = { // 需要重点跟踪的目标比特列表
-    {989264, "bit989264"},
-    {1015884, "bit1015884"},
-    {1054555, "bit1054555"},
-    {2042077, "bit2042077"},
+    {1049811, "bit1049811"},
+    {3337785, "bit3337785"},
+    {3413257, "bit3413257"},
 };
 } 
 

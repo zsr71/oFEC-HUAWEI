@@ -6,6 +6,7 @@
 #include "newcode/ofec/earlystop/row_early_stop_process_2.hpp"
 #include "newcode/ofec/earlystop/row_early_stop_process_3.hpp"
 #include "newcode/ofec/earlystop/row_early_stop_process_4.hpp"
+#include "newcode/ofec/earlystop/row_early_stop_process_5.hpp"
 
 namespace newcode {
 
@@ -26,9 +27,12 @@ bool apply_row_early_stop_action(const LLR* lin256,
     case 4:
       row_early_stop_process_4(lin256, lch256, y2_256, p);
       return true;
+    case 5:
+      row_early_stop_process_5(lin256, lch256, y2_256, p);
+      return true;
     default:
       throw std::invalid_argument(
-          "EARLY_STOP_ACTION_MODE must be 1, 2, 3 or 4 in current implementation");
+          "EARLY_STOP_ACTION_MODE must be 1, 2, 3, 4 or 5 in current implementation");
   }
 }
 

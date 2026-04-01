@@ -414,7 +414,7 @@ int run_sweep(const SweepParameterConfig& config) {
     return mode == 1 || mode == 2;
   };
   auto validate_action_mode = [](int mode) -> bool {
-    return mode == 1 || mode == 2 || mode == 3 || mode == 4;
+    return mode == 1 || mode == 2 || mode == 3 || mode == 4 || mode == 5;
   };
   const int resolved_condition_mode =
       resolved.base_params.EARLY_STOP_CONDITION_MODE;
@@ -423,7 +423,7 @@ int run_sweep(const SweepParameterConfig& config) {
     return 1;
   }
   if (!validate_action_mode(resolved.early_stop_action_mode)) {
-    std::cerr << "[ERROR] early_stop_action_mode must be 1, 2, 3 or 4\n";
+    std::cerr << "[ERROR] early_stop_action_mode must be 1, 2, 3, 4 or 5\n";
     return 1;
   }
   for (int mode : resolved.early_stop_condition_candidates) {

@@ -65,7 +65,7 @@ static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBet
 static constexpr bool        kEnableEarlyStop               = false;      // 是否启用 early-stop 总开关
 static constexpr int         kEarlyStopConditionMode        = 1;          // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionCandidates = {};    // 早停条件候选列表
-static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha
+static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta
 static const std::vector<int> kEarlyStopActionCandidates    = {}; // 早停动作候选列表
 
 static constexpr bool        kEarlyStopCondV1RequireBch     = true;       // 条件1里是否要求 BCH syndrome 为 0
