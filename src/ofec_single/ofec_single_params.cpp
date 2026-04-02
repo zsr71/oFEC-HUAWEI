@@ -16,6 +16,7 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.BITGEN_RANDOM_BITS = cfg.generate_random_bits;
   params.NORMALIZE_KNOWN_PREFIX_TAIL = cfg.normalize_known_prefix_tail;
   params.ENABLE_EARLY_STOP = cfg.enable_early_stop;
+  params.EARLY_STOP_ENABLE_LIST = cfg.early_stop_enable_list;
   params.EARLY_STOP_CONDITION_MODE = cfg.early_stop_condition_mode;
   params.EARLY_STOP_ACTION_MODE = cfg.early_stop_action_mode;
   params.EARLY_STOP_COND_V1_REQUIRE_BCH = cfg.early_stop_cond_v1_require_bch;
@@ -90,6 +91,12 @@ std::optional<newcode::Params> build_params(const Config& cfg,
 
   const std::size_t tiles = params.TILES_PER_WIN;
 
+  if (!params.EARLY_STOP_ENABLE_LIST.empty() &&
+      params.EARLY_STOP_ENABLE_LIST.size() != tiles) {
+    log << "[ERROR] early_stop_enable_list 长度必须等于 TILES_PER_WIN\n";
+    return std::nullopt;
+  }
+
   if (!cfg.alpha_explicit.empty()) {
     if (cfg.alpha_explicit.size() != tiles) {
       log << "[ERROR] kAlpha_explicit 长度必须等于 TILES_PER_WIN\n";
@@ -138,9 +145,11 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   }
 
   if (!cfg.siso_active_list.empty()) {
-    params.SISO_ACTIVE_LIST = cfg.siso_active_list;
+  params.SISO_ACTIVE_LIST = cfg.siso_active_list;
   }
   params.MUX_GROUP_G = cfg.mux_group_g;
+  params.MUX_SCHEDULING_MODE = cfg.mux_scheduling_mode;
+  params.MUX_EARLY_STOP_PRIORITY_RULE = cfg.mux_early_stop_priority_rule;
   params.MUX_ENABLE_RECONFIG = cfg.mux_enable_reconfig;
   params.MUX_EXTRA_BYPASS_EDGES = cfg.mux_extra_bypass_edges;
   const auto mux_ok =
@@ -156,6 +165,15 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       newcode::mux::validate_mux_group_g(params.MUX_GROUP_G, rows_to_decode);
   if (!group_ok.ok) {
     log << "[ERROR] " << group_ok.error << "\n";
+    return std::nullopt;
+  }
+  if (params.MUX_SCHEDULING_MODE != 0 && params.MUX_SCHEDULING_MODE != 1) {
+    log << "[ERROR] mux_scheduling_mode 目前必须是 0 或 1\n";
+    return std::nullopt;
+  }
+  if (params.MUX_EARLY_STOP_PRIORITY_RULE != 0 &&
+      params.MUX_EARLY_STOP_PRIORITY_RULE != 1) {
+    log << "[ERROR] mux_early_stop_priority_rule 目前必须是 0 或 1\n";
     return std::nullopt;
   }
   if (params.MUX_ENABLE_RECONFIG) {

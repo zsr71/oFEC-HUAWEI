@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "newcode/ofec/earlystop/tile_early_stop_result.hpp"
+
 namespace newcode::mux {
 
 struct GroupRange {
@@ -19,5 +21,10 @@ void apply_siso_budget_grouped(std::vector<uint8_t>& state,
                                int siso_active_for_tile,
                                int group_g);
 
-}  // namespace newcode::mux
+void apply_siso_budget_grouped_priority(std::vector<uint8_t>& state,
+                                        int siso_active_for_tile,
+                                        int group_g,
+                                        const TileEarlyStopResult& stats,
+                                        int priority_rule);
 
+}  // namespace newcode::mux

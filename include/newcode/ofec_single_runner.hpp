@@ -25,6 +25,7 @@ struct Config {
   int bitgen_seed;
   int channel_seed;
   bool enable_early_stop = true;
+  std::vector<int> early_stop_enable_list;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
   bool early_stop_cond_v1_require_bch = true;
@@ -43,6 +44,8 @@ struct Config {
   float early_stop_action_hard_llr_mag = 1.0f;
   std::vector<int> siso_active_list;
   int mux_group_g = 1;
+  int mux_scheduling_mode = 0;
+  int mux_early_stop_priority_rule = 0;
   bool mux_enable_reconfig = false;
   std::vector<newcode::mux::MuxEdge> mux_extra_bypass_edges;
   std::string interleaver_name;

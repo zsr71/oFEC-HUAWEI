@@ -107,8 +107,9 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
     early_stop_stats = detect_tile_early_stop(prep.lin_matrix, p);
   } else {
     early_stop_stats.row_passed_flags.assign(rows_to_decode, false);
+    early_stop_stats.row_details.assign(rows_to_decode, TileEarlyStopRowDetail{});
     early_stop_stats.rows_passed = 0;
-    early_stop_stats.rows_total = static_cast<int>(rows_to_decode);
+    early_stop_stats.rows_total = rows_to_decode;
     early_stop_stats.all_rows_passed = false;
   }
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
@@ -120,8 +121,17 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
   const bool mux_needed =
       siso_active_for_tile < static_cast<int>(rows_to_decode);
   if (mux_needed) {
+    const bool use_priority_mux = (p.MUX_SCHEDULING_MODE == 1);
     // 当 SISO 预算不足以覆盖所有 row 时，MUX 才会真正参与裁剪/重配置。
     if (p.MUX_ENABLE_RECONFIG) {
+      if (use_priority_mux) {
+        newcode::mux::apply_siso_budget_grouped_priority(
+            mux_state,
+            siso_active_for_tile,
+            p.MUX_GROUP_G,
+            early_stop_stats,
+            p.MUX_EARLY_STOP_PRIORITY_RULE);
+      }
       const auto active_codes =
           newcode::mux::collect_active_codes_from_state(mux_state);
       const auto free_siso =
@@ -136,8 +146,17 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
       newcode::mux::apply_schedule_result_to_mux_state(
           mux_state, schedule.final_code_to_siso);
     } else {
-      newcode::mux::apply_siso_budget_grouped(
-          mux_state, siso_active_for_tile, p.MUX_GROUP_G);
+      if (use_priority_mux) {
+        newcode::mux::apply_siso_budget_grouped_priority(
+            mux_state,
+            siso_active_for_tile,
+            p.MUX_GROUP_G,
+            early_stop_stats,
+            p.MUX_EARLY_STOP_PRIORITY_RULE);
+      } else {
+        newcode::mux::apply_siso_budget_grouped(
+            mux_state, siso_active_for_tile, p.MUX_GROUP_G);
+      }
     }
   }
 

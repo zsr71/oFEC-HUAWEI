@@ -52,6 +52,10 @@ static const std::vector<float> kBetaStepCandidates         = utils::linspace(0.
 
 static const std::vector<int> kSisoActiveList               = {32, 32, 32, 32}; // 每个 tile 的 SISO 行数预算
 static constexpr int         kMuxGroupG                     = 1;          // MUX 分组粒度，1 表示全局池化
+static constexpr int         kMuxSchedulingMode             = 0;          // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
+static const std::vector<int> kMuxSchedulingModeCandidates  = {};         // MUX 调度模式扫描候选，空表示沿用固定值
+static constexpr int         kMuxPriorityRule               = 0;          // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
+static const std::vector<int> kMuxPriorityRuleCandidates    = {};         // 新 MUX 优先级规则扫描候选，空表示沿用固定值
 static constexpr bool        kMuxEnableReconfig             = false;      // 是否启用重配置版 MUX 调度
 static constexpr int         kMuxBypassScheme               = 3;          // 旁路边集合方案编号：1=scheme1，2=scheme2
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = { // 显式给出 alpha/beta/early-stop beta 列表的方案集合
@@ -63,6 +67,7 @@ static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBet
 
 // 早停参数：总开关 -> 条件 -> 条件细参 -> 动作 -> 动作细参
 static constexpr bool        kEnableEarlyStop               = false;      // 是否启用 early-stop 总开关
+static const std::vector<int> kEarlyStopEnableList          = {};         // 按 tile 覆盖 early-stop 总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
 static constexpr int         kEarlyStopConditionMode        = 1;          // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionCandidates = {};    // 早停条件候选列表
 static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta
@@ -121,6 +126,7 @@ int main() {
 
   // 早停固定配置
   config.enable_early_stop = kEnableEarlyStop;
+  config.early_stop_enable_list = kEarlyStopEnableList;
   config.early_stop_condition_mode = kEarlyStopConditionMode;
   config.early_stop_action_mode = kEarlyStopActionMode;
   config.early_stop_cond_v1_require_bch = kEarlyStopCondV1RequireBch;
@@ -166,6 +172,10 @@ int main() {
   // MUX / 调度配置
   config.siso_active_list = kSisoActiveList;
   config.mux_group_g = kMuxGroupG;
+  config.mux_scheduling_mode = kMuxSchedulingMode;
+  config.mux_scheduling_mode_candidates = kMuxSchedulingModeCandidates;
+  config.mux_early_stop_priority_rule = kMuxPriorityRule;
+  config.mux_early_stop_priority_rule_candidates = kMuxPriorityRuleCandidates;
   config.mux_enable_reconfig = kMuxEnableReconfig;
   config.mux_bypass_scheme = kMuxBypassScheme;
   config.mux_extra_bypass_edges = selected_mux_bypass_edges;

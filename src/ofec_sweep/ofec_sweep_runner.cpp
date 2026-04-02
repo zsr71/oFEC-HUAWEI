@@ -227,6 +227,10 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
     params.CHASE_NTEST = scenario.chase_n_test;
     params.CHASE_TOPK_KEEP = scenario.chase_topk_keep;
     params.CHASE_GROUP_MINIMA_BITS = scenario.chase_group_minima_bits;
+    params.MUX_GROUP_G = scenario.mux_group_g;
+    params.MUX_SCHEDULING_MODE = scenario.mux_scheduling_mode;
+    params.MUX_EARLY_STOP_PRIORITY_RULE =
+        scenario.mux_early_stop_priority_rule;
     params.EARLY_STOP_CONDITION_MODE = scenario.early_stop_condition_mode;
     params.EARLY_STOP_ACTION_MODE = scenario.early_stop_action_mode;
     params.EARLY_STOP_COND_V1_REQUIRE_BCH =
@@ -286,6 +290,9 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
           output.chase_topk_keep = scenario.chase_topk_keep;
           output.chase_group_minima_bits = scenario.chase_group_minima_bits;
           output.mux_group_g = scenario.mux_group_g;
+          output.mux_scheduling_mode = scenario.mux_scheduling_mode;
+          output.mux_early_stop_priority_rule =
+              scenario.mux_early_stop_priority_rule;
           output.mux_bypass_scheme = scenario.mux_bypass_scheme;
           output.early_stop_condition_mode = scenario.early_stop_condition_mode;
           output.early_stop_action_mode = scenario.early_stop_action_mode;
@@ -380,6 +387,7 @@ int run_sweep(const SweepParameterConfig& config) {
     resolved.base_params.SISO_ACTIVE_LIST = resolved.siso_active_list;
   }
   resolved.base_params.ENABLE_EARLY_STOP = resolved.enable_early_stop;
+  resolved.base_params.EARLY_STOP_ENABLE_LIST = resolved.early_stop_enable_list;
   resolved.base_params.EARLY_STOP_CONDITION_MODE =
       resolved.early_stop_condition_mode;
   resolved.base_params.EARLY_STOP_ACTION_MODE =
@@ -403,6 +411,9 @@ int run_sweep(const SweepParameterConfig& config) {
   resolved.base_params.CHASE_GROUP_MINIMA_BITS =
       resolved.chase_group_minima_bits;
   resolved.base_params.MUX_GROUP_G = resolved.mux_group_g;
+  resolved.base_params.MUX_SCHEDULING_MODE = resolved.mux_scheduling_mode;
+  resolved.base_params.MUX_EARLY_STOP_PRIORITY_RULE =
+      resolved.mux_early_stop_priority_rule;
   resolved.base_params.MUX_ENABLE_RECONFIG = resolved.mux_enable_reconfig;
   resolved.base_params.MUX_EXTRA_BYPASS_EDGES =
       resolved.mux_extra_bypass_edges;
@@ -415,6 +426,12 @@ int run_sweep(const SweepParameterConfig& config) {
   };
   auto validate_action_mode = [](int mode) -> bool {
     return mode == 1 || mode == 2 || mode == 3 || mode == 4 || mode == 5;
+  };
+  auto validate_mux_scheduling_mode = [](int mode) -> bool {
+    return mode == 0 || mode == 1;
+  };
+  auto validate_mux_priority_rule = [](int rule) -> bool {
+    return rule == 0 || rule == 1;
   };
   const int resolved_condition_mode =
       resolved.base_params.EARLY_STOP_CONDITION_MODE;
@@ -435,6 +452,26 @@ int run_sweep(const SweepParameterConfig& config) {
   for (int mode : resolved.early_stop_action_candidates) {
     if (!validate_action_mode(mode)) {
       std::cerr << "[ERROR] early_stop_action_candidates contains invalid mode\n";
+      return 1;
+    }
+  }
+  if (!validate_mux_scheduling_mode(resolved.mux_scheduling_mode)) {
+    std::cerr << "[ERROR] mux_scheduling_mode must be 0 or 1\n";
+    return 1;
+  }
+  for (int mode : resolved.mux_scheduling_mode_candidates) {
+    if (!validate_mux_scheduling_mode(mode)) {
+      std::cerr << "[ERROR] mux_scheduling_mode_candidates contains invalid mode\n";
+      return 1;
+    }
+  }
+  if (!validate_mux_priority_rule(resolved.mux_early_stop_priority_rule)) {
+    std::cerr << "[ERROR] mux_early_stop_priority_rule must be 0 or 1\n";
+    return 1;
+  }
+  for (int rule : resolved.mux_early_stop_priority_rule_candidates) {
+    if (!validate_mux_priority_rule(rule)) {
+      std::cerr << "[ERROR] mux_early_stop_priority_rule_candidates contains invalid rule\n";
       return 1;
     }
   }
@@ -512,6 +549,12 @@ int run_sweep(const SweepParameterConfig& config) {
     std::cerr << "[ERROR] " << mux_ok.error << "\n";
     return 1;
   }
+  if (!resolved.base_params.EARLY_STOP_ENABLE_LIST.empty() &&
+      resolved.base_params.EARLY_STOP_ENABLE_LIST.size() !=
+          resolved.base_params.TILES_PER_WIN) {
+    std::cerr << "[ERROR] early_stop_enable_list must have length TILES_PER_WIN\n";
+    return 1;
+  }
   const std::size_t rows_to_decode =
       static_cast<std::size_t>(resolved.base_params.CHASE_SBR) *
       newcode::Params::BITS_PER_SUBBLOCK_DIM;
@@ -584,10 +627,17 @@ int run_sweep(const SweepParameterConfig& config) {
       << " explicit_patterns=" << summarize_patterns(cfg.explicit_patterns)
       << " siso_active_list=" << join_compact(cfg.siso_active_list)
       << " mux_group_g=" << cfg.mux_group_g
+      << " mux_scheduling_mode=" << cfg.mux_scheduling_mode
+      << " mux_scheduling_mode_candidates="
+      << join_compact(cfg.mux_scheduling_mode_candidates)
+      << " mux_early_stop_priority_rule=" << cfg.mux_early_stop_priority_rule
+      << " mux_early_stop_priority_rule_candidates="
+      << join_compact(cfg.mux_early_stop_priority_rule_candidates)
       << " mux_enable_reconfig=" << (cfg.mux_enable_reconfig ? "true" : "false")
       << " mux_bypass_scheme=" << cfg.mux_bypass_scheme
       << "\n";
   out << "[CONFIG][ES] enable_early_stop=" << (cfg.enable_early_stop ? "true" : "false")
+      << " early_stop_enable_list=" << join_compact(cfg.early_stop_enable_list)
       << " early_stop_condition_mode=" << cfg.early_stop_condition_mode
       << " early_stop_condition_candidates="
       << join_compact(cfg.early_stop_condition_candidates)
@@ -661,6 +711,13 @@ int run_sweep(const SweepParameterConfig& config) {
   csv_snapshot.explicit_patterns = summarize_patterns(cfg.explicit_patterns);
   csv_snapshot.siso_active_list = cfg.siso_active_list;
   csv_snapshot.mux_group_g = cfg.mux_group_g;
+  csv_snapshot.mux_scheduling_mode = cfg.mux_scheduling_mode;
+  csv_snapshot.mux_scheduling_mode_candidates =
+      join_compact(cfg.mux_scheduling_mode_candidates);
+  csv_snapshot.mux_early_stop_priority_rule =
+      cfg.mux_early_stop_priority_rule;
+  csv_snapshot.mux_early_stop_priority_rule_candidates =
+      join_compact(cfg.mux_early_stop_priority_rule_candidates);
   csv_snapshot.mux_enable_reconfig = cfg.mux_enable_reconfig;
   csv_snapshot.mux_bypass_scheme = cfg.mux_bypass_scheme;
   csv_snapshot.enable_early_stop = cfg.enable_early_stop;
@@ -803,6 +860,8 @@ int run_sweep(const SweepParameterConfig& config) {
             << " CHASE_NTEST=" << pack.chase_n_test
             << " CHASE_TOPK_KEEP=" << pack.chase_topk_keep
             << " CHASE_GROUP_MINIMA_BITS=" << pack.chase_group_minima_bits
+            << " MUX_SCHED=" << pack.mux_scheduling_mode
+            << " MUX_RULE=" << pack.mux_early_stop_priority_rule
             << " | cond/action=" << pack.early_stop_condition_mode
             << "/" << pack.early_stop_action_mode
             << " | Seeds(bit/channel)=" << pack.bitgen_seed << "/" << pack.channel_seed;

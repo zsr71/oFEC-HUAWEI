@@ -231,12 +231,19 @@ PipelineResult run_pipeline(const Params& params,
     }
   }
 
+  // 将本次实际解析出的量化 clip 写回解码时使用的参数副本，
+  // 便于底层 trace/CSV 在导出 code 值时和真实运行口径保持一致。
+  Params decode_params = params;
+  if (llr_mode.format == LlrFormat::Quantized) {
+    decode_params.LLR_CLIP = quant_clip;
+  }
+
   // 构造解码请求
   DecodeRequest request{
       .label = label,
       .channel_llr = llr_mat,
       .tx_llr_ref = &tx_llr_mat,
-      .params = params,
+      .params = decode_params,
       .format = llr_mode.format,
       .quant_bits = llr_mode.quant_bits,
       .quant_clip = quant_clip,

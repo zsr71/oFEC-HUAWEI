@@ -15,6 +15,7 @@ TileEarlyStopResult detect_tile_early_stop_v2(const matrix::Matrix<LLR>& lin_mat
   const size_t cols = lin_matrix.cols();
   res.rows_total = rows;
   res.row_passed_flags.assign(rows, false);
+  res.row_details.assign(rows, TileEarlyStopRowDetail{});
 
   // 防御式检查：如果输入行宽不足 256，则认为当前 tile 形状异常，不触发早停。
   if (cols < 256) return res;
@@ -48,6 +49,7 @@ TileEarlyStopResult detect_tile_early_stop_v2(const matrix::Matrix<LLR>& lin_mat
 
     // 本行不可靠 bit 数未超过阈值，则认为该行满足 v2 早停判据。
     const bool row_passed = unreliable_count <= max_unreliable_bits;
+    res.row_details[r].row_passed = row_passed;
 
     if (row_passed) {
       ++res.rows_passed;

@@ -9,6 +9,19 @@ namespace {
 
 constexpr std::size_t kDefaultPositionsToPrint = 10;
 
+std::string format_compact_int_list(const std::vector<int>& values) {
+  std::ostringstream oss;
+  oss << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i) {
+      oss << ", ";
+    }
+    oss << values[i];
+  }
+  oss << "]";
+  return oss.str();
+}
+
 std::string format_positions(const std::vector<std::size_t>& positions,
                              std::size_t max_count = kDefaultPositionsToPrint) {
   std::ostringstream oss;
@@ -54,6 +67,14 @@ void log_run_overview(const Config& cfg,
       << params.CHANNEL_SEED << "\n";
   log << "[INFO] LLR bits = " << params.LLR_BITS
       << " (" << (params.LLR_BITS == 16 ? "float" : "qfloat") << ")\n";
+  log << "[INFO] Early-stop = " << (params.ENABLE_EARLY_STOP ? "ON" : "OFF")
+      << ", per-tile enable list = "
+      << format_compact_int_list(params.EARLY_STOP_ENABLE_LIST) << "\n";
+  log << "[INFO] MUX group/scheduling/rule = "
+      << params.MUX_GROUP_G << "/"
+      << params.MUX_SCHEDULING_MODE << "/"
+      << params.MUX_EARLY_STOP_PRIORITY_RULE
+      << ", reconfig = " << (params.MUX_ENABLE_RECONFIG ? "ON" : "OFF") << "\n";
   log << "[INFO] Dump quantized LLR = "
       << (cfg.dump_quantized_llr ? "ON" : "OFF");
   if (cfg.dump_quantized_llr) {

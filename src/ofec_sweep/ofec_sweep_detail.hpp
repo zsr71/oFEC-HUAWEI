@@ -36,6 +36,8 @@ struct SweepScenario {
   int chase_topk_keep = 8;
   int chase_group_minima_bits = 3;
   int mux_group_g = 1;
+  int mux_scheduling_mode = 0;
+  int mux_early_stop_priority_rule = 0;
   int mux_bypass_scheme = 0;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
@@ -68,6 +70,8 @@ struct ScenarioOutput {
   int chase_topk_keep = 8;
   int chase_group_minima_bits = 3;
   int mux_group_g = 1;
+  int mux_scheduling_mode = 0;
+  int mux_early_stop_priority_rule = 0;
   int mux_bypass_scheme = 0;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
@@ -188,6 +192,10 @@ struct ExtendedCsvConfigSnapshot {
   int chase_group_minima_bits = 0;
   std::vector<int> siso_active_list;
   int mux_group_g = 0;
+  int mux_scheduling_mode = 0;
+  std::string mux_scheduling_mode_candidates;
+  int mux_early_stop_priority_rule = 0;
+  std::string mux_early_stop_priority_rule_candidates;
   bool mux_enable_reconfig = false;
   int mux_bypass_scheme = 0;
   bool enable_early_stop = false;

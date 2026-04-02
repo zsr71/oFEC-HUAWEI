@@ -13,12 +13,13 @@ static constexpr int         kBitgenSeed         = 20260319;    // 比特生成�
 static constexpr bool        kGenerateRandomBits = false;          // true=发送随机信息比特，false=发送全 0 比特
 
 // 信道参数
-static constexpr float       kEbN0_db                      = 3.13f;   // 信道 Eb/N0，单位 dB
+static constexpr float       kEbN0_db                      = 3.08f;   // 信道 Eb/N0，单位 dB
 static constexpr int         kChannelSeed                  = 3192026; // 信道噪声随机种子，固定后可复现实验
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
 //早停参数
 static constexpr bool        kEnableEarlyStop              = true;   // true=启用早停，false=完全关闭早停路径
+static const std::vector<int> kEarlyStopEnableList         = {0,0,0,0};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
 static constexpr int         kEarlyStopConditionMode       = 1;       // 早停条件编号：1=v1，2=v2
 static constexpr int         kEarlyStopActionMode          = 4;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta
 
@@ -62,10 +63,12 @@ static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chas
   8.571428,10.037715,16.865997,31.428572
 };
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
-  2*8.571428,2*10.037715,2*16.865997,2*31.428572
+  8.571428,10.037715,16.865997,31.428572
 };
 static const std::vector<int> kSisoActiveList = {64, 64, 64, 64}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                     // MUX 分组粒度，1 表示全局池化
+static constexpr int  kMuxSchedulingMode  = 0;                     // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
+static constexpr int  kMuxPriorityRule    = 0;                     // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
 static constexpr bool kMuxEnableReconfig  = false;                 // true 表示启用重配置版 MUX 调度
 static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边集合方案编号：1=scheme1，2=scheme2
 
@@ -83,9 +86,11 @@ struct TraceBitSpec {
   const char* label;
 };
 constexpr TraceBitSpec kTraceBitSpecs[] = { // 需要重点跟踪的目标比特列表
-    {1049811, "bit1049811"},
-    {3337785, "bit3337785"},
-    {3413257, "bit3413257"},
+    {677659, "bit677659"},
+    {691376, "bit691376"},
+    {694548, "bit694548"},
+    {706209, "bit706209"},
+    {706542, "bit706542"}
 };
 } 
 
@@ -139,6 +144,7 @@ int main() {
     .bitgen_seed = kBitgenSeed,
     .channel_seed = kChannelSeed,
     .enable_early_stop = kEnableEarlyStop,
+    .early_stop_enable_list = kEarlyStopEnableList,
     .early_stop_condition_mode = kEarlyStopConditionMode,
     .early_stop_action_mode = kEarlyStopActionMode,
     .early_stop_cond_v1_require_bch = kEarlyStopCondV1RequireBch,
@@ -156,6 +162,8 @@ int main() {
     .early_stop_action_hard_llr_mag = kEarlyStopActionHardLlrMag,
     .siso_active_list = kSisoActiveList,
     .mux_group_g = kMuxGroupG,
+    .mux_scheduling_mode = kMuxSchedulingMode,
+    .mux_early_stop_priority_rule = kMuxPriorityRule,
     .mux_enable_reconfig = kMuxEnableReconfig,
     .mux_extra_bypass_edges = selected_mux_bypass_edges,
     .interleaver_name = kInterleaverName,

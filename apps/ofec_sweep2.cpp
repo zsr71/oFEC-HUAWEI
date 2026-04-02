@@ -19,7 +19,7 @@
 
 namespace {
 
-constexpr size_t kTilesPerWindow = 4;
+constexpr size_t kTilesPerWindow = 5;
 constexpr float  kEvalEbN0       = 3.07f;
 constexpr size_t kStage1Bits     = 5 * 110 * 16 * 111;
 constexpr size_t kStage2Bits     = 16 * 110 * 16 * 111;
@@ -132,6 +132,7 @@ ofec_sweep::SweepParameterConfig build_base_config() {
   config.base_params.NORMALIZE_KNOWN_PREFIX_TAIL = kNormalizeKnownPrefixTail;
   config.base_params.LLR_CLIP_RATIO = kQuantClipRatio;
   config.base_params.LLR_BITS = kLlrBits;
+  config.base_params.ENABLE_EARLY_STOP = false;
 
   config.interleaver_name = kInterleaverName;
   config.decoder_name = kDecoderName;
@@ -142,6 +143,9 @@ ofec_sweep::SweepParameterConfig build_base_config() {
   config.normalize_known_prefix_tail = kNormalizeKnownPrefixTail;
   config.quant_clip_ratio = kQuantClipRatio;
   config.siso_active_list = kSisoActiveList;
+  config.enable_early_stop = false;
+  config.mux_scheduling_mode = 0;
+  config.mux_early_stop_priority_rule = 0;
 
   config.chase_l_candidates = {config.base_params.CHASE_L};
   config.bitgen_seed_count = 1;

@@ -21,7 +21,7 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     =  64 * 110 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     =  16 * 110 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 56456;                 // 随机种子
   int    CHANNEL_SEED      = BITGEN_SEED + 656;    // 信道噪声随机种子
   bool   BITGEN_RANDOM_BITS = true;             // true=随机比特，false=全 0
@@ -48,6 +48,7 @@ struct Params {
   int CHASE_GROUP_MINIMA_BITS = 3; // chase_group_minima 按前多少个 test-pattern 位做分组
   int CHASE_SBR   = 2;  // 每个 tile 底部解码的子块行数（1 或 2）
   bool ENABLE_EARLY_STOP = true;  // 是否启用 tile/row 级早停判定
+  std::vector<int> EARLY_STOP_ENABLE_LIST;  // 按 tile 覆盖 early-stop 开关：0=关，非 0=开；空表示沿用 ENABLE_EARLY_STOP
   int EARLY_STOP_CONDITION_MODE = 1;  // 1=detect_tile_early_stop_v1, 2=detect_tile_early_stop_v2
   int EARLY_STOP_ACTION_MODE = 1;     // 1=sign beta, 2=residual only, 3=hard-decode sign LLR, 4=sign beta pre-div alpha, 5=residual pre-div alpha plus sign beta
   bool EARLY_STOP_COND_V1_REQUIRE_BCH = true;
@@ -73,6 +74,10 @@ struct Params {
   std::vector<int> SISO_ACTIVE_LIST = {32, 30, 24, 16};
   // MUX 分组数：1=现有 max 全局池化，>1=按组预算裁剪
   int MUX_GROUP_G = 1;
+  // MUX 调度模式：0=legacy（按原顺序裁剪），1=early-stop priority（按 early-stop 细节排序后裁剪）
+  int MUX_SCHEDULING_MODE = 0;
+  // early-stop priority 的排序规则：0=harder_first，1=near_threshold_first
+  int MUX_EARLY_STOP_PRIORITY_RULE = 0;
   // 是否启用 scheme B 风格的两阶段重排调度
   bool MUX_ENABLE_RECONFIG = false;
   // 额外允许的跨组旁路线
@@ -80,7 +85,7 @@ struct Params {
 
   // —— 每个 tile 是否切换到硬判决译码 —— //
   bool HARD_DECODE_DEFAULT = false;                               // 默认仍使用软判决
-  std::vector<int> HARD_TILE_LIST = {0, 0, 0, 0, 1};               // 0=软判决，非 0=硬判决
+  std::vector<int> HARD_TILE_LIST = {0, 0, 0, 0, 0};               // 0=软判决，非 0=硬判决
   float HARD_LLR_MAG = 1.0f;                                      // 硬判决映射的 |LLR| 大小
 
   struct DebugTraceConfig {
@@ -113,6 +118,10 @@ struct Params {
       long bit_index = -1;
       std::string label;
       int expected_bit = -1;
+      bool has_channel_llr_float = false;
+      float channel_llr_float = 0.0f;
+      bool has_channel_llr_code = false;
+      int channel_llr_code = 0;
       std::vector<uint8_t> cplus_bits;
       std::vector<uint8_t> cminus_bits;
     };

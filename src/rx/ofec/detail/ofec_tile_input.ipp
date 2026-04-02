@@ -160,6 +160,25 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
     }
   };
 
+  auto update_chase_entry_channel_llr = [&](long rr, long cc,
+                                            size_t row_idx, int k,
+                                            const LLR& lch) {
+    auto& entries = params_for_core.debug_trace.active_chase_entries;
+    for (auto& entry : entries) {
+      if (entry.row_index != static_cast<int>(row_idx)) continue;
+      if (entry.k != k) continue;
+      if (entry.global_row != rr || entry.global_col != cc) continue;
+      entry.has_channel_llr_float = true;
+      entry.channel_llr_float = qfloat::llr_to_float(lch);
+      if constexpr (!std::is_floating_point_v<LLR> && !std::is_integral_v<LLR>) {
+        entry.has_channel_llr_code = true;
+        entry.channel_llr_code = lch.code();
+      } else {
+        entry.has_channel_llr_code = false;
+      }
+    }
+  };
+
   for (int s = 0; s < SBR; ++s){
     // s 表示当前处理的第几个 subblock row 组。
     const size_t sbr_row0_local = H - static_cast<size_t>((SBR-s) * B);
@@ -206,6 +225,7 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
           // lin_matrix 是送给 core 的总输入；lch_matrix 只保留信道项。
           lin_matrix[row_idx][static_cast<size_t>(k)] = Adapter::combine(Lch, La);
           lch_matrix[row_idx][static_cast<size_t>(k)] = Adapter::channel(Lch);
+          update_chase_entry_channel_llr(rr_global, cc_global, row_idx, k, Lch);
         }
         else {
           throw std::out_of_range("process_tile: old info position out of tile range.");
@@ -236,6 +256,8 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
         const LLR La  = tile_in [row_local][src_col];
         lin_matrix[row_idx][static_cast<size_t>(k)] = Adapter::combine(Lch, La);
         lch_matrix[row_idx][static_cast<size_t>(k)] = Adapter::channel(Lch);
+        update_chase_entry_channel_llr(static_cast<long>(row_local + tile_top_row_global),
+                                       static_cast<long>(src_col), row_idx, k, Lch);
         if (expected_bits &&
             (tile_top_row_global + row_local) < tx_llr_ref->rows() &&
             src_col < tx_llr_ref->cols()) {
@@ -255,6 +277,8 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
         const LLR La  = tile_in [row_local][src_col];
         lin_matrix[row_idx][static_cast<size_t>(k)] = Adapter::combine(Lch, La);
         lch_matrix[row_idx][static_cast<size_t>(k)] = Adapter::channel(Lch);
+        update_chase_entry_channel_llr(static_cast<long>(row_local + tile_top_row_global),
+                                       static_cast<long>(src_col), row_idx, k, Lch);
         if (expected_bits &&
             (tile_top_row_global + row_local) < tx_llr_ref->rows() &&
             src_col < tx_llr_ref->cols()) {
@@ -274,6 +298,8 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
         const LLR La  = tile_in [row_local][src_col];
         lin_matrix[row_idx][static_cast<size_t>(k)] = Adapter::combine(Lch, La);
         lch_matrix[row_idx][static_cast<size_t>(k)] = Adapter::channel(Lch);
+        update_chase_entry_channel_llr(static_cast<long>(row_local + tile_top_row_global),
+                                       static_cast<long>(src_col), row_idx, k, Lch);
         if (expected_bits &&
             (tile_top_row_global + row_local) < tx_llr_ref->rows() &&
             src_col < tx_llr_ref->cols()) {
@@ -281,6 +307,19 @@ TilePrepared<LLR> prepare_tile_inputs(const matrix::Matrix<LLR>& tile_in,
           (*expected_bits)[row_idx][static_cast<size_t>(k)] = (v < 0.0f) ? 1 : 0;
         }
       }
+    }
+  }
+
+  if (expected_bits) {
+    // register_chase_entry 可能发生在 expected_bits 该位置真正写入之前，
+    // 这里在整块 lin_matrix 构造完成后，统一把活动追踪项的 expected_bit 回填成最终值。
+    for (auto& entry : params_for_core.debug_trace.active_chase_entries) {
+      if (entry.row_index < 0 || entry.k < 0) continue;
+      const size_t row_idx = static_cast<size_t>(entry.row_index);
+      const size_t k_idx = static_cast<size_t>(entry.k);
+      if (row_idx >= expected_bits->size()) continue;
+      if (k_idx >= (*expected_bits)[row_idx].size()) continue;
+      entry.expected_bit = (*expected_bits)[row_idx][k_idx];
     }
   }
 

@@ -48,6 +48,8 @@ void append_common_name(std::ostringstream& oss, const SweepScenario& scenario) 
   if (scenario.decoder_name == "chase_group_minima") {
     oss << "_grpBits" << scenario.chase_group_minima_bits;
   }
+  oss << "_muxSched" << scenario.mux_scheduling_mode
+      << "_muxRule" << scenario.mux_early_stop_priority_rule;
   oss << "_cond" << scenario.early_stop_condition_mode
       << "_act" << scenario.early_stop_action_mode;
   if (scenario.early_stop_condition_mode == 1) {
@@ -79,6 +81,7 @@ void enumerate_common_axes(const SweepParameterConfig& config,
                            const std::vector<std::string>& decoder_names,
                            const std::vector<int>& chase_l_values,
                            const std::vector<int>& chase_n_test_values,
+                           const std::vector<int>& mux_scheduling_modes,
                            const std::vector<int>& condition_modes,
                            const std::vector<int>& action_modes,
                            const std::vector<float>& ebn0_candidates,
@@ -100,64 +103,77 @@ void enumerate_common_axes(const SweepParameterConfig& config,
     for (int chase_L : chase_l_values) {
       for (int chase_n_test : chase_n_test_values) {
         for (int group_minima_bits : group_minima_bits_values) {
-          for (int condition_mode : condition_modes) {
-            const auto v1_require_bch_values =
-                (condition_mode == 1)
+          for (int mux_scheduling_mode : mux_scheduling_modes) {
+            const auto mux_priority_rule_values =
+                (mux_scheduling_mode == 1)
                     ? choose_candidates(
-                          config.early_stop_cond_v1_require_bch_candidates,
-                          config.early_stop_cond_v1_require_bch)
-                    : std::vector<bool>{config.early_stop_cond_v1_require_bch};
-            const auto v1_require_overall_values =
-                (condition_mode == 1)
-                    ? choose_candidates(
-                          config.early_stop_cond_v1_require_overall_candidates,
-                          config.early_stop_cond_v1_require_overall)
-                    : std::vector<bool>{config.early_stop_cond_v1_require_overall};
-            const auto v2_threshold_values =
-                (condition_mode == 2)
-                    ? choose_candidates(
-                          config.early_stop_v2_llr_abs_threshold_candidates,
-                          config.early_stop_v2_llr_abs_threshold)
-                    : std::vector<float>{config.early_stop_v2_llr_abs_threshold};
-            const auto v2_unreliable_values =
-                (condition_mode == 2)
-                    ? choose_candidates(
-                          config.early_stop_v2_max_unreliable_bits_candidates,
-                          config.early_stop_v2_max_unreliable_bits)
-                    : std::vector<int>{config.early_stop_v2_max_unreliable_bits};
+                          config.mux_early_stop_priority_rule_candidates,
+                          config.mux_early_stop_priority_rule)
+                    : std::vector<int>{config.mux_early_stop_priority_rule};
 
-            for (int action_mode : action_modes) {
-              const auto hard_llr_mag_values =
-                  (action_mode == 3)
-                      ? choose_candidates(
-                            config.early_stop_action_hard_llr_mag_candidates,
-                            config.early_stop_action_hard_llr_mag)
-                      : std::vector<float>{config.early_stop_action_hard_llr_mag};
+            for (int mux_priority_rule : mux_priority_rule_values) {
+              for (int condition_mode : condition_modes) {
+                const auto v1_require_bch_values =
+                    (condition_mode == 1)
+                        ? choose_candidates(
+                              config.early_stop_cond_v1_require_bch_candidates,
+                              config.early_stop_cond_v1_require_bch)
+                        : std::vector<bool>{config.early_stop_cond_v1_require_bch};
+                const auto v1_require_overall_values =
+                    (condition_mode == 1)
+                        ? choose_candidates(
+                              config.early_stop_cond_v1_require_overall_candidates,
+                              config.early_stop_cond_v1_require_overall)
+                        : std::vector<bool>{config.early_stop_cond_v1_require_overall};
+                const auto v2_threshold_values =
+                    (condition_mode == 2)
+                        ? choose_candidates(
+                              config.early_stop_v2_llr_abs_threshold_candidates,
+                              config.early_stop_v2_llr_abs_threshold)
+                        : std::vector<float>{config.early_stop_v2_llr_abs_threshold};
+                const auto v2_unreliable_values =
+                    (condition_mode == 2)
+                        ? choose_candidates(
+                              config.early_stop_v2_max_unreliable_bits_candidates,
+                              config.early_stop_v2_max_unreliable_bits)
+                        : std::vector<int>{config.early_stop_v2_max_unreliable_bits};
 
-              for (int topk_keep : topk_keep_values) {
-                for (bool v1_require_bch : v1_require_bch_values) {
-                  for (bool v1_require_overall : v1_require_overall_values) {
-                    for (float v2_threshold : v2_threshold_values) {
-                      for (int v2_unreliable : v2_unreliable_values) {
-                        for (float hard_llr_mag : hard_llr_mag_values) {
-                          for (float ebn0_db : ebn0_candidates) {
-                            for (int bitgen_seed : bitgen_seeds) {
-                              for (int channel_seed : channel_seeds) {
-                                build_one(decoder_name,
-                                          chase_L,
-                                          chase_n_test,
-                                          group_minima_bits,
-                                          condition_mode,
-                                          action_mode,
-                                          v1_require_bch,
-                                          v1_require_overall,
-                                          v2_threshold,
-                                          v2_unreliable,
-                                          hard_llr_mag,
-                                          topk_keep,
-                                          ebn0_db,
-                                          bitgen_seed,
-                                          channel_seed);
+                for (int action_mode : action_modes) {
+                  const auto hard_llr_mag_values =
+                      (action_mode == 3)
+                          ? choose_candidates(
+                                config.early_stop_action_hard_llr_mag_candidates,
+                                config.early_stop_action_hard_llr_mag)
+                          : std::vector<float>{config.early_stop_action_hard_llr_mag};
+
+                  for (int topk_keep : topk_keep_values) {
+                    for (bool v1_require_bch : v1_require_bch_values) {
+                      for (bool v1_require_overall : v1_require_overall_values) {
+                        for (float v2_threshold : v2_threshold_values) {
+                          for (int v2_unreliable : v2_unreliable_values) {
+                            for (float hard_llr_mag : hard_llr_mag_values) {
+                              for (float ebn0_db : ebn0_candidates) {
+                                for (int bitgen_seed : bitgen_seeds) {
+                                  for (int channel_seed : channel_seeds) {
+                                    build_one(decoder_name,
+                                              chase_L,
+                                              chase_n_test,
+                                              group_minima_bits,
+                                              mux_scheduling_mode,
+                                              mux_priority_rule,
+                                              condition_mode,
+                                              action_mode,
+                                              v1_require_bch,
+                                              v1_require_overall,
+                                              v2_threshold,
+                                              v2_unreliable,
+                                              hard_llr_mag,
+                                              topk_keep,
+                                              ebn0_db,
+                                              bitgen_seed,
+                                              channel_seed);
+                                  }
+                                }
                               }
                             }
                           }
@@ -201,6 +217,9 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
       choose_candidates(config.chase_l_candidates, base_params.CHASE_L);
   const std::vector<int> chase_n_test_values =
       choose_candidates(config.chase_n_test_candidates, config.chase_n_test);
+  const std::vector<int> mux_scheduling_modes =
+      choose_candidates(config.mux_scheduling_mode_candidates,
+                        config.mux_scheduling_mode);
   const std::vector<int> condition_modes =
       choose_candidates(config.early_stop_condition_candidates,
                         config.early_stop_condition_mode);
@@ -218,6 +237,7 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
                 decoder_names,
                 chase_l_values,
                 chase_n_test_values,
+                mux_scheduling_modes,
                 condition_modes,
                 action_modes,
                 ebn0_candidates,
@@ -227,6 +247,8 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
                     int chase_L,
                     int chase_n_test,
                     int group_minima_bits,
+                    int mux_scheduling_mode,
+                    int mux_priority_rule,
                     int condition_mode,
                     int action_mode,
                     bool v1_require_bch,
@@ -249,6 +271,8 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
                   scenario.chase_topk_keep = topk_keep;
                   scenario.chase_group_minima_bits = group_minima_bits;
                   scenario.mux_group_g = config.mux_group_g;
+                  scenario.mux_scheduling_mode = mux_scheduling_mode;
+                  scenario.mux_early_stop_priority_rule = mux_priority_rule;
                   scenario.mux_bypass_scheme = config.mux_bypass_scheme;
                   scenario.early_stop_condition_mode = condition_mode;
                   scenario.early_stop_action_mode = action_mode;
@@ -336,6 +360,7 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
         decoder_names,
         chase_l_values,
         chase_n_test_values,
+        mux_scheduling_modes,
         condition_modes,
         action_modes,
         ebn0_candidates,
@@ -345,6 +370,8 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
             int chase_L,
             int chase_n_test,
             int group_minima_bits,
+            int mux_scheduling_mode,
+            int mux_priority_rule,
             int condition_mode,
             int action_mode,
             bool v1_require_bch,
@@ -365,6 +392,8 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
           scenario.chase_topk_keep = topk_keep;
           scenario.chase_group_minima_bits = group_minima_bits;
           scenario.mux_group_g = config.mux_group_g;
+          scenario.mux_scheduling_mode = mux_scheduling_mode;
+          scenario.mux_early_stop_priority_rule = mux_priority_rule;
           scenario.mux_bypass_scheme = config.mux_bypass_scheme;
           scenario.early_stop_condition_mode = condition_mode;
           scenario.early_stop_action_mode = action_mode;

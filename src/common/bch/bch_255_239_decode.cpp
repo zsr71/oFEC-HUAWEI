@@ -161,4 +161,23 @@ bool bch_255_239_syndromes_zero_cw_255(const uint8_t* in255)
     return ((S[0] | S[1] | S[2] | S[3]) == 0);
 }
 
+std::array<uint8_t,4> bch_255_239_syndromes_1_4_cw_255(const uint8_t* in255)
+{
+    std::array<uint8_t,4> S{};
+    compute_syndromes_1_4(in255, S.data());
+    return S;
+}
+
+uint8_t bch_255_239_syndrome_nonzero_mask_cw_255(const uint8_t* in255)
+{
+    const auto S = bch_255_239_syndromes_1_4_cw_255(in255);
+    uint8_t mask = 0u;
+    for (std::size_t i = 0; i < S.size(); ++i) {
+        if (S[i] != 0u) {
+            mask |= static_cast<uint8_t>(1u << i);
+        }
+    }
+    return mask;
+}
+
 } // namespace newcode

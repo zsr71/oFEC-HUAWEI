@@ -101,6 +101,10 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             pick_float(p.EARLY_STOP_ACTION_SIGN_BETA_LIST,
                        t,
                        p.EARLY_STOP_ACTION_SIGN_BETA);
+        tile_params.ENABLE_EARLY_STOP =
+            pick_int(p.EARLY_STOP_ENABLE_LIST,
+                     t,
+                     p.ENABLE_EARLY_STOP ? 1 : 0) != 0;
         tile_params.ALPHA = pick_float(p.ALPHA_LIST, t, p.ALPHA);
         tile_params.debug_trace.chase_tile_index = static_cast<int>(t);
         tile_params.debug_trace.chase_invocation =

@@ -24,6 +24,7 @@ struct SweepParameterConfig {
   std::string decoder_name = "chase_baseline";
   std::vector<std::string> decoder_name_candidates;
   bool enable_early_stop = true;
+  std::vector<int> early_stop_enable_list;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
   bool early_stop_cond_v1_require_bch = true;
@@ -56,6 +57,10 @@ struct SweepParameterConfig {
   std::vector<int> early_stop_v2_max_unreliable_bits_candidates;
   std::vector<int> siso_active_list;
   int mux_group_g = 1;
+  int mux_scheduling_mode = 0;
+  std::vector<int> mux_scheduling_mode_candidates;
+  int mux_early_stop_priority_rule = 0;
+  std::vector<int> mux_early_stop_priority_rule_candidates;
   bool mux_enable_reconfig = false;
   int mux_bypass_scheme = 0;
   std::vector<newcode::mux::MuxEdge> mux_extra_bypass_edges;

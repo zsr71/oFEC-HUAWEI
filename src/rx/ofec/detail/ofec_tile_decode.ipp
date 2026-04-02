@@ -24,6 +24,43 @@ inline std::string sanitize_label(const std::string& label) {
   return safe;
 }
 
+inline std::string quantized_code_csv_cell(float value,
+                                           const newcode::Params& params) {
+  // 输入:
+  // - value: 已经经过公共量化/裁剪后的 extrinsic 浮点值。
+  // - params: 当前 tile 参数，提供 LLR 位宽和 clip。
+  // 输出:
+  // - 若当前是 qfloat 路径，则返回对应的内部 code；否则返回空串。
+  // 用途:
+  // - 在 target_*.csv 里补充“这一轮实际写回矩阵前，对应的量化码值”。
+  const float clip = params.LLR_CLIP;
+  switch (params.LLR_BITS) {
+    case 2:  return std::to_string(qfloat::qfloat<2>::from_float(value, clip).code());
+    case 3:  return std::to_string(qfloat::qfloat<3>::from_float(value, clip).code());
+    case 4:  return std::to_string(qfloat::qfloat<4>::from_float(value, clip).code());
+    case 5:  return std::to_string(qfloat::qfloat<5>::from_float(value, clip).code());
+    case 6:  return std::to_string(qfloat::qfloat<6>::from_float(value, clip).code());
+    case 7:  return std::to_string(qfloat::qfloat<7>::from_float(value, clip).code());
+    case 8:  return std::to_string(qfloat::qfloat<8>::from_float(value, clip).code());
+    case 9:  return std::to_string(qfloat::qfloat<9>::from_float(value, clip).code());
+    case 10: return std::to_string(qfloat::qfloat<10>::from_float(value, clip).code());
+    case 11: return std::to_string(qfloat::qfloat<11>::from_float(value, clip).code());
+    case 12: return std::to_string(qfloat::qfloat<12>::from_float(value, clip).code());
+    case 13: return std::to_string(qfloat::qfloat<13>::from_float(value, clip).code());
+    case 14: return std::to_string(qfloat::qfloat<14>::from_float(value, clip).code());
+    case 15: return std::to_string(qfloat::qfloat<15>::from_float(value, clip).code());
+    default: return std::string();
+  }
+}
+
+inline std::string csv_float_cell(bool has_value, float value) {
+  return has_value ? std::to_string(value) : std::string();
+}
+
+inline std::string csv_int_cell(bool has_value, int value) {
+  return has_value ? std::to_string(value) : std::string();
+}
+
 inline void log_target_history(const newcode::Params& params,
                                const matrix::Matrix<float>& lout,
                                const std::vector<bool>& produced_rows) {
@@ -45,6 +82,8 @@ inline void log_target_history(const newcode::Params& params,
                            : fs::path(trace.chase_csv_dir);
   std::error_code ec;
   fs::create_directories(dir, ec);
+  const std::string csv_header =
+      "invocation,tile_index,global_row,global_col,lin_row_index,lin_k,channel_llr_float,channel_llr_code,extrinsic,extrinsic_code,expected_bit";
   for (const auto& entry : trace.active_chase_entries) {
     if (entry.row_index < 0 || entry.k < 0) continue;
     if (entry.row_index >= static_cast<int>(lout.rows())) continue;
@@ -66,15 +105,27 @@ inline void log_target_history(const newcode::Params& params,
     const fs::path file =
         dir / ("target_" + safe_label + ".csv");
     const bool existed = fs::exists(file);
-    std::ofstream out(file, std::ios::app);
+    bool append_mode = existed;
+    if (existed) {
+      std::ifstream in(file);
+      std::string first_line;
+      if (!std::getline(in, first_line) || first_line != csv_header) {
+        // 旧格式 target.csv 缺少新列时，直接用新表头重建，避免新旧列数混杂。
+        append_mode = false;
+      }
+    }
+    std::ofstream out(file, append_mode ? std::ios::app : std::ios::trunc);
     if (!out) continue;
-    if (!existed) {
-      out << "invocation,tile_index,global_row,global_col,lin_row_index,lin_k,extrinsic,expected_bit\n";
+    if (!append_mode) {
+      out << csv_header << '\n';
     }
     out << trace.chase_invocation << ',' << trace.chase_tile_index << ','
         << entry.global_row << ',' << entry.global_col << ','
         << entry.row_index << ',' << entry.k << ','
-        << extrinsic << ',' << entry.expected_bit << '\n';
+        << csv_float_cell(entry.has_channel_llr_float, entry.channel_llr_float) << ','
+        << csv_int_cell(entry.has_channel_llr_code, entry.channel_llr_code) << ','
+        << extrinsic << ',' << quantized_code_csv_cell(extrinsic, params)
+        << ',' << entry.expected_bit << '\n';
   }
 }
 
