@@ -13,13 +13,13 @@ static constexpr int         kBitgenSeed         = 20260319;    // 比特生成�
 static constexpr bool        kGenerateRandomBits = false;          // true=发送随机信息比特，false=发送全 0 比特
 
 // 信道参数
-static constexpr float       kEbN0_db                      = 3.08f;   // 信道 Eb/N0，单位 dB
-static constexpr int         kChannelSeed                  = 3192026; // 信道噪声随机种子，固定后可复现实验
+static constexpr float       kEbN0_db                      = 2.99f;   // 信道 Eb/N0，单位 dB
+static constexpr int         kChannelSeed                  = 3182026; // 信道噪声随机种子，固定后可复现实验
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
 //早停参数
-static constexpr bool        kEnableEarlyStop              = true;   // true=启用早停，false=完全关闭早停路径
-static const std::vector<int> kEarlyStopEnableList         = {0,0,0,0};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
+static constexpr bool        kEnableEarlyStop              = false;   // true=启用早停，false=完全关闭早停路径
+static const std::vector<int> kEarlyStopEnableList         = {0,0,0,0,0,0};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
 static constexpr int         kEarlyStopConditionMode       = 1;       // 早停条件编号：1=v1，2=v2
 static constexpr int         kEarlyStopActionMode          = 4;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta
 
@@ -48,26 +48,22 @@ static constexpr int         kChaseGroupMinimaBits     = 3;                // ch
 static constexpr bool        kNormalizeExtrinsic       = false;      // 是否对 Chase 输出的 extrinsic 做归一化
 static constexpr bool        kNormalizeKnownPrefixTail = false;      // 是否对 known-prefix 之后的尾部 LLR 做归一化
 
-// 方式 A：统一填充值（长度自动取 Params::TILES_PER_WIN）
-static constexpr float kAlpha_fill                     = 1.0f;   // 每个 tile 共用的 extrinsic 缩放系数 alpha
-static constexpr float kBeta_fill                      = 0.40f;  // 每个 tile 共用的 Chase/fallback beta
-static constexpr float kEarlyStopActionBeta_fill       = 0.40f;  // 每个 tile 共用的 early-stop 动作 beta
 static constexpr float kEarlyStopActionResidualDivisor = 1.0f;   // 动作2里 residual 的除数
 static constexpr float kEarlyStopActionHardLlrMag      = 1.0f;   // 动作3里硬解成功后输出的固定 |LLR| 幅度
 
-// 方式 B：显式列表（若非空，将覆盖填充值；长度必须等于 TILES_PER_WIN）
+// 显式列表（若非空，将直接作为各个 tile 的参数；长度必须等于 TILES_PER_WIN）
 static const std::vector<float> kAlpha_explicit = {      // 每个 tile 的 alpha 显式列表
-   0.342857,0.387439,0.435806,0.485714
+   0.428571,0.447738,0.482782,0.528162,0.581902,0.642857
 };
 static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chase/fallback beta 显式列表
-  8.571428,10.037715,16.865997,31.428572
+  2.857143,6.179301,12.253626,20.119585,29.434408,40.000000
 };
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
-  8.571428,10.037715,16.865997,31.428572
+  2.857143,6.179301,12.253626,20.119585,29.434408,40.000000
 };
-static const std::vector<int> kSisoActiveList = {64, 64, 64, 64}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,32}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                     // MUX 分组粒度，1 表示全局池化
-static constexpr int  kMuxSchedulingMode  = 0;                     // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
+static constexpr int  kMuxSchedulingMode  = 1;                     // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                     // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
 static constexpr bool kMuxEnableReconfig  = false;                 // true 表示启用重配置版 MUX 调度
 static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边集合方案编号：1=scheme1，2=scheme2
@@ -152,11 +148,8 @@ int main() {
     .early_stop_v2_llr_abs_threshold = kEarlyStopV2LlrAbsThreshold,
     .early_stop_v2_max_unreliable_bits = kEarlyStopV2MaxUnreliableBits,
     .early_stop_cond_v2_include_overall = kEarlyStopCondV2IncludeOverall,
-    .alpha_fill = kAlpha_fill,
-    .beta_fill = kBeta_fill,
     .alpha_explicit = kAlpha_explicit,
     .beta_explicit = kBeta_explicit,
-    .early_stop_action_sign_beta_fill = kEarlyStopActionBeta_fill,
     .early_stop_action_sign_beta_explicit = kEarlyStopActionBeta_explicit,
     .early_stop_action_residual_divisor = kEarlyStopActionResidualDivisor,
     .early_stop_action_hard_llr_mag = kEarlyStopActionHardLlrMag,

@@ -806,6 +806,9 @@ int run_sweep(const SweepParameterConfig& config) {
   newcode::PipelineResult best_result{};
   std::vector<double> best_tile_early_stop_pct;
   std::vector<double> best_tile_row_early_stop_pct;
+  std::vector<std::size_t> best_tile_unscheduled_count;
+  std::vector<double> best_tile_unscheduled_pct;
+  std::vector<double> best_tile_unscheduled_among_need_pct;
   float best_alpha_start = 0.0f;
   float best_alpha_step = 0.0f;
   float best_beta_start = 0.0f;
@@ -835,6 +838,29 @@ int run_sweep(const SweepParameterConfig& config) {
       for (size_t i = 0; i < result.tile_row_early_stop_pct.size(); ++i) {
         out << result.tile_row_early_stop_pct[i]
             << (i + 1 < result.tile_row_early_stop_pct.size() ? ", " : "\n");
+      }
+      out << std::defaultfloat;
+    }
+    if (!result.tile_unscheduled_count.empty()) {
+      out << "[INFO] " << pack.name << " tile unscheduled counts: "
+          << join_compact(result.tile_unscheduled_count) << "\n";
+    }
+    if (!result.tile_unscheduled_pct.empty()) {
+      out << "[INFO] " << pack.name << " tile unscheduled rates (% of rows): ";
+      out << std::fixed << std::setprecision(1);
+      for (size_t i = 0; i < result.tile_unscheduled_pct.size(); ++i) {
+        out << result.tile_unscheduled_pct[i]
+            << (i + 1 < result.tile_unscheduled_pct.size() ? ", " : "\n");
+      }
+      out << std::defaultfloat;
+    }
+    if (!result.tile_unscheduled_among_need_pct.empty()) {
+      out << "[INFO] " << pack.name
+          << " tile unscheduled rates (% of NeedSiso rows): ";
+      out << std::fixed << std::setprecision(1);
+      for (size_t i = 0; i < result.tile_unscheduled_among_need_pct.size(); ++i) {
+        out << result.tile_unscheduled_among_need_pct[i]
+            << (i + 1 < result.tile_unscheduled_among_need_pct.size() ? ", " : "\n");
       }
       out << std::defaultfloat;
     }
@@ -875,6 +901,14 @@ int run_sweep(const SweepParameterConfig& config) {
               << detail::join_vec(result.tile_row_early_stop_pct, ',', 1)
               << "]";
     }
+    if (!result.tile_unscheduled_count.empty()) {
+      summary << " | Unscheduled=" << join_compact(result.tile_unscheduled_count);
+    }
+    if (!result.tile_unscheduled_pct.empty()) {
+      summary << " | Unscheduled%=["
+              << detail::join_vec(result.tile_unscheduled_pct, ',', 1)
+              << "]";
+    }
     scenario_summaries.push_back(summary.str());
     out << summary.str() << "\n";
 
@@ -894,6 +928,10 @@ int run_sweep(const SweepParameterConfig& config) {
       best_result = result;
       best_tile_early_stop_pct = result.tile_early_stop_pct;
       best_tile_row_early_stop_pct = result.tile_row_early_stop_pct;
+      best_tile_unscheduled_count = result.tile_unscheduled_count;
+      best_tile_unscheduled_pct = result.tile_unscheduled_pct;
+      best_tile_unscheduled_among_need_pct =
+          result.tile_unscheduled_among_need_pct;
       best_alpha_start = pack.alpha_start;
       best_alpha_step = pack.alpha_step;
       best_beta_start = pack.beta_start;
@@ -962,6 +1000,28 @@ int run_sweep(const SweepParameterConfig& config) {
     for (size_t i = 0; i < best_tile_row_early_stop_pct.size(); ++i) {
       out << best_tile_row_early_stop_pct[i]
           << (i + 1 < best_tile_row_early_stop_pct.size() ? ", " : "\n");
+    }
+    out << std::defaultfloat;
+  }
+  if (!best_tile_unscheduled_count.empty()) {
+    out << "[RESULT] Best tile unscheduled counts: "
+        << join_compact(best_tile_unscheduled_count) << "\n";
+  }
+  if (!best_tile_unscheduled_pct.empty()) {
+    out << "[RESULT] Best tile unscheduled rates (% of rows): ";
+    out << std::fixed << std::setprecision(1);
+    for (size_t i = 0; i < best_tile_unscheduled_pct.size(); ++i) {
+      out << best_tile_unscheduled_pct[i]
+          << (i + 1 < best_tile_unscheduled_pct.size() ? ", " : "\n");
+    }
+    out << std::defaultfloat;
+  }
+  if (!best_tile_unscheduled_among_need_pct.empty()) {
+    out << "[RESULT] Best tile unscheduled rates (% of NeedSiso rows): ";
+    out << std::fixed << std::setprecision(1);
+    for (size_t i = 0; i < best_tile_unscheduled_among_need_pct.size(); ++i) {
+      out << best_tile_unscheduled_among_need_pct[i]
+          << (i + 1 < best_tile_unscheduled_among_need_pct.size() ? ", " : "\n");
     }
     out << std::defaultfloat;
   }

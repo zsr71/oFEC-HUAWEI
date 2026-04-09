@@ -135,6 +135,8 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
       }
       counter.row_total += tile_result.rows_total;
       counter.row_triggered += tile_result.rows_early_stop;
+      counter.row_need_siso_before_mux += tile_result.rows_need_siso_before_mux;
+      counter.row_unscheduled += tile_result.rows_unscheduled;
     }
 
     for (size_t r = 0; r < tile_height_rows_actual; ++r) {

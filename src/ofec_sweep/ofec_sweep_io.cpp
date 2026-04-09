@@ -20,6 +20,17 @@ std::string join_vec_int(const std::vector<int>& values, char sep) {
   return oss.str();
 }
 
+std::string join_vec_size_t(const std::vector<std::size_t>& values, char sep) {
+  std::ostringstream oss;
+  for (size_t i = 0; i < values.size(); ++i) {
+    oss << values[i];
+    if (i + 1 < values.size()) {
+      oss << sep;
+    }
+  }
+  return oss.str();
+}
+
 }  // namespace
 
 DualOut::DualOut(std::ostream& console, const std::string& filepath, bool mirror_console)
@@ -59,6 +70,7 @@ void ensure_csv_header(const std::string& csv_path) {
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,"
           "early_stop_cond_v2_include_overall,"
           "early_stop_mean_pct,early_stop_row_mean_pct,early_stop_list,early_stop_row_list,"
+          "unscheduled_mean_pct,unscheduled_need_mean_pct,unscheduled_count_list,unscheduled_list,unscheduled_need_list,"
           "interleaver_name,bits_per_symbol,generate_random_bits,bitgen_seed_cfg,bitgen_seed_count,bitgen_seed_candidates,"
           "ebn0_start,ebn0_end,ebn0_points,ebn0_candidates,channel_seed_cfg,channel_seed_count,channel_seed_candidates,"
           "llr_bits,quant_clip_ratio,normalize_extrinsic,normalize_known_prefix_tail,"
@@ -101,7 +113,8 @@ void ensure_csv_header_v2(const std::string& csv_path) {
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,"
           "early_stop_cond_v2_include_overall,"
           "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
-          "early_stop_list,early_stop_row_list\n";
+          "early_stop_list,early_stop_row_list,"
+          "unscheduled_count_list,unscheduled_list,unscheduled_need_list\n";
 }
 
 std::string join_vec(const std::vector<float>& values, char sep, int precision) {
@@ -146,6 +159,8 @@ void write_csv_row(std::ostream& csv,
         snapshot ? *snapshot : empty_snapshot;
     const double es_mean = mean(result.tile_early_stop_pct);
     const double es_row_mean = mean(result.tile_row_early_stop_pct);
+    const double unsched_mean = mean(result.tile_unscheduled_pct);
+    const double unsched_need_mean = mean(result.tile_unscheduled_among_need_pct);
     csv << timestamp << ","
         << run_id << ","
         << scenario.name << ","
@@ -192,7 +207,22 @@ void write_csv_row(std::ostream& csv,
       csv.precision(prev_prec);
     }
     csv << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\","
-        << '"' << join_vec(result.tile_row_early_stop_pct, '|', 1) << "\","
+        << '"' << join_vec(result.tile_row_early_stop_pct, '|', 1) << "\",";
+    if (std::isnan(unsched_mean)) {
+      csv << ",";
+    } else {
+      csv << std::setprecision(3) << unsched_mean << ",";
+      csv.precision(prev_prec);
+    }
+    if (std::isnan(unsched_need_mean)) {
+      csv << ",";
+    } else {
+      csv << std::setprecision(3) << unsched_need_mean << ",";
+      csv.precision(prev_prec);
+    }
+    csv << '"' << join_vec_size_t(result.tile_unscheduled_count, '|') << "\","
+        << '"' << join_vec(result.tile_unscheduled_pct, '|', 1) << "\","
+        << '"' << join_vec(result.tile_unscheduled_among_need_pct, '|', 1) << "\","
         << '"' << cfg.interleaver_name << '"' << ","
         << cfg.bits_per_symbol << ","
         << (cfg.generate_random_bits ? 1 : 0) << ","
@@ -322,6 +352,9 @@ void write_csv_row(std::ostream& csv,
         << result.post_fec.total << ","
         << '"' << join_vec(result.tile_early_stop_pct, '|', 1) << "\","
         << '"' << join_vec(result.tile_row_early_stop_pct, '|', 1) << "\","
+        << '"' << join_vec_size_t(result.tile_unscheduled_count, '|') << "\","
+        << '"' << join_vec(result.tile_unscheduled_pct, '|', 1) << "\","
+        << '"' << join_vec(result.tile_unscheduled_among_need_pct, '|', 1) << "\","
         << '"' << cfg.interleaver_name << '"' << ","
         << cfg.bits_per_symbol << ","
         << (cfg.generate_random_bits ? 1 : 0) << ","

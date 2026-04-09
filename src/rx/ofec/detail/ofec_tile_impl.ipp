@@ -92,7 +92,7 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
 
   const size_t rows_to_decode = static_cast<size_t>(SBR) * static_cast<size_t>(B);
   if (rows_to_decode == 0) {
-      return TileProcessResult<LLR>{tile_out, false, 0, 0};
+      return TileProcessResult<LLR>{tile_out, false, 0, 0, 0, 0};
   }
 
   TilePrepared<LLR> prep = prepare_tile_inputs(tile_in, ch_tile, p,
@@ -115,6 +115,15 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
   std::vector<uint8_t> mux_state =
       newcode::mux::build_state_from_early_stop(early_stop_stats);
+  const auto count_state =
+      [&mux_state](newcode::mux::StateTag tag) -> std::size_t {
+        return static_cast<std::size_t>(std::count(
+            mux_state.begin(),
+            mux_state.end(),
+            static_cast<uint8_t>(tag)));
+      };
+  const std::size_t rows_need_siso_before_mux =
+      count_state(newcode::mux::StateTag::NeedSiso);
   // 方案一：只有当当前 tile 的 SISO 预算小于待处理 code 数时，MUX 才真正介入。
   // 若预算已经覆盖全部 rows_to_decode，则保持 NeedSiso/EarlyStopped 原状态，
   // 不再执行 grouped budget 或 reconfig 调度。
@@ -159,6 +168,8 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
       }
     }
   }
+  const std::size_t rows_unscheduled =
+      count_state(newcode::mux::StateTag::Unscheduled);
 
   auto decoder_res = decode_tile<LLR>(prep,
                                       use_hard_decode,
@@ -181,7 +192,9 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
       std::move(tile_out),
       early_stop_triggered,
       early_stop_stats.rows_passed,
-      early_stop_stats.rows_total};
+      early_stop_stats.rows_total,
+      rows_need_siso_before_mux,
+      rows_unscheduled};
 }
 
 } // namespace detail

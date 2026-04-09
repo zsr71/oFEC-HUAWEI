@@ -13,6 +13,8 @@ struct TileEarlyStopCounter {
   std::size_t total = 0;
   std::size_t row_triggered = 0;
   std::size_t row_total = 0;
+  std::size_t row_need_siso_before_mux = 0;
+  std::size_t row_unscheduled = 0;
 };
 
 template <typename LLR>
@@ -21,6 +23,8 @@ struct TileProcessResult {
   bool early_stop_triggered = false;
   std::size_t rows_early_stop = 0;
   std::size_t rows_total = 0;
+  std::size_t rows_need_siso_before_mux = 0;
+  std::size_t rows_unscheduled = 0;
 };
 
 // 顶层解码（不同 Chase 变体分别导出）

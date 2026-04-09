@@ -33,8 +33,8 @@ struct Config {
   float early_stop_v2_llr_abs_threshold = 0.5f;
   int early_stop_v2_max_unreliable_bits = 8;
   bool early_stop_cond_v2_include_overall = true;
-  float alpha_fill;
-  float beta_fill;
+  float alpha_fill = 1.0f;
+  float beta_fill = 0.35f;
   std::vector<float> alpha_explicit;
   std::vector<float> beta_explicit;
   float early_stop_action_sign_beta_fill =

@@ -81,6 +81,60 @@ std::vector<double> compute_row_early_stop_percentages(const std::vector<TileEar
   return pct;
 }
 
+std::vector<std::size_t> collect_need_siso_before_mux_counts(
+    const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::vector<std::size_t> counts;
+  counts.reserve(counters.size());
+  for (const auto& counter : counters) {
+    counts.push_back(counter.row_need_siso_before_mux);
+  }
+  return counts;
+}
+
+std::vector<std::size_t> collect_unscheduled_counts(
+    const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::vector<std::size_t> counts;
+  counts.reserve(counters.size());
+  for (const auto& counter : counters) {
+    counts.push_back(counter.row_unscheduled);
+  }
+  return counts;
+}
+
+std::vector<double> compute_unscheduled_percentages(
+    const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::vector<double> pct;
+  pct.reserve(counters.size());
+  for (const auto& counter : counters) {
+    double value = 0.0;
+    if (counter.row_total > 0) {
+      value = static_cast<double>(counter.row_unscheduled) /
+              static_cast<double>(counter.row_total) * 100.0;
+    }
+    pct.push_back(value);
+  }
+  return pct;
+}
+
+std::vector<double> compute_unscheduled_among_need_percentages(
+    const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::vector<double> pct;
+  pct.reserve(counters.size());
+  for (const auto& counter : counters) {
+    double value = 0.0;
+    if (counter.row_need_siso_before_mux > 0) {
+      value = static_cast<double>(counter.row_unscheduled) /
+              static_cast<double>(counter.row_need_siso_before_mux) * 100.0;
+    }
+    pct.push_back(value);
+  }
+  return pct;
+}
+
 struct LlrMode {
   LlrFormat format;
   std::size_t quant_bits;
@@ -300,6 +354,14 @@ PipelineResult run_pipeline(const Params& params,
                                           params, &result.post_fec_error_positions, config.quiet);
   result.tile_early_stop_pct = compute_early_stop_percentages(decode_result.tile_stats);
   result.tile_row_early_stop_pct = compute_row_early_stop_percentages(decode_result.tile_stats);
+  result.tile_need_siso_before_mux_count =
+      collect_need_siso_before_mux_counts(decode_result.tile_stats);
+  result.tile_unscheduled_count =
+      collect_unscheduled_counts(decode_result.tile_stats);
+  result.tile_unscheduled_pct =
+      compute_unscheduled_percentages(decode_result.tile_stats);
+  result.tile_unscheduled_among_need_pct =
+      compute_unscheduled_among_need_percentages(decode_result.tile_stats);
   result.dequantized_llr_path = decode_result.dequantized_llr_path;
   result.float_llr_path = decode_result.float_llr_path;
   result.quantized_codes_path = decode_result.quantized_codes_path;

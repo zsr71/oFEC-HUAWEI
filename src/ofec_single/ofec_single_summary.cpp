@@ -22,6 +22,35 @@ std::string format_compact_int_list(const std::vector<int>& values) {
   return oss.str();
 }
 
+std::string format_compact_size_t_list(const std::vector<std::size_t>& values) {
+  std::ostringstream oss;
+  oss << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i) {
+      oss << ", ";
+    }
+    oss << values[i];
+  }
+  oss << "]";
+  return oss.str();
+}
+
+std::string format_compact_double_list(const std::vector<double>& values,
+                                       int precision = 1) {
+  std::ostringstream oss;
+  oss.setf(std::ios::fixed);
+  oss << std::setprecision(precision);
+  oss << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i) {
+      oss << ", ";
+    }
+    oss << values[i];
+  }
+  oss << "]";
+  return oss.str();
+}
+
 std::string format_positions(const std::vector<std::size_t>& positions,
                              std::size_t max_count = kDefaultPositionsToPrint) {
   std::ostringstream oss;
@@ -121,17 +150,21 @@ void log_pipeline_results(const newcode::PipelineResult& result,
         << oss.str() << "\n";
   }
   if (!result.tile_row_early_stop_pct.empty()) {
-    std::ostringstream oss;
-    oss.setf(std::ios::fixed);
-    oss << std::setprecision(1);
-    for (std::size_t i = 0; i < result.tile_row_early_stop_pct.size(); ++i) {
-      oss << result.tile_row_early_stop_pct[i];
-      if (i + 1 < result.tile_row_early_stop_pct.size()) {
-        oss << ", ";
-      }
-    }
     log << "[RESULT] EarlyStop (per-row) hit rates (%): "
-        << oss.str() << "\n";
+        << format_compact_double_list(result.tile_row_early_stop_pct) << "\n";
+  }
+
+  if (!result.tile_unscheduled_count.empty()) {
+    log << "[RESULT] Unscheduled counts: "
+        << format_compact_size_t_list(result.tile_unscheduled_count) << "\n";
+  }
+  if (!result.tile_unscheduled_pct.empty()) {
+    log << "[RESULT] Unscheduled rates (% of rows): "
+        << format_compact_double_list(result.tile_unscheduled_pct) << "\n";
+  }
+  if (!result.tile_unscheduled_among_need_pct.empty()) {
+    log << "[RESULT] Unscheduled rates (% of NeedSiso rows): "
+        << format_compact_double_list(result.tile_unscheduled_among_need_pct) << "\n";
   }
 
   if (!result.dequantized_llr_path.empty()) {

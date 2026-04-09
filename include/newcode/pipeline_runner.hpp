@@ -33,6 +33,10 @@ struct PipelineResult {
   bool has_pre_fec_quantized_hard = false;
   std::vector<double> tile_early_stop_pct;
   std::vector<double> tile_row_early_stop_pct;
+  std::vector<std::size_t> tile_need_siso_before_mux_count;
+  std::vector<std::size_t> tile_unscheduled_count;
+  std::vector<double> tile_unscheduled_pct;
+  std::vector<double> tile_unscheduled_among_need_pct;
   std::string dequantized_llr_path; // 反量化后的 LLR 保存位置
   std::string float_llr_path;       // 解调 float LLR 的保存位置
   std::string quantized_codes_path; // 量化码字的保存位置
