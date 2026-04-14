@@ -81,6 +81,21 @@ std::vector<double> compute_row_early_stop_percentages(const std::vector<TileEar
   return pct;
 }
 
+std::vector<TileEarlyStopSample> collect_tile_early_stop_samples(
+    const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::size_t total_samples = 0;
+  for (const auto& counter : counters) {
+    total_samples += counter.samples.size();
+  }
+  std::vector<TileEarlyStopSample> samples;
+  samples.reserve(total_samples);
+  for (const auto& counter : counters) {
+    samples.insert(samples.end(), counter.samples.begin(), counter.samples.end());
+  }
+  return samples;
+}
+
 std::vector<std::size_t> collect_need_siso_before_mux_counts(
     const std::vector<TileEarlyStopCounter>& counters)
 {
@@ -354,6 +369,8 @@ PipelineResult run_pipeline(const Params& params,
                                           params, &result.post_fec_error_positions, config.quiet);
   result.tile_early_stop_pct = compute_early_stop_percentages(decode_result.tile_stats);
   result.tile_row_early_stop_pct = compute_row_early_stop_percentages(decode_result.tile_stats);
+  result.tile_early_stop_samples =
+      collect_tile_early_stop_samples(decode_result.tile_stats);
   result.tile_need_siso_before_mux_count =
       collect_need_siso_before_mux_counts(decode_result.tile_stats);
   result.tile_unscheduled_count =

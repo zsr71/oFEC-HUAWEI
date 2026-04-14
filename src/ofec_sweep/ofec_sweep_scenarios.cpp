@@ -52,6 +52,9 @@ void append_common_name(std::ostringstream& oss, const SweepScenario& scenario) 
       << "_muxRule" << scenario.mux_early_stop_priority_rule;
   oss << "_cond" << scenario.early_stop_condition_mode
       << "_act" << scenario.early_stop_action_mode;
+  if (scenario.early_stop_bind_group_size > 1) {
+    oss << "_esBind" << scenario.early_stop_bind_group_size;
+  }
   if (scenario.early_stop_condition_mode == 1) {
     oss << "_v1bch" << (scenario.early_stop_cond_v1_require_bch ? 1 : 0)
         << "_v1ov" << (scenario.early_stop_cond_v1_require_overall ? 1 : 0);
@@ -276,6 +279,8 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
                   scenario.mux_bypass_scheme = config.mux_bypass_scheme;
                   scenario.early_stop_condition_mode = condition_mode;
                   scenario.early_stop_action_mode = action_mode;
+                  scenario.early_stop_bind_group_size =
+                      config.early_stop_bind_group_size;
                   scenario.early_stop_cond_v1_require_bch = v1_require_bch;
                   scenario.early_stop_cond_v1_require_overall = v1_require_overall;
                   scenario.early_stop_v2_llr_abs_threshold = v2_threshold;
@@ -394,10 +399,12 @@ std::vector<SweepScenario> build_scenarios(const SweepParameterConfig& config,
           scenario.mux_group_g = config.mux_group_g;
           scenario.mux_scheduling_mode = mux_scheduling_mode;
           scenario.mux_early_stop_priority_rule = mux_priority_rule;
-          scenario.mux_bypass_scheme = config.mux_bypass_scheme;
-          scenario.early_stop_condition_mode = condition_mode;
-          scenario.early_stop_action_mode = action_mode;
-          scenario.early_stop_cond_v1_require_bch = v1_require_bch;
+                  scenario.mux_bypass_scheme = config.mux_bypass_scheme;
+                  scenario.early_stop_condition_mode = condition_mode;
+                  scenario.early_stop_action_mode = action_mode;
+                  scenario.early_stop_bind_group_size =
+                      config.early_stop_bind_group_size;
+                  scenario.early_stop_cond_v1_require_bch = v1_require_bch;
           scenario.early_stop_cond_v1_require_overall = v1_require_overall;
           scenario.early_stop_v2_llr_abs_threshold = v2_threshold;
           scenario.early_stop_v2_max_unreliable_bits = v2_unreliable;

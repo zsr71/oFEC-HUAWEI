@@ -51,6 +51,7 @@ struct Params {
   std::vector<int> EARLY_STOP_ENABLE_LIST;  // 按 tile 覆盖 early-stop 开关：0=关，非 0=开；空表示沿用 ENABLE_EARLY_STOP
   int EARLY_STOP_CONDITION_MODE = 1;  // 1=detect_tile_early_stop_v1, 2=detect_tile_early_stop_v2
   int EARLY_STOP_ACTION_MODE = 1;     // 1=sign beta, 2=residual only, 3=hard-decode sign LLR, 4=sign beta pre-div alpha, 5=residual pre-div alpha plus sign beta
+  int EARLY_STOP_BIND_GROUP_SIZE = 1; // 条件1专用：按多少个 row 绑定 early-stop；1=逐 row（旧逻辑），4=每 4 个都通过才整体 early-stop
   bool EARLY_STOP_COND_V1_REQUIRE_BCH = true;
   bool EARLY_STOP_COND_V1_REQUIRE_OVERALL = true;
   float EARLY_STOP_V2_LLR_ABS_THRESHOLD = 0.5f;
@@ -160,6 +161,7 @@ struct Params {
            (CHASE_NTEST >= 1) &&
            (CHASE_TOPK_KEEP >= 1) &&
            (CHASE_GROUP_MINIMA_BITS >= 0) &&
+           (EARLY_STOP_BIND_GROUP_SIZE >= 1) &&
            (CHASE_SBR == 1 || CHASE_SBR == 2);
   }
 };

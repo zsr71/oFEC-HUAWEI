@@ -33,6 +33,7 @@ struct PipelineResult {
   bool has_pre_fec_quantized_hard = false;
   std::vector<double> tile_early_stop_pct;
   std::vector<double> tile_row_early_stop_pct;
+  std::vector<TileEarlyStopSample> tile_early_stop_samples;
   std::vector<std::size_t> tile_need_siso_before_mux_count;
   std::vector<std::size_t> tile_unscheduled_count;
   std::vector<double> tile_unscheduled_pct;

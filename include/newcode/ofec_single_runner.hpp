@@ -28,6 +28,7 @@ struct Config {
   std::vector<int> early_stop_enable_list;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
+  int early_stop_bind_group_size = 1;
   bool early_stop_cond_v1_require_bch = true;
   bool early_stop_cond_v1_require_overall = true;
   float early_stop_v2_llr_abs_threshold = 0.5f;
@@ -58,6 +59,8 @@ struct Config {
   std::string quantized_llr_output_path;
   bool dump_work_llr = false;
   std::string work_llr_output_path;
+  bool dump_tile_early_stop_samples = false;
+  std::string tile_early_stop_samples_output_path;
   newcode::Params::DebugTraceConfig debug_trace;
 };
 

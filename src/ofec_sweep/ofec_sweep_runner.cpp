@@ -233,6 +233,7 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
         scenario.mux_early_stop_priority_rule;
     params.EARLY_STOP_CONDITION_MODE = scenario.early_stop_condition_mode;
     params.EARLY_STOP_ACTION_MODE = scenario.early_stop_action_mode;
+    params.EARLY_STOP_BIND_GROUP_SIZE = scenario.early_stop_bind_group_size;
     params.EARLY_STOP_COND_V1_REQUIRE_BCH =
         scenario.early_stop_cond_v1_require_bch;
     params.EARLY_STOP_COND_V1_REQUIRE_OVERALL =
@@ -296,6 +297,8 @@ std::vector<ScenarioOutput> run_scenarios_parallel(
           output.mux_bypass_scheme = scenario.mux_bypass_scheme;
           output.early_stop_condition_mode = scenario.early_stop_condition_mode;
           output.early_stop_action_mode = scenario.early_stop_action_mode;
+          output.early_stop_bind_group_size =
+              scenario.early_stop_bind_group_size;
           output.early_stop_cond_v1_require_bch =
               scenario.early_stop_cond_v1_require_bch;
           output.early_stop_cond_v1_require_overall =
@@ -392,6 +395,8 @@ int run_sweep(const SweepParameterConfig& config) {
       resolved.early_stop_condition_mode;
   resolved.base_params.EARLY_STOP_ACTION_MODE =
       resolved.early_stop_action_mode;
+  resolved.base_params.EARLY_STOP_BIND_GROUP_SIZE =
+      resolved.early_stop_bind_group_size;
   resolved.base_params.EARLY_STOP_COND_V1_REQUIRE_BCH =
       resolved.early_stop_cond_v1_require_bch;
   resolved.base_params.EARLY_STOP_COND_V1_REQUIRE_OVERALL =
@@ -441,6 +446,10 @@ int run_sweep(const SweepParameterConfig& config) {
   }
   if (!validate_action_mode(resolved.early_stop_action_mode)) {
     std::cerr << "[ERROR] early_stop_action_mode must be 1, 2, 3, 4 or 5\n";
+    return 1;
+  }
+  if (resolved.early_stop_bind_group_size < 1) {
+    std::cerr << "[ERROR] early_stop_bind_group_size must be >= 1\n";
     return 1;
   }
   for (int mode : resolved.early_stop_condition_candidates) {
@@ -642,6 +651,7 @@ int run_sweep(const SweepParameterConfig& config) {
       << " early_stop_condition_candidates="
       << join_compact(cfg.early_stop_condition_candidates)
       << " early_stop_action_mode=" << cfg.early_stop_action_mode
+      << " early_stop_bind_group_size=" << cfg.early_stop_bind_group_size
       << " early_stop_action_candidates=" << join_compact(cfg.early_stop_action_candidates)
       << " v1_require_bch=" << (cfg.early_stop_cond_v1_require_bch ? "true" : "false")
       << " v1_require_bch_candidates="
@@ -721,6 +731,7 @@ int run_sweep(const SweepParameterConfig& config) {
   csv_snapshot.mux_enable_reconfig = cfg.mux_enable_reconfig;
   csv_snapshot.mux_bypass_scheme = cfg.mux_bypass_scheme;
   csv_snapshot.enable_early_stop = cfg.enable_early_stop;
+  csv_snapshot.early_stop_bind_group_size = cfg.early_stop_bind_group_size;
   csv_snapshot.early_stop_condition_mode = cfg.early_stop_condition_mode;
   csv_snapshot.early_stop_condition_candidates =
       join_compact(cfg.early_stop_condition_candidates);
@@ -890,6 +901,7 @@ int run_sweep(const SweepParameterConfig& config) {
             << " MUX_RULE=" << pack.mux_early_stop_priority_rule
             << " | cond/action=" << pack.early_stop_condition_mode
             << "/" << pack.early_stop_action_mode
+            << " | ES_BIND=" << pack.early_stop_bind_group_size
             << " | Seeds(bit/channel)=" << pack.bitgen_seed << "/" << pack.channel_seed;
     if (!result.tile_early_stop_pct.empty()) {
       summary << " | EarlyStop%=["

@@ -8,6 +8,13 @@
 
 namespace newcode {
 
+struct TileEarlyStopSample {
+  std::size_t invocation = 0;
+  std::size_t tile_index = 0;
+  std::size_t rows_total = 0;
+  std::size_t rows_passed = 0;
+};
+
 struct TileEarlyStopCounter {
   std::size_t triggered = 0;
   std::size_t total = 0;
@@ -15,6 +22,7 @@ struct TileEarlyStopCounter {
   std::size_t row_total = 0;
   std::size_t row_need_siso_before_mux = 0;
   std::size_t row_unscheduled = 0;
+  std::vector<TileEarlyStopSample> samples;
 };
 
 template <typename LLR>

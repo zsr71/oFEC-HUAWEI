@@ -71,6 +71,7 @@ static const std::vector<int> kEarlyStopEnableList          = {};         // 按
 static constexpr int         kEarlyStopConditionMode        = 1;          // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionCandidates = {};    // 早停条件候选列表
 static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta
+static constexpr int         kEarlyStopBindGroupSize        = 1;          // 条件1专用的组绑定大小：1=逐 row；4=每 4 个 row 都通过才整体 early-stop
 static const std::vector<int> kEarlyStopActionCandidates    = {}; // 早停动作候选列表
 
 static constexpr bool        kEarlyStopCondV1RequireBch     = true;       // 条件1里是否要求 BCH syndrome 为 0
@@ -129,6 +130,7 @@ int main() {
   config.early_stop_enable_list = kEarlyStopEnableList;
   config.early_stop_condition_mode = kEarlyStopConditionMode;
   config.early_stop_action_mode = kEarlyStopActionMode;
+  config.early_stop_bind_group_size = kEarlyStopBindGroupSize;
   config.early_stop_cond_v1_require_bch = kEarlyStopCondV1RequireBch;
   config.early_stop_cond_v1_require_overall = kEarlyStopCondV1RequireOverall;
   config.early_stop_v2_llr_abs_threshold = kEarlyStopV2LlrAbsThreshold;

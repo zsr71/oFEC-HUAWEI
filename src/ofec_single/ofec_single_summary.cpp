@@ -98,7 +98,8 @@ void log_run_overview(const Config& cfg,
       << " (" << (params.LLR_BITS == 16 ? "float" : "qfloat") << ")\n";
   log << "[INFO] Early-stop = " << (params.ENABLE_EARLY_STOP ? "ON" : "OFF")
       << ", per-tile enable list = "
-      << format_compact_int_list(params.EARLY_STOP_ENABLE_LIST) << "\n";
+      << format_compact_int_list(params.EARLY_STOP_ENABLE_LIST)
+      << ", bind_group_size = " << params.EARLY_STOP_BIND_GROUP_SIZE << "\n";
   log << "[INFO] MUX group/scheduling/rule = "
       << params.MUX_GROUP_G << "/"
       << params.MUX_SCHEDULING_MODE << "/"

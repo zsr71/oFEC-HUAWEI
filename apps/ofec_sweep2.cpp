@@ -34,6 +34,7 @@ static constexpr bool        kGenerateRandomBits      = true;
 static constexpr bool        kNormalizeKnownPrefixTail = false;
 static constexpr std::size_t kLlrBits                 = 6;
 static constexpr float       kQuantClipRatio          = 0.5f;
+static constexpr int         kEarlyStopBindGroupSize  = 1;
 const std::vector<int> kSisoActiveList                = {32,32,32,32};
 
 const std::vector<float> kAlphaLowGrid   = utils::linspace(0.00f, 1.50f, 7);
@@ -144,6 +145,7 @@ ofec_sweep::SweepParameterConfig build_base_config() {
   config.quant_clip_ratio = kQuantClipRatio;
   config.siso_active_list = kSisoActiveList;
   config.enable_early_stop = false;
+  config.early_stop_bind_group_size = kEarlyStopBindGroupSize;
   config.mux_scheduling_mode = 0;
   config.mux_early_stop_priority_rule = 0;
 

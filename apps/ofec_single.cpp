@@ -13,15 +13,16 @@ static constexpr int         kBitgenSeed         = 20260319;    // 比特生成�
 static constexpr bool        kGenerateRandomBits = false;          // true=发送随机信息比特，false=发送全 0 比特
 
 // 信道参数
-static constexpr float       kEbN0_db                      = 2.99f;   // 信道 Eb/N0，单位 dB
+static constexpr float       kEbN0_db                      = 3.01f;   // 信道 Eb/N0，单位 dB
 static constexpr int         kChannelSeed                  = 3182026; // 信道噪声随机种子，固定后可复现实验
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
 //早停参数
-static constexpr bool        kEnableEarlyStop              = false;   // true=启用早停，false=完全关闭早停路径
-static const std::vector<int> kEarlyStopEnableList         = {0,0,0,0,0,0};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
+static constexpr bool        kEnableEarlyStop              = true;   // true=启用早停，false=完全关闭早停路径
+static const std::vector<int> kEarlyStopEnableList         = {0,0,0,0,1,1};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
 static constexpr int         kEarlyStopConditionMode       = 1;       // 早停条件编号：1=v1，2=v2
 static constexpr int         kEarlyStopActionMode          = 4;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta
+static constexpr int         kEarlyStopBindGroupSize       = 1;       // 条件1专用的组绑定大小：1=逐 row；4=每 4 个 row 都通过才整体 early-stop
 
 static constexpr bool        kEarlyStopCondV1RequireBch    = true;    // 条件1里是否要求 BCH syndrome 为 0
 static constexpr bool        kEarlyStopCondV1RequireOverall = true;   // 条件1里是否要求 overall parity 一致
@@ -61,7 +62,7 @@ static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chas
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
   2.857143,6.179301,12.253626,20.119585,29.434408,40.000000
 };
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,32}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,16}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                     // MUX 分组粒度，1 表示全局池化
 static constexpr int  kMuxSchedulingMode  = 1;                     // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                     // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
@@ -73,6 +74,9 @@ static constexpr bool        kDumpQuantizedLlr = false;                         
 static constexpr const char* kQuantizedLlrPath = "data/llr/quantized_llr.txt"; // 量化 LLR 输出路径
 static constexpr bool        kDumpWorkLlr      = false;                         // 是否保存最终累积得到的 work_llr
 static constexpr const char* kWorkLlrPath      = "data/llr/work_llr.txt";      // work_llr 输出路径
+static constexpr bool        kDumpTileEarlyStopSamples = true;                 // 是否导出每次进入各个 tile 后的 early-stop 命中码字数样本
+static constexpr const char* kTileEarlyStopSamplesPath =
+    "data/early_stop_hist/ofec_single_tile_early_stop_samples.csv";             // early-stop 样本 CSV 路径
 
 namespace {
 constexpr long BitIndexToRow(long bit_index) { return bit_index / 111 + 352; } // 把 info bit 编号映射回矩阵行号
@@ -143,6 +147,7 @@ int main() {
     .early_stop_enable_list = kEarlyStopEnableList,
     .early_stop_condition_mode = kEarlyStopConditionMode,
     .early_stop_action_mode = kEarlyStopActionMode,
+    .early_stop_bind_group_size = kEarlyStopBindGroupSize,
     .early_stop_cond_v1_require_bch = kEarlyStopCondV1RequireBch,
     .early_stop_cond_v1_require_overall = kEarlyStopCondV1RequireOverall,
     .early_stop_v2_llr_abs_threshold = kEarlyStopV2LlrAbsThreshold,
@@ -169,6 +174,8 @@ int main() {
     .quantized_llr_output_path = kQuantizedLlrPath,
     .dump_work_llr = kDumpWorkLlr,
     .work_llr_output_path = kWorkLlrPath,
+    .dump_tile_early_stop_samples = kDumpTileEarlyStopSamples,
+    .tile_early_stop_samples_output_path = kTileEarlyStopSamplesPath,
     .debug_trace = newcode::Params::DebugTraceConfig{
       .enable = kDecoderTraceEnable,
       .log_read_mapping = kDecoderTraceLogRead,

@@ -41,6 +41,7 @@ struct SweepScenario {
   int mux_bypass_scheme = 0;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
+  int early_stop_bind_group_size = 1;
   bool early_stop_cond_v1_require_bch = true;
   bool early_stop_cond_v1_require_overall = true;
   float early_stop_v2_llr_abs_threshold = 0.5f;
@@ -75,6 +76,7 @@ struct ScenarioOutput {
   int mux_bypass_scheme = 0;
   int early_stop_condition_mode = 1;
   int early_stop_action_mode = 1;
+  int early_stop_bind_group_size = 1;
   bool early_stop_cond_v1_require_bch = true;
   bool early_stop_cond_v1_require_overall = true;
   float early_stop_v2_llr_abs_threshold = 0.5f;
@@ -199,6 +201,7 @@ struct ExtendedCsvConfigSnapshot {
   bool mux_enable_reconfig = false;
   int mux_bypass_scheme = 0;
   bool enable_early_stop = false;
+  int early_stop_bind_group_size = 1;
   int early_stop_condition_mode = 0;
   int early_stop_action_mode = 0;
   bool early_stop_cond_v1_require_bch = false;

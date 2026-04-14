@@ -19,6 +19,7 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.EARLY_STOP_ENABLE_LIST = cfg.early_stop_enable_list;
   params.EARLY_STOP_CONDITION_MODE = cfg.early_stop_condition_mode;
   params.EARLY_STOP_ACTION_MODE = cfg.early_stop_action_mode;
+  params.EARLY_STOP_BIND_GROUP_SIZE = cfg.early_stop_bind_group_size;
   params.EARLY_STOP_COND_V1_REQUIRE_BCH = cfg.early_stop_cond_v1_require_bch;
   params.EARLY_STOP_COND_V1_REQUIRE_OVERALL = cfg.early_stop_cond_v1_require_overall;
   params.EARLY_STOP_V2_LLR_ABS_THRESHOLD = cfg.early_stop_v2_llr_abs_threshold;
@@ -52,6 +53,10 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   }
   if (cfg.early_stop_v2_llr_abs_threshold < 0.0f) {
     log << "[ERROR] early_stop_v2_llr_abs_threshold 必须 >= 0\n";
+    return std::nullopt;
+  }
+  if (cfg.early_stop_bind_group_size < 1) {
+    log << "[ERROR] early_stop_bind_group_size 必须 >= 1\n";
     return std::nullopt;
   }
   if (cfg.early_stop_v2_max_unreliable_bits < 0 ||

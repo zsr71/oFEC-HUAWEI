@@ -9,6 +9,7 @@
 #include "newcode/decoder_api.hpp"
 #include "newcode/ofec/common/lin_matrix_adapters.hpp"
 #include "newcode/ofec/earlystop/tile_early_stop_stats.hpp"
+#include "newcode/ofec/earlystop/tile_early_stop_group_bind.hpp"
 #include "newcode/ofec/mux/mux_group_budget.hpp"
 #include "newcode/ofec/mux/mux_scheme_c_staged.hpp"
 #include "newcode/ofec/mux/mux_state_schedule_apply.hpp"
@@ -105,6 +106,12 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
   if (p.ENABLE_EARLY_STOP) {
     // 先根据输入统计结果判断哪些 decoder row 已经满足 early-stop 条件。
     early_stop_stats = detect_tile_early_stop(prep.lin_matrix, p);
+    // 条件1可额外按固定 group 绑定：只有整组 row 都通过时，这组才整体 early-stop。
+    if (p.EARLY_STOP_CONDITION_MODE == 1 &&
+        p.EARLY_STOP_BIND_GROUP_SIZE > 1) {
+      early_stop_stats = apply_group_bound_early_stop(
+          early_stop_stats, p.EARLY_STOP_BIND_GROUP_SIZE);
+    }
   } else {
     early_stop_stats.row_passed_flags.assign(rows_to_decode, false);
     early_stop_stats.row_details.assign(rows_to_decode, TileEarlyStopRowDetail{});
