@@ -30,15 +30,16 @@ matrix::Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const newc
         throw std::runtime_error("ofec_encode: input 'bits' length must be a multiple of 3552.");
 
     const int TILE_HEIGHT_BR = static_cast<int>(p.tile_height_rows()) / B;   // e.g. 22
-    const int PAD_RECTS      = TILE_HEIGHT_BR / 2;                           // e.g. 11
+    const int PAD_RECTS      = static_cast<int>(p.KNOWN_PREFIX_TILE_COUNT) * (TILE_HEIGHT_BR / 2);
     const size_t ZERO_PREFIX = static_cast<size_t>(PAD_RECTS) * RECT_BITS;
 
     std::vector<uint8_t> u;
     u.resize(ZERO_PREFIX + bits.size(), 0);
     std::copy(bits.begin(), bits.end(), u.begin() + ZERO_PREFIX);
 
-    // 将 V(R,C,r,c) 展开为二维：行 = R*B + r，列 = C*B + c
-    matrix::Matrix<uint8_t> mat = matrix::Matrix<uint8_t>::zero(p.tile_height_rows(), N);
+    // 将 V(R,C,r,c) 展开为二维：先预留已知前缀对应的零行，
+    // 这样后续读取历史位时，前缀区会天然作为 0 参与。
+    matrix::Matrix<uint8_t> mat = matrix::Matrix<uint8_t>::zero(p.known_prefix_rows(), N);
 
     // —— 左半历史位读取（按你给的式子，带 -2*(N/B) 项）——
     auto read_hist_bit = [&](long R, int r, int k) -> uint8_t {
@@ -95,7 +96,7 @@ matrix::Matrix<uint8_t> ofec_encode(const std::vector<uint8_t>& bits, const newc
 
     // 逐“全局行”（按 r 上增）编码（每行消耗 111 个系统位；系统位来自 u(i)）
     size_t produced_rows = 0;
-    size_t global_row    = static_cast<size_t>(p.tile_height_rows()); // 保持你的起点
+    size_t global_row    = p.known_prefix_rows(); // 从已知前缀之后开始产出有效数据
     const size_t rows_to_make = bits.size() / static_cast<size_t>(TAKE_BITS);
 
     while (produced_rows < rows_to_make)

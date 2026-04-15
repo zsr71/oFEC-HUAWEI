@@ -10,10 +10,10 @@
 static constexpr const char* kLabel              = "debug_L6";    // 运行标签：日志名、输出文件名前缀都会带这个名字
 static constexpr int         kChaseL_override    = 6;             // Chase L，-1 表示使用 Params 里的默认值
 static constexpr int         kBitgenSeed         = 20260319;    // 比特生成随机种子，固定后可复现实验
-static constexpr bool        kGenerateRandomBits = false;          // true=发送随机信息比特，false=发送全 0 比特
+static constexpr bool        kGenerateRandomBits = true;          // true=发送随机信息比特，false=发送全 0 比特
 
 // 信道参数
-static constexpr float       kEbN0_db                      = 3.01f;   // 信道 Eb/N0，单位 dB
+static constexpr float       kEbN0_db                      = 3.052051f;   // 信道 Eb/N0，单位 dB
 static constexpr int         kChannelSeed                  = 3182026; // 信道噪声随机种子，固定后可复现实验
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
@@ -62,9 +62,9 @@ static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chas
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
   2.857143,6.179301,12.253626,20.119585,29.434408,40.000000
 };
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,16}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,8}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                     // MUX 分组粒度，1 表示全局池化
-static constexpr int  kMuxSchedulingMode  = 1;                     // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
+static constexpr int  kMuxSchedulingMode  = 0;                     // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                     // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
 static constexpr bool kMuxEnableReconfig  = false;                 // true 表示启用重配置版 MUX 调度
 static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边集合方案编号：1=scheme1，2=scheme2

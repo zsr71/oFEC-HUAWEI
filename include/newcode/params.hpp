@@ -21,11 +21,12 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     =  64 * 110 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     =  256 * 132 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 56456;                 // 随机种子
   int    CHANNEL_SEED      = BITGEN_SEED + 656;    // 信道噪声随机种子
   bool   BITGEN_RANDOM_BITS = true;             // true=随机比特，false=全 0
   bool   NORMALIZE_KNOWN_PREFIX_TAIL = false;    // true=对非 known_rows 区域做均值归一化
+  size_t KNOWN_PREFIX_TILE_COUNT = 6;            // 发端/收端共同使用的已知前缀 tile 数
   size_t NUM_GUARD_SUBROWS = 2;                  // 保护块子行数 G
   bool   DUMP_WORK_LLR = false;                  // 是否保存窗口累积后的 work_llr（解码前）
   std::string WORK_LLR_OUTPUT_PATH;              // work_llr 输出路径（为空则默认命名）
@@ -147,6 +148,12 @@ struct Params {
   }
   constexpr size_t pop_push_rows() const {
     return WINDOW_POP_PUSH * BITS_PER_SUBBLOCK_DIM;
+  }
+  constexpr size_t known_prefix_rows_br() const {
+    return KNOWN_PREFIX_TILE_COUNT * TILE_HEIGHT_BR;
+  }
+  constexpr size_t known_prefix_rows() const {
+    return known_prefix_rows_br() * BITS_PER_SUBBLOCK_DIM;
   }
   // 初始 window 起始行（比特行）：跳过 warmup 的 B 行 + 2G 行保护区
   constexpr size_t initial_win_start_rows() const {
