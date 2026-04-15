@@ -1,7 +1,6 @@
 #include <vector>
 
 #include "mux_bypass_edges.hpp"
-#include "newcode/utils/linspace.hpp"
 #include "newcode/ofec_sweep_runner.hpp"
 
 // ======== 用户可调参数区域 ========
@@ -45,11 +44,6 @@ static const std::vector<int> kChaseTopkKeepCandidates      = {};         // cha
 static constexpr int         kChaseGroupMinimaBits          = 4;          // chase_group_minima 按前多少个 test-pattern 位分组；取 3 时对应 2^3=8 个组
 static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4};       // chase_group_minima 分组位数扫描候选，空表示沿用固定值
 
-static const std::vector<float> kAlphaStartCandidates       = utils::linspace(0.0f, 0.2f, 2); // alpha 起点候选
-static const std::vector<float> kAlphaStepCandidates        = utils::linspace(0.0f, 0.2f, 2); // alpha 步进候选
-static const std::vector<float> kBetaStartCandidates        = utils::linspace(0.0f, 0.2f, 2); // Chase beta 起点候选
-static const std::vector<float> kBetaStepCandidates         = utils::linspace(0.0f, 0.2f, 2); // Chase beta 步进候选
-
 static const std::vector<int> kSisoActiveList               = {32, 32, 32, 32}; // 每个 tile 的 SISO 行数预算
 static constexpr int         kMuxGroupG                     = 1;          // MUX 分组粒度，1 表示全局池化
 static constexpr int         kMuxSchedulingMode             = 0;          // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
@@ -70,7 +64,7 @@ static constexpr bool        kEnableEarlyStop               = false;      // 是
 static const std::vector<int> kEarlyStopEnableList          = {};         // 按 tile 覆盖 early-stop 总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
 static constexpr int         kEarlyStopConditionMode        = 1;          // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionCandidates = {};    // 早停条件候选列表
-static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta
+static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta，6=直接输出 ±early-stop beta
 static constexpr int         kEarlyStopBindGroupSize        = 1;          // 条件1专用的组绑定大小：1=逐 row；4=每 4 个 row 都通过才整体 early-stop
 static const std::vector<int> kEarlyStopActionCandidates    = {}; // 早停动作候选列表
 
@@ -142,11 +136,6 @@ int main() {
   config.chase_topk_keep = kChaseTopkKeep;
   config.chase_group_minima_bits = kChaseGroupMinimaBits;
 
-  // 扫描候选：Chase / 外信息
-  config.alpha_start_candidates = kAlphaStartCandidates;
-  config.alpha_step_candidates = kAlphaStepCandidates;
-  config.beta_start_candidates = kBetaStartCandidates;
-  config.beta_step_candidates = kBetaStepCandidates;
   config.chase_n_test_candidates = kChaseNTestCandidates;
   config.chase_topk_keep_candidates = kChaseTopkKeepCandidates;
   config.chase_group_minima_bits_candidates = kChaseGroupMinimaBitsCandidates;
