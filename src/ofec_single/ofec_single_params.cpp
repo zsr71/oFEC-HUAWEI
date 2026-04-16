@@ -18,8 +18,11 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.ENABLE_EARLY_STOP = cfg.enable_early_stop;
   params.EARLY_STOP_ENABLE_LIST = cfg.early_stop_enable_list;
   params.EARLY_STOP_CONDITION_MODE = cfg.early_stop_condition_mode;
+  params.EARLY_STOP_CONDITION_MODE_LIST = cfg.early_stop_condition_mode_list;
   params.EARLY_STOP_ACTION_MODE = cfg.early_stop_action_mode;
+  params.EARLY_STOP_ACTION_MODE_LIST = cfg.early_stop_action_mode_list;
   params.EARLY_STOP_BIND_GROUP_SIZE = cfg.early_stop_bind_group_size;
+  params.EARLY_STOP_BIND_GROUP_SIZE_LIST = cfg.early_stop_bind_group_size_list;
   params.EARLY_STOP_COND_V1_REQUIRE_BCH = cfg.early_stop_cond_v1_require_bch;
   params.EARLY_STOP_COND_V1_REQUIRE_OVERALL = cfg.early_stop_cond_v1_require_overall;
   params.EARLY_STOP_V2_LLR_ABS_THRESHOLD = cfg.early_stop_v2_llr_abs_threshold;
@@ -59,6 +62,25 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   if (cfg.early_stop_bind_group_size < 1) {
     log << "[ERROR] early_stop_bind_group_size 必须 >= 1\n";
     return std::nullopt;
+  }
+  for (int mode : cfg.early_stop_condition_mode_list) {
+    if (mode != 1 && mode != 2) {
+      log << "[ERROR] early_stop_condition_mode_list 的元素必须是 1 或 2\n";
+      return std::nullopt;
+    }
+  }
+  for (int mode : cfg.early_stop_action_mode_list) {
+    if (mode != 1 && mode != 2 && mode != 3 &&
+        mode != 4 && mode != 5 && mode != 6) {
+      log << "[ERROR] early_stop_action_mode_list 的元素必须是 1、2、3、4、5 或 6\n";
+      return std::nullopt;
+    }
+  }
+  for (int bind_group_size : cfg.early_stop_bind_group_size_list) {
+    if (bind_group_size < 1) {
+      log << "[ERROR] early_stop_bind_group_size_list 的元素必须 >= 1\n";
+      return std::nullopt;
+    }
   }
   if (cfg.early_stop_v2_max_unreliable_bits < 0 ||
       cfg.early_stop_v2_max_unreliable_bits > static_cast<int>(newcode::Params::BCH_N)) {
@@ -100,6 +122,21 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   if (!params.EARLY_STOP_ENABLE_LIST.empty() &&
       params.EARLY_STOP_ENABLE_LIST.size() != tiles) {
     log << "[ERROR] early_stop_enable_list 长度必须等于 TILES_PER_WIN\n";
+    return std::nullopt;
+  }
+  if (!params.EARLY_STOP_CONDITION_MODE_LIST.empty() &&
+      params.EARLY_STOP_CONDITION_MODE_LIST.size() != tiles) {
+    log << "[ERROR] early_stop_condition_mode_list 长度必须等于 TILES_PER_WIN\n";
+    return std::nullopt;
+  }
+  if (!params.EARLY_STOP_ACTION_MODE_LIST.empty() &&
+      params.EARLY_STOP_ACTION_MODE_LIST.size() != tiles) {
+    log << "[ERROR] early_stop_action_mode_list 长度必须等于 TILES_PER_WIN\n";
+    return std::nullopt;
+  }
+  if (!params.EARLY_STOP_BIND_GROUP_SIZE_LIST.empty() &&
+      params.EARLY_STOP_BIND_GROUP_SIZE_LIST.size() != tiles) {
+    log << "[ERROR] early_stop_bind_group_size_list 长度必须等于 TILES_PER_WIN\n";
     return std::nullopt;
   }
 

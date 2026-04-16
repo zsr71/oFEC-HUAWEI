@@ -21,8 +21,11 @@ static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个�
 static constexpr bool        kEnableEarlyStop              = true;   // true=启用早停，false=完全关闭早停路径
 static const std::vector<int> kEarlyStopEnableList         = {0,0,0,0,1,1};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
 static constexpr int         kEarlyStopConditionMode       = 1;       // 早停条件编号：1=v1，2=v2
+static const std::vector<int> kEarlyStopConditionModeList  = {};      // 按 tile 覆盖早停条件模式；空表示所有 tile 沿用 kEarlyStopConditionMode
 static constexpr int         kEarlyStopActionMode          = 4;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta，6=直接输出 ±early-stop beta
+static const std::vector<int> kEarlyStopActionModeList     = {};      // 按 tile 覆盖早停动作模式；空表示所有 tile 沿用 kEarlyStopActionMode
 static constexpr int         kEarlyStopBindGroupSize       = 1;       // 条件1专用的组绑定大小：1=逐 row；4=每 4 个 row 都通过才整体 early-stop
+static const std::vector<int> kEarlyStopBindGroupSizeList  = {};      // 按 tile 覆盖条件1绑定组大小；空表示所有 tile 沿用 kEarlyStopBindGroupSize
 
 static constexpr bool        kEarlyStopCondV1RequireBch    = true;    // 条件1里是否要求 BCH syndrome 为 0
 static constexpr bool        kEarlyStopCondV1RequireOverall = true;   // 条件1里是否要求 overall parity 一致
@@ -146,8 +149,11 @@ int main() {
     .enable_early_stop = kEnableEarlyStop,
     .early_stop_enable_list = kEarlyStopEnableList,
     .early_stop_condition_mode = kEarlyStopConditionMode,
+    .early_stop_condition_mode_list = kEarlyStopConditionModeList,
     .early_stop_action_mode = kEarlyStopActionMode,
+    .early_stop_action_mode_list = kEarlyStopActionModeList,
     .early_stop_bind_group_size = kEarlyStopBindGroupSize,
+    .early_stop_bind_group_size_list = kEarlyStopBindGroupSizeList,
     .early_stop_cond_v1_require_bch = kEarlyStopCondV1RequireBch,
     .early_stop_cond_v1_require_overall = kEarlyStopCondV1RequireOverall,
     .early_stop_v2_llr_abs_threshold = kEarlyStopV2LlrAbsThreshold,

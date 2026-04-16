@@ -99,6 +99,12 @@ void log_run_overview(const Config& cfg,
   log << "[INFO] Early-stop = " << (params.ENABLE_EARLY_STOP ? "ON" : "OFF")
       << ", per-tile enable list = "
       << format_compact_int_list(params.EARLY_STOP_ENABLE_LIST)
+      << ", per-tile condition list = "
+      << format_compact_int_list(params.EARLY_STOP_CONDITION_MODE_LIST)
+      << ", per-tile action list = "
+      << format_compact_int_list(params.EARLY_STOP_ACTION_MODE_LIST)
+      << ", per-tile bind list = "
+      << format_compact_int_list(params.EARLY_STOP_BIND_GROUP_SIZE_LIST)
       << ", bind_group_size = " << params.EARLY_STOP_BIND_GROUP_SIZE << "\n";
   log << "[INFO] MUX group/scheduling/rule = "
       << params.MUX_GROUP_G << "/"

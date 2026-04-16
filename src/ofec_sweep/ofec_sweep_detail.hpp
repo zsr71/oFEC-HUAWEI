@@ -162,7 +162,10 @@ struct ExtendedCsvConfigSnapshot {
   std::string beta_step_candidates;
   std::string explicit_patterns;
   std::string early_stop_condition_candidates;
+  std::string early_stop_condition_mode_list;
   std::string early_stop_action_candidates;
+  std::string early_stop_action_mode_list;
+  std::string early_stop_bind_group_size_list;
   std::string early_stop_cond_v1_require_bch_candidates;
   std::string early_stop_cond_v1_require_overall_candidates;
   std::string early_stop_v2_llr_abs_threshold_candidates;

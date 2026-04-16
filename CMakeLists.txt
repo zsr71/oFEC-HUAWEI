@@ -178,6 +178,15 @@ add_executable(ofec_sweep2
 target_include_directories(ofec_sweep2 PRIVATE src/ofec_sweep)
 target_link_libraries(ofec_sweep2 PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
 
+add_executable(ofec_sweep3
+  apps/ofec_sweep3.cpp
+  src/ofec_sweep/ofec_sweep_io.cpp
+  src/ofec_sweep/ofec_sweep_scenarios.cpp
+  src/ofec_sweep/ofec_sweep_runner.cpp
+)
+target_include_directories(ofec_sweep3 PRIVATE src/ofec_sweep)
+target_link_libraries(ofec_sweep3 PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
+
 add_executable(tpc_single
   apps/TPC_single.cpp
   src/tpc/tpc_decoder.cpp

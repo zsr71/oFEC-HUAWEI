@@ -393,10 +393,16 @@ int run_sweep(const SweepParameterConfig& config) {
   resolved.base_params.EARLY_STOP_ENABLE_LIST = resolved.early_stop_enable_list;
   resolved.base_params.EARLY_STOP_CONDITION_MODE =
       resolved.early_stop_condition_mode;
+  resolved.base_params.EARLY_STOP_CONDITION_MODE_LIST =
+      resolved.early_stop_condition_mode_list;
   resolved.base_params.EARLY_STOP_ACTION_MODE =
       resolved.early_stop_action_mode;
+  resolved.base_params.EARLY_STOP_ACTION_MODE_LIST =
+      resolved.early_stop_action_mode_list;
   resolved.base_params.EARLY_STOP_BIND_GROUP_SIZE =
       resolved.early_stop_bind_group_size;
+  resolved.base_params.EARLY_STOP_BIND_GROUP_SIZE_LIST =
+      resolved.early_stop_bind_group_size_list;
   resolved.base_params.EARLY_STOP_COND_V1_REQUIRE_BCH =
       resolved.early_stop_cond_v1_require_bch;
   resolved.base_params.EARLY_STOP_COND_V1_REQUIRE_OVERALL =
@@ -452,6 +458,24 @@ int run_sweep(const SweepParameterConfig& config) {
   if (resolved.early_stop_bind_group_size < 1) {
     std::cerr << "[ERROR] early_stop_bind_group_size must be >= 1\n";
     return 1;
+  }
+  for (int mode : resolved.early_stop_condition_mode_list) {
+    if (!validate_condition_mode(mode)) {
+      std::cerr << "[ERROR] early_stop_condition_mode_list contains invalid mode\n";
+      return 1;
+    }
+  }
+  for (int mode : resolved.early_stop_action_mode_list) {
+    if (!validate_action_mode(mode)) {
+      std::cerr << "[ERROR] early_stop_action_mode_list contains invalid mode\n";
+      return 1;
+    }
+  }
+  for (int bind_group_size : resolved.early_stop_bind_group_size_list) {
+    if (bind_group_size < 1) {
+      std::cerr << "[ERROR] early_stop_bind_group_size_list must contain values >= 1\n";
+      return 1;
+    }
   }
   for (int mode : resolved.early_stop_condition_candidates) {
     if (!validate_condition_mode(mode)) {
@@ -565,6 +589,24 @@ int run_sweep(const SweepParameterConfig& config) {
     std::cerr << "[ERROR] early_stop_enable_list must have length TILES_PER_WIN\n";
     return 1;
   }
+  if (!resolved.base_params.EARLY_STOP_CONDITION_MODE_LIST.empty() &&
+      resolved.base_params.EARLY_STOP_CONDITION_MODE_LIST.size() !=
+          resolved.base_params.TILES_PER_WIN) {
+    std::cerr << "[ERROR] early_stop_condition_mode_list must have length TILES_PER_WIN\n";
+    return 1;
+  }
+  if (!resolved.base_params.EARLY_STOP_ACTION_MODE_LIST.empty() &&
+      resolved.base_params.EARLY_STOP_ACTION_MODE_LIST.size() !=
+          resolved.base_params.TILES_PER_WIN) {
+    std::cerr << "[ERROR] early_stop_action_mode_list must have length TILES_PER_WIN\n";
+    return 1;
+  }
+  if (!resolved.base_params.EARLY_STOP_BIND_GROUP_SIZE_LIST.empty() &&
+      resolved.base_params.EARLY_STOP_BIND_GROUP_SIZE_LIST.size() !=
+          resolved.base_params.TILES_PER_WIN) {
+    std::cerr << "[ERROR] early_stop_bind_group_size_list must have length TILES_PER_WIN\n";
+    return 1;
+  }
   const std::size_t rows_to_decode =
       static_cast<std::size_t>(resolved.base_params.CHASE_SBR) *
       newcode::Params::BITS_PER_SUBBLOCK_DIM;
@@ -649,10 +691,16 @@ int run_sweep(const SweepParameterConfig& config) {
   out << "[CONFIG][ES] enable_early_stop=" << (cfg.enable_early_stop ? "true" : "false")
       << " early_stop_enable_list=" << join_compact(cfg.early_stop_enable_list)
       << " early_stop_condition_mode=" << cfg.early_stop_condition_mode
+      << " early_stop_condition_mode_list="
+      << join_compact(cfg.early_stop_condition_mode_list)
       << " early_stop_condition_candidates="
       << join_compact(cfg.early_stop_condition_candidates)
       << " early_stop_action_mode=" << cfg.early_stop_action_mode
+      << " early_stop_action_mode_list="
+      << join_compact(cfg.early_stop_action_mode_list)
       << " early_stop_bind_group_size=" << cfg.early_stop_bind_group_size
+      << " early_stop_bind_group_size_list="
+      << join_compact(cfg.early_stop_bind_group_size_list)
       << " early_stop_action_candidates=" << join_compact(cfg.early_stop_action_candidates)
       << " v1_require_bch=" << (cfg.early_stop_cond_v1_require_bch ? "true" : "false")
       << " v1_require_bch_candidates="
@@ -734,9 +782,15 @@ int run_sweep(const SweepParameterConfig& config) {
   csv_snapshot.enable_early_stop = cfg.enable_early_stop;
   csv_snapshot.early_stop_bind_group_size = cfg.early_stop_bind_group_size;
   csv_snapshot.early_stop_condition_mode = cfg.early_stop_condition_mode;
+  csv_snapshot.early_stop_condition_mode_list =
+      join_compact(cfg.early_stop_condition_mode_list);
   csv_snapshot.early_stop_condition_candidates =
       join_compact(cfg.early_stop_condition_candidates);
   csv_snapshot.early_stop_action_mode = cfg.early_stop_action_mode;
+  csv_snapshot.early_stop_action_mode_list =
+      join_compact(cfg.early_stop_action_mode_list);
+  csv_snapshot.early_stop_bind_group_size_list =
+      join_compact(cfg.early_stop_bind_group_size_list);
   csv_snapshot.early_stop_action_candidates =
       join_compact(cfg.early_stop_action_candidates);
   csv_snapshot.early_stop_cond_v1_require_bch = cfg.early_stop_cond_v1_require_bch;

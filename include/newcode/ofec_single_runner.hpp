@@ -27,8 +27,11 @@ struct Config {
   bool enable_early_stop = true;
   std::vector<int> early_stop_enable_list;
   int early_stop_condition_mode = 1;
+  std::vector<int> early_stop_condition_mode_list;
   int early_stop_action_mode = 1;
+  std::vector<int> early_stop_action_mode_list;
   int early_stop_bind_group_size = 1;
+  std::vector<int> early_stop_bind_group_size_list;
   bool early_stop_cond_v1_require_bch = true;
   bool early_stop_cond_v1_require_overall = true;
   float early_stop_v2_llr_abs_threshold = 0.5f;

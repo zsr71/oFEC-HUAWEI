@@ -1,0 +1,709 @@
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <future>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
+
+#include "mux_bypass_edges.hpp"
+#include "newcode/io/ensure_dir.hpp"
+#include "newcode/ofec_sweep_runner.hpp"
+#include "newcode/utils/now_stamp.hpp"
+#include "ofec_sweep_detail.hpp"
+
+namespace {
+
+// ======== 用户可调参数区域 ========
+
+// 发端参数：交织 / 比特源 / 调制入口
+static constexpr const char* kInterleaverName = "identity";
+static constexpr unsigned kBitsPerSymbol = 1;
+static constexpr bool kGenerateRandomBits = true;
+static constexpr int kBitgenSeed = 20260319;
+
+// 信道参数：噪声强度 / 信道随机性
+static constexpr float kEbN0Start = 3.07f;
+static constexpr float kEbN0End = 3.17f;
+static constexpr int kEbN0Points = 2;
+static constexpr int kChannelSeed = 3192026;
+
+// 量化参数：只影响 LLR 量化口径
+static constexpr std::size_t kLlrBits = 6;
+static constexpr float kQuantClipRatio = 0.5f;
+
+// 低 BER 聚合参数：每点多 chunk 聚合，直到达到停止条件
+static constexpr std::size_t kTilesPerWindow = 4;
+static constexpr std::size_t kChunkNumInfoBits = 8 * 110 * 16 * 111;
+static constexpr std::size_t kTargetPostErrors = 50;
+static constexpr std::size_t kMaxPostFecTotalBits = 2e8;
+static constexpr unsigned kMaxParallelChunksPerPoint = 0;  // 0=自动使用全部可用 worker
+static constexpr bool kEnableZeroErrorUpperBound = true;
+static constexpr double kTargetBerUpperBound = 1e-8;
+static constexpr double kConfidenceLevel = 0.95;
+
+// 解码参数：decoder 选择、Chase 参数、alpha/beta、MUX 调度
+static constexpr const char* kDecoderName = "chase_baseline";
+static const std::vector<const char*> kDecoderNameCandidates = {};
+static constexpr bool kNormalizeExtrinsic = false;
+static constexpr bool kNormalizeKnownPrefixTail = false;
+static const std::vector<int> kChaseLCandidates = {6};
+static constexpr int kChaseNTest = 64;
+static const std::vector<int> kChaseNTestCandidates = {};
+static constexpr int kChaseTopkKeep = 8;
+static const std::vector<int> kChaseTopkKeepCandidates = {};
+static constexpr int kChaseGroupMinimaBits = 4;
+static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4};
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32};
+static constexpr int kMuxGroupG = 1;
+static constexpr int kMuxSchedulingMode = 0;
+static const std::vector<int> kMuxSchedulingModeCandidates = {};
+static constexpr int kMuxPriorityRule = 0;
+static const std::vector<int> kMuxPriorityRuleCandidates = {};
+static constexpr bool kMuxEnableReconfig = false;
+static constexpr int kMuxBypassScheme = 3;
+static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
+    {"custom_label",
+     {0.342857f, 0.387439f, 0.435806f, 0.485714f},
+     {8.571428f, 10.037715f, 16.865997f, 31.428572f},
+     {}},
+};
+
+// 早停参数：总开关 -> 条件 -> 条件细参 -> 动作 -> 动作细参
+static constexpr bool kEnableEarlyStop = false;
+static const std::vector<int> kEarlyStopEnableList = {};
+static constexpr int kEarlyStopConditionMode = 1;
+static const std::vector<int> kEarlyStopConditionCandidates = {};
+static constexpr int kEarlyStopActionMode = 1;
+static constexpr int kEarlyStopBindGroupSize = 1;
+static const std::vector<int> kEarlyStopActionCandidates = {};
+static constexpr bool kEarlyStopCondV1RequireBch = true;
+static const std::vector<bool> kEarlyStopCondV1RequireBchCandidates = {};
+static constexpr bool kEarlyStopCondV1RequireOverall = true;
+static const std::vector<bool> kEarlyStopCondV1RequireOverallCandidates = {};
+static constexpr float kEarlyStopV2LlrAbsThreshold = 0.5f;
+static const std::vector<float> kEarlyStopV2LlrAbsThresholdCandidates = {};
+static constexpr int kEarlyStopV2MaxUnreliableBits = 8;
+static const std::vector<int> kEarlyStopV2MaxUnreliableBitsCandidates = {};
+static constexpr bool kEarlyStopCondV2IncludeOverall = true;
+static constexpr float kEarlyStopActionResidualDivisor = 0.4f;
+static constexpr float kEarlyStopActionHardLlrMag = 1.0f;
+static const std::vector<float> kEarlyStopActionBetaStartCandidates = {};
+static const std::vector<float> kEarlyStopActionBetaStepCandidates = {};
+static const std::vector<float> kEarlyStopActionHardLlrMagCandidates = {};
+
+// Debug 参数：控制日志与 decoder trace
+static constexpr bool kQuietConsole = false;
+static constexpr bool kDecoderTraceEnable = false;
+static constexpr long kDecoderTraceRow = -1;
+static constexpr long kDecoderTraceCol = -1;
+static constexpr bool kDecoderTraceLogRead = false;
+static constexpr bool kDecoderTraceLogWrite = false;
+static constexpr bool kDecoderTraceLogMismatch = false;
+
+// ==================================
+
+enum class StopReason {
+  TargetPostErrors,
+  MaxPostFecBits,
+  ZeroErrorUpperBound,
+  NoData
+};
+
+struct ChunkResult {
+  std::size_t chunk_index = 0;
+  int bitgen_seed = 0;
+  int channel_seed = 0;
+  newcode::PipelineResult result;
+};
+
+struct AggregatedPointResult {
+  ofec_sweep::detail::SweepScenario scenario;
+  newcode::BerStats pre_fec{};
+  newcode::BerStats pre_fec_quantized_hard{};
+  newcode::BerStats post_fec{};
+  bool has_pre_fec_quantized_hard = false;
+  std::size_t chunks_completed = 0;
+  bool post_ber_is_upper_bound = false;
+  double post_ber_upper_bound = std::numeric_limits<double>::quiet_NaN();
+  StopReason stop_reason = StopReason::NoData;
+  double elapsed_seconds = 0.0;
+};
+
+std::string stop_reason_to_string(StopReason reason) {
+  switch (reason) {
+    case StopReason::TargetPostErrors:
+      return "target_post_errors";
+    case StopReason::MaxPostFecBits:
+      return "max_post_fec_total_bits";
+    case StopReason::ZeroErrorUpperBound:
+      return "zero_error_upper_bound";
+    case StopReason::NoData:
+    default:
+      return "no_data";
+  }
+}
+
+std::string join_vec(const std::vector<float>& values, char sep, int precision) {
+  return ofec_sweep::detail::join_vec(values, sep, precision);
+}
+
+std::string format_duration(std::chrono::duration<double> duration) {
+  if (duration.count() < 0.0) {
+    duration = std::chrono::duration<double>(0.0);
+  }
+  using Seconds = std::chrono::seconds;
+  const auto total_seconds = std::chrono::duration_cast<Seconds>(duration).count();
+  const auto hours = total_seconds / 3600;
+  const auto minutes = (total_seconds % 3600) / 60;
+  const auto seconds = total_seconds % 60;
+
+  std::ostringstream oss;
+  oss << std::setfill('0');
+  if (hours > 0) {
+    oss << hours << ':' << std::setw(2) << minutes << ':' << std::setw(2) << seconds;
+  } else {
+    oss << minutes << ':' << std::setw(2) << seconds;
+  }
+  return oss.str();
+}
+
+void ensure_csv_header_sweep3(const std::string& csv_path) {
+  std::ifstream fin(csv_path);
+  if (fin.good() && fin.peek() != std::ifstream::traits_type::eof()) {
+    return;
+  }
+
+  std::ofstream fout(csv_path, std::ios::out | std::ios::app);
+  fout << "timestamp,run_id,scenario,decoder_name,ebn0_db,"
+          "chunk_num_info_bits,chunks_completed,target_post_errors,max_post_fec_total_bits,"
+          "confidence_level,post_ber_is_upper_bound,post_ber_upper_bound,stop_reason,elapsed_seconds,"
+          "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
+          "bitgen_seed_base,channel_seed_base,"
+          "alpha_list,beta_list,early_stop_beta_list,"
+          "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
+          "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_bypass_scheme,"
+          "early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
+          "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
+          "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
+}
+
+void write_csv_row_sweep3(std::ostream& csv,
+                          const std::string& timestamp,
+                          const std::string& run_id,
+                          const AggregatedPointResult& point) {
+  csv << timestamp << ','
+      << run_id << ','
+      << point.scenario.name << ','
+      << point.scenario.decoder_name << ','
+      << point.scenario.ebn0_db << ','
+      << kChunkNumInfoBits << ','
+      << point.chunks_completed << ','
+      << kTargetPostErrors << ','
+      << kMaxPostFecTotalBits << ','
+      << kConfidenceLevel << ','
+      << (point.post_ber_is_upper_bound ? 1 : 0) << ',';
+  if (std::isnan(point.post_ber_upper_bound)) {
+    csv << ',';
+  } else {
+    csv << point.post_ber_upper_bound << ',';
+  }
+  csv << stop_reason_to_string(point.stop_reason) << ','
+      << point.elapsed_seconds << ','
+      << point.pre_fec.ber << ','
+      << point.pre_fec.errors << ','
+      << point.pre_fec.total << ','
+      << point.post_fec.ber << ','
+      << point.post_fec.errors << ','
+      << point.post_fec.total << ','
+      << point.scenario.bitgen_seed << ','
+      << point.scenario.channel_seed << ','
+      << '"' << join_vec(point.scenario.alpha_list, '|', 6) << "\","
+      << '"' << join_vec(point.scenario.beta_list, '|', 6) << "\","
+      << '"' << join_vec(point.scenario.early_stop_action_sign_beta_list, '|', 6) << "\","
+      << point.scenario.chase_L << ','
+      << point.scenario.chase_n_test << ','
+      << point.scenario.chase_topk_keep << ','
+      << point.scenario.chase_group_minima_bits << ','
+      << point.scenario.mux_group_g << ','
+      << point.scenario.mux_scheduling_mode << ','
+      << point.scenario.mux_early_stop_priority_rule << ','
+      << point.scenario.mux_bypass_scheme << ','
+      << point.scenario.early_stop_condition_mode << ','
+      << point.scenario.early_stop_action_mode << ','
+      << point.scenario.early_stop_bind_group_size << ','
+      << (point.scenario.early_stop_cond_v1_require_bch ? 1 : 0) << ','
+      << (point.scenario.early_stop_cond_v1_require_overall ? 1 : 0) << ','
+      << point.scenario.early_stop_v2_llr_abs_threshold << ','
+      << point.scenario.early_stop_v2_max_unreliable_bits << ','
+      << (point.scenario.early_stop_cond_v2_include_overall ? 1 : 0) << '\n';
+}
+
+std::uint32_t mix_u32(std::uint32_t x) {
+  x ^= x >> 16;
+  x *= 0x7feb352dU;
+  x ^= x >> 15;
+  x *= 0x846ca68bU;
+  x ^= x >> 16;
+  return x;
+}
+
+int derive_seed(int base, std::size_t chunk_index, std::uint32_t salt) {
+  const std::uint32_t raw =
+      mix_u32(static_cast<std::uint32_t>(base) ^
+              static_cast<std::uint32_t>(chunk_index * 0x9e3779b9ULL) ^
+              salt);
+  const int positive = static_cast<int>(raw & 0x7fffffffU);
+  return positive == 0 ? 1 : positive;
+}
+
+double zero_error_upper_bound(std::size_t total_bits, double confidence_level) {
+  if (total_bits == 0) {
+    return std::numeric_limits<double>::infinity();
+  }
+  const double clamped = std::clamp(confidence_level, 1e-12, 1.0 - 1e-12);
+  return -std::log(1.0 - clamped) / static_cast<double>(total_bits);
+}
+
+StopReason evaluate_stop_reason(const AggregatedPointResult& point) {
+  if (point.post_fec.errors >= kTargetPostErrors) {
+    return StopReason::TargetPostErrors;
+  }
+  if (point.post_fec.total >= kMaxPostFecTotalBits) {
+    return StopReason::MaxPostFecBits;
+  }
+  if (kEnableZeroErrorUpperBound && point.post_fec.errors == 0 &&
+      point.post_fec.total > 0) {
+    const double upper =
+        zero_error_upper_bound(point.post_fec.total, kConfidenceLevel);
+    if (upper <= kTargetBerUpperBound) {
+      return StopReason::ZeroErrorUpperBound;
+    }
+  }
+  return StopReason::NoData;
+}
+
+void update_upper_bound_fields(AggregatedPointResult& point) {
+  if (point.post_fec.errors == 0 && point.post_fec.total > 0) {
+    point.post_ber_upper_bound =
+        zero_error_upper_bound(point.post_fec.total, kConfidenceLevel);
+    point.post_ber_is_upper_bound =
+        (point.stop_reason == StopReason::ZeroErrorUpperBound);
+  } else {
+    point.post_ber_upper_bound = std::numeric_limits<double>::quiet_NaN();
+    point.post_ber_is_upper_bound = false;
+  }
+}
+
+void accumulate_chunk(AggregatedPointResult& point, const ChunkResult& chunk) {
+  point.pre_fec.errors += chunk.result.pre_fec.errors;
+  point.pre_fec.total += chunk.result.pre_fec.total;
+  point.pre_fec.ber =
+      point.pre_fec.total == 0
+          ? 0.0
+          : static_cast<double>(point.pre_fec.errors) /
+                static_cast<double>(point.pre_fec.total);
+
+  if (chunk.result.has_pre_fec_quantized_hard) {
+    point.has_pre_fec_quantized_hard = true;
+    point.pre_fec_quantized_hard.errors +=
+        chunk.result.pre_fec_quantized_hard.errors;
+    point.pre_fec_quantized_hard.total +=
+        chunk.result.pre_fec_quantized_hard.total;
+    point.pre_fec_quantized_hard.ber =
+        point.pre_fec_quantized_hard.total == 0
+            ? 0.0
+            : static_cast<double>(point.pre_fec_quantized_hard.errors) /
+                  static_cast<double>(point.pre_fec_quantized_hard.total);
+  }
+
+  point.post_fec.errors += chunk.result.post_fec.errors;
+  point.post_fec.total += chunk.result.post_fec.total;
+  point.post_fec.ber =
+      point.post_fec.total == 0
+          ? 0.0
+          : static_cast<double>(point.post_fec.errors) /
+                static_cast<double>(point.post_fec.total);
+
+  ++point.chunks_completed;
+}
+
+newcode::Params make_params_for_scenario(const ofec_sweep::detail::SweepScenario& scenario,
+                                         const ofec_sweep::SweepParameterConfig& config) {
+  newcode::Params params = config.base_params;
+  params.BITGEN_RANDOM_BITS = config.generate_random_bits;
+  params.NORMALIZE_KNOWN_PREFIX_TAIL = config.normalize_known_prefix_tail;
+  params.ALPHA_LIST = scenario.alpha_list;
+  params.beta_list = scenario.beta_list;
+  params.EARLY_STOP_ACTION_SIGN_BETA_LIST =
+      scenario.early_stop_action_sign_beta_list;
+  if (!params.ALPHA_LIST.empty()) {
+    params.ALPHA = params.ALPHA_LIST.front();
+  }
+  if (!params.beta_list.empty()) {
+    params.beta = params.beta_list.front();
+  }
+  if (!params.EARLY_STOP_ACTION_SIGN_BETA_LIST.empty()) {
+    params.EARLY_STOP_ACTION_SIGN_BETA =
+        params.EARLY_STOP_ACTION_SIGN_BETA_LIST.front();
+  }
+  params.CHASE_L = scenario.chase_L;
+  params.CHASE_NTEST = scenario.chase_n_test;
+  params.CHASE_TOPK_KEEP = scenario.chase_topk_keep;
+  params.CHASE_GROUP_MINIMA_BITS = scenario.chase_group_minima_bits;
+  params.MUX_GROUP_G = scenario.mux_group_g;
+  params.MUX_SCHEDULING_MODE = scenario.mux_scheduling_mode;
+  params.MUX_EARLY_STOP_PRIORITY_RULE =
+      scenario.mux_early_stop_priority_rule;
+  params.EARLY_STOP_CONDITION_MODE = scenario.early_stop_condition_mode;
+  params.EARLY_STOP_ACTION_MODE = scenario.early_stop_action_mode;
+  params.EARLY_STOP_BIND_GROUP_SIZE = scenario.early_stop_bind_group_size;
+  params.EARLY_STOP_COND_V1_REQUIRE_BCH =
+      scenario.early_stop_cond_v1_require_bch;
+  params.EARLY_STOP_COND_V1_REQUIRE_OVERALL =
+      scenario.early_stop_cond_v1_require_overall;
+  params.EARLY_STOP_V2_LLR_ABS_THRESHOLD =
+      scenario.early_stop_v2_llr_abs_threshold;
+  params.EARLY_STOP_V2_MAX_UNRELIABLE_BITS =
+      scenario.early_stop_v2_max_unreliable_bits;
+  params.EARLY_STOP_COND_V2_INCLUDE_OVERALL =
+      scenario.early_stop_cond_v2_include_overall;
+  params.EARLY_STOP_ACTION_HARD_LLR_MAG =
+      scenario.early_stop_action_hard_llr_mag;
+  return params;
+}
+
+ChunkResult run_chunk(const ofec_sweep::detail::SweepScenario& scenario,
+                      const ofec_sweep::SweepParameterConfig& config,
+                      std::size_t chunk_index) {
+  ChunkResult chunk;
+  chunk.chunk_index = chunk_index;
+  chunk.bitgen_seed = derive_seed(scenario.bitgen_seed, chunk_index, 0x13579bdfU);
+  chunk.channel_seed = derive_seed(scenario.channel_seed, chunk_index, 0x2468ace0U);
+
+  newcode::Params params = make_params_for_scenario(scenario, config);
+  params.NUM_INFO_BITS = kChunkNumInfoBits;
+  params.BITGEN_SEED = chunk.bitgen_seed;
+  params.CHANNEL_SEED = chunk.channel_seed;
+
+  newcode::PipelineConfig pipeline_cfg = ofec_sweep::detail::make_pipeline_config(config);
+  pipeline_cfg.decoder_name = scenario.decoder_name;
+
+  const std::string label =
+      scenario.name + "_chunk" + std::to_string(chunk_index);
+  chunk.result =
+      newcode::run_pipeline(params, pipeline_cfg, label, scenario.ebn0_db);
+  return chunk;
+}
+
+AggregatedPointResult run_low_ber_point(const ofec_sweep::detail::SweepScenario& scenario,
+                                        const ofec_sweep::SweepParameterConfig& config,
+                                        ofec_sweep::detail::DualOut& log,
+                                        unsigned point_workers) {
+  AggregatedPointResult point;
+  point.scenario = scenario;
+
+  const auto start_time = std::chrono::steady_clock::now();
+  std::vector<std::pair<std::size_t, std::future<ChunkResult>>> active;
+  std::size_t next_chunk_index = 0;
+  bool stop_launch = false;
+
+  auto log_progress = [&](bool force) {
+    if (!force && point.chunks_completed > 0 && point.chunks_completed % 5 != 0 &&
+        point.chunks_completed > 3) {
+      return;
+    }
+    std::ostringstream oss;
+    oss << "[POINT] " << scenario.name
+        << " chunks=" << point.chunks_completed
+        << " post=" << point.post_fec.errors << "/" << point.post_fec.total;
+    if (point.post_fec.total > 0) {
+      oss << " ber=" << std::scientific << point.post_fec.ber << std::defaultfloat;
+    }
+    if (point.post_fec.errors == 0 && point.post_fec.total > 0) {
+      oss << " ub≈" << std::scientific << point.post_ber_upper_bound
+          << std::defaultfloat;
+    }
+    const auto elapsed =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time);
+    oss << " elapsed=" << format_duration(elapsed);
+    log << oss.str() << "\n";
+  };
+
+  auto maybe_mark_stop = [&]() {
+    if (stop_launch) {
+      return;
+    }
+    point.stop_reason = evaluate_stop_reason(point);
+    update_upper_bound_fields(point);
+    if (point.stop_reason != StopReason::NoData) {
+      stop_launch = true;
+      log_progress(true);
+      log << "[INFO] stop reason for " << scenario.name << ": "
+          << stop_reason_to_string(point.stop_reason) << "\n";
+    }
+  };
+
+  while (!stop_launch || !active.empty()) {
+    while (!stop_launch && active.size() < point_workers) {
+      const std::size_t chunk_index = next_chunk_index++;
+      active.emplace_back(
+          chunk_index,
+          std::async(std::launch::async, [scenario, config, chunk_index]() {
+            return run_chunk(scenario, config, chunk_index);
+          }));
+    }
+
+    bool consumed = false;
+    for (auto it = active.begin(); it != active.end(); ++it) {
+      if (it->second.wait_for(std::chrono::milliseconds(0)) ==
+          std::future_status::ready) {
+        ChunkResult chunk = it->second.get();
+        accumulate_chunk(point, chunk);
+        update_upper_bound_fields(point);
+        log_progress(false);
+        maybe_mark_stop();
+        active.erase(it);
+        consumed = true;
+        break;
+      }
+    }
+
+    if (!consumed) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+  }
+
+  if (point.stop_reason == StopReason::NoData) {
+    point.stop_reason = evaluate_stop_reason(point);
+    update_upper_bound_fields(point);
+  }
+  point.elapsed_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time)
+          .count();
+  return point;
+}
+
+ofec_sweep::SweepParameterConfig build_config() {
+  const auto& selected_mux_bypass_edges =
+      app_mux::bypass_edges_for_scheme(kMuxBypassScheme);
+
+  ofec_sweep::SweepParameterConfig config;
+  config.base_params.TILES_PER_WIN = kTilesPerWindow;
+  config.base_params.HARD_TILE_LIST.assign(kTilesPerWindow, 0);
+  config.base_params.BITGEN_RANDOM_BITS = kGenerateRandomBits;
+  config.base_params.NORMALIZE_KNOWN_PREFIX_TAIL = kNormalizeKnownPrefixTail;
+  config.base_params.ENABLE_EARLY_STOP = kEnableEarlyStop;
+  config.base_params.LLR_CLIP_RATIO = kQuantClipRatio;
+  config.base_params.LLR_BITS = kLlrBits;
+  config.base_params.SISO_ACTIVE_LIST = kSisoActiveList;
+
+  config.interleaver_name = kInterleaverName;
+  config.decoder_name = kDecoderName;
+  for (const char* decoder_name : kDecoderNameCandidates) {
+    if (decoder_name && decoder_name[0] != '\0') {
+      config.decoder_name_candidates.emplace_back(decoder_name);
+    }
+  }
+  config.bits_per_symbol = kBitsPerSymbol;
+  config.normalize_extrinsic = kNormalizeExtrinsic;
+  config.generate_random_bits = kGenerateRandomBits;
+  config.normalize_known_prefix_tail = kNormalizeKnownPrefixTail;
+  config.quant_clip_ratio = kQuantClipRatio;
+  config.quiet_pipeline = kQuietConsole;
+  config.quiet_logs = kQuietConsole;
+
+  config.enable_early_stop = kEnableEarlyStop;
+  config.early_stop_enable_list = kEarlyStopEnableList;
+  config.early_stop_condition_mode = kEarlyStopConditionMode;
+  config.early_stop_action_mode = kEarlyStopActionMode;
+  config.early_stop_bind_group_size = kEarlyStopBindGroupSize;
+  config.early_stop_cond_v1_require_bch = kEarlyStopCondV1RequireBch;
+  config.early_stop_cond_v1_require_overall = kEarlyStopCondV1RequireOverall;
+  config.early_stop_v2_llr_abs_threshold = kEarlyStopV2LlrAbsThreshold;
+  config.early_stop_v2_max_unreliable_bits = kEarlyStopV2MaxUnreliableBits;
+  config.early_stop_cond_v2_include_overall = kEarlyStopCondV2IncludeOverall;
+  config.early_stop_action_residual_divisor = kEarlyStopActionResidualDivisor;
+  config.early_stop_action_hard_llr_mag = kEarlyStopActionHardLlrMag;
+  config.chase_n_test = kChaseNTest;
+  config.chase_topk_keep = kChaseTopkKeep;
+  config.chase_group_minima_bits = kChaseGroupMinimaBits;
+
+  config.chase_n_test_candidates = kChaseNTestCandidates;
+  config.chase_topk_keep_candidates = kChaseTopkKeepCandidates;
+  config.chase_group_minima_bits_candidates = kChaseGroupMinimaBitsCandidates;
+  config.early_stop_action_beta_start_candidates =
+      kEarlyStopActionBetaStartCandidates;
+  config.early_stop_action_beta_step_candidates =
+      kEarlyStopActionBetaStepCandidates;
+  config.early_stop_action_hard_llr_mag_candidates =
+      kEarlyStopActionHardLlrMagCandidates;
+  config.early_stop_condition_candidates = kEarlyStopConditionCandidates;
+  config.early_stop_action_candidates = kEarlyStopActionCandidates;
+  config.early_stop_cond_v1_require_bch_candidates =
+      kEarlyStopCondV1RequireBchCandidates;
+  config.early_stop_cond_v1_require_overall_candidates =
+      kEarlyStopCondV1RequireOverallCandidates;
+  config.early_stop_v2_llr_abs_threshold_candidates =
+      kEarlyStopV2LlrAbsThresholdCandidates;
+  config.early_stop_v2_max_unreliable_bits_candidates =
+      kEarlyStopV2MaxUnreliableBitsCandidates;
+
+  config.siso_active_list = kSisoActiveList;
+  config.mux_group_g = kMuxGroupG;
+  config.mux_scheduling_mode = kMuxSchedulingMode;
+  config.mux_scheduling_mode_candidates = kMuxSchedulingModeCandidates;
+  config.mux_early_stop_priority_rule = kMuxPriorityRule;
+  config.mux_early_stop_priority_rule_candidates = kMuxPriorityRuleCandidates;
+  config.mux_enable_reconfig = kMuxEnableReconfig;
+  config.mux_bypass_scheme = kMuxBypassScheme;
+  config.mux_extra_bypass_edges = selected_mux_bypass_edges;
+  config.chase_l_candidates = kChaseLCandidates;
+
+  config.base_params.BITGEN_SEED = kBitgenSeed;
+  config.base_params.CHANNEL_SEED = kChannelSeed;
+  config.bitgen_seed_candidates = {kBitgenSeed};
+  config.channel_seed_candidates = {kChannelSeed};
+  config.bitgen_seed_count = 1;
+  config.channel_seed_count = 1;
+
+  config.ebn0_start = kEbN0Start;
+  config.ebn0_end = kEbN0End;
+  config.ebn0_points = kEbN0Points;
+
+  config.explicit_patterns = kExplicitAlphaBetaSets;
+
+  config.base_params.debug_trace = newcode::Params::DebugTraceConfig{
+      .enable = kDecoderTraceEnable,
+      .log_read_mapping = kDecoderTraceLogRead,
+      .log_write_mapping = kDecoderTraceLogWrite,
+      .log_mismatch = kDecoderTraceLogMismatch,
+      .log_chase_detail = false,
+      .dump_chase_csv = false,
+      .row = kDecoderTraceRow,
+      .col = kDecoderTraceCol,
+      .chase_decoder_row = -1,
+      .chase_decoder_col = -1,
+      .chase_tile_index = -1,
+      .chase_invocation = -1,
+      .chase_csv_dir = {},
+      .chase_expected_bits = {},
+      .targets = {},
+      .active_chase_entries = {},
+  };
+
+  config.base_params.CHASE_NTEST = kChaseNTest;
+  config.base_params.CHASE_TOPK_KEEP = kChaseTopkKeep;
+  config.base_params.CHASE_GROUP_MINIMA_BITS = kChaseGroupMinimaBits;
+  config.base_params.MUX_GROUP_G = kMuxGroupG;
+  config.base_params.MUX_SCHEDULING_MODE = kMuxSchedulingMode;
+  config.base_params.MUX_EARLY_STOP_PRIORITY_RULE = kMuxPriorityRule;
+  config.base_params.MUX_ENABLE_RECONFIG = kMuxEnableReconfig;
+  config.base_params.MUX_EXTRA_BYPASS_EDGES = selected_mux_bypass_edges;
+  config.base_params.EARLY_STOP_ENABLE_LIST = kEarlyStopEnableList;
+  config.base_params.EARLY_STOP_CONDITION_MODE = kEarlyStopConditionMode;
+  config.base_params.EARLY_STOP_ACTION_MODE = kEarlyStopActionMode;
+  config.base_params.EARLY_STOP_BIND_GROUP_SIZE = kEarlyStopBindGroupSize;
+  config.base_params.EARLY_STOP_COND_V1_REQUIRE_BCH =
+      kEarlyStopCondV1RequireBch;
+  config.base_params.EARLY_STOP_COND_V1_REQUIRE_OVERALL =
+      kEarlyStopCondV1RequireOverall;
+  config.base_params.EARLY_STOP_V2_LLR_ABS_THRESHOLD =
+      kEarlyStopV2LlrAbsThreshold;
+  config.base_params.EARLY_STOP_V2_MAX_UNRELIABLE_BITS =
+      kEarlyStopV2MaxUnreliableBits;
+  config.base_params.EARLY_STOP_COND_V2_INCLUDE_OVERALL =
+      kEarlyStopCondV2IncludeOverall;
+  config.base_params.EARLY_STOP_ACTION_RESIDUAL_DIVISOR =
+      kEarlyStopActionResidualDivisor;
+  config.base_params.EARLY_STOP_ACTION_HARD_LLR_MAG =
+      kEarlyStopActionHardLlrMag;
+
+  return config;
+}
+
+}  // namespace
+
+int main() {
+  const std::filesystem::path data_dir = "data";
+  io::ensure_dir(data_dir);
+  const std::string run_id = utils::now_stamp();
+  const std::string log_path =
+      (data_dir / ("run_" + run_id + "_sweep3.log")).string();
+  ofec_sweep::detail::DualOut out(std::cout, log_path, !kQuietConsole);
+
+  const std::string csv_path =
+      (data_dir / ("ofec_sweep3_results_" + run_id + ".csv")).string();
+  ensure_csv_header_sweep3(csv_path);
+  std::ofstream csv(csv_path, std::ios::out | std::ios::app);
+  csv.setf(std::ios::fixed);
+  csv << std::setprecision(10);
+
+  ofec_sweep::SweepParameterConfig config = build_config();
+  const std::vector<float> ebn0_values =
+      ofec_sweep::detail::build_ebn0_values(config);
+  const std::vector<int> bitgen_seeds =
+      config.bitgen_seed_candidates.empty()
+          ? std::vector<int>{config.base_params.BITGEN_SEED}
+          : config.bitgen_seed_candidates;
+  const std::vector<int> channel_seeds =
+      config.channel_seed_candidates.empty()
+          ? std::vector<int>{config.base_params.CHANNEL_SEED}
+          : config.channel_seed_candidates;
+  auto scenarios = ofec_sweep::detail::build_scenarios(
+      config, ebn0_values, bitgen_seeds, channel_seeds);
+
+  if (scenarios.empty()) {
+    std::cerr << "[ERROR] no scenarios generated for ofec_sweep3\n";
+    return 1;
+  }
+
+  const unsigned available_workers =
+      ofec_sweep::detail::resolve_worker_count(config);
+  const unsigned point_workers =
+      (kMaxParallelChunksPerPoint == 0)
+          ? available_workers
+          : std::max(1u, std::min(available_workers, kMaxParallelChunksPerPoint));
+
+  out << "[INFO] total scenarios = " << scenarios.size() << "\n";
+  out << "[INFO] point workers = " << point_workers << " (available="
+      << available_workers << ")\n";
+  out << "[INFO] chunk_num_info_bits = " << kChunkNumInfoBits << "\n";
+  out << "[INFO] target_post_errors = " << kTargetPostErrors << "\n";
+  out << "[INFO] max_post_fec_total_bits = " << kMaxPostFecTotalBits << "\n";
+  if (kEnableZeroErrorUpperBound) {
+    out << "[INFO] zero-error upper-bound stop enabled, target="
+        << std::scientific << kTargetBerUpperBound << std::defaultfloat
+        << ", confidence=" << kConfidenceLevel << "\n";
+  }
+
+  for (const auto& scenario : scenarios) {
+    out << "\n[RUN] " << scenario.name << "\n";
+    AggregatedPointResult point =
+        run_low_ber_point(scenario, config, out, point_workers);
+    out << "[SUMMARY] " << scenario.name
+        << " Post-FEC BER=" << point.post_fec.ber
+        << " (errs=" << point.post_fec.errors << "/" << point.post_fec.total
+        << ")";
+    if (point.post_fec.errors == 0 && !std::isnan(point.post_ber_upper_bound)) {
+      out << " upper_bound<=" << point.post_ber_upper_bound;
+    }
+    out << " | chunks=" << point.chunks_completed
+        << " | stop=" << stop_reason_to_string(point.stop_reason)
+        << " | elapsed=" << format_duration(
+               std::chrono::duration<double>(point.elapsed_seconds))
+        << "\n";
+
+    write_csv_row_sweep3(csv, utils::now_stamp(), run_id, point);
+  }
+
+  return 0;
+}

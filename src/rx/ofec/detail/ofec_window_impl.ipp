@@ -105,6 +105,18 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             pick_int(p.EARLY_STOP_ENABLE_LIST,
                      t,
                      p.ENABLE_EARLY_STOP ? 1 : 0) != 0;
+        tile_params.EARLY_STOP_CONDITION_MODE =
+            pick_int(p.EARLY_STOP_CONDITION_MODE_LIST,
+                     t,
+                     p.EARLY_STOP_CONDITION_MODE);
+        tile_params.EARLY_STOP_ACTION_MODE =
+            pick_int(p.EARLY_STOP_ACTION_MODE_LIST,
+                     t,
+                     p.EARLY_STOP_ACTION_MODE);
+        tile_params.EARLY_STOP_BIND_GROUP_SIZE =
+            pick_int(p.EARLY_STOP_BIND_GROUP_SIZE_LIST,
+                     t,
+                     p.EARLY_STOP_BIND_GROUP_SIZE);
         tile_params.ALPHA = pick_float(p.ALPHA_LIST, t, p.ALPHA);
         tile_params.debug_trace.chase_tile_index = static_cast<int>(t);
         tile_params.debug_trace.chase_invocation =
