@@ -4,6 +4,11 @@
 #include <iostream>
 
 namespace newcode {
+namespace {
+
+constexpr std::size_t kInfoBitsPerRow = 111;
+
+} // namespace
 
 BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
                      const std::vector<uint8_t>& rx_bits,
@@ -13,7 +18,7 @@ BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
     const std::size_t L = std::min(ref_bits.size(), rx_bits.size());
 
     // 每行比特数  = 111（由 Params 得出，不再依赖矩阵形状）
-    const std::size_t row_bits = 111;
+    const std::size_t row_bits = kInfoBitsPerRow;
 
     // 窗口高度（比特行） * 每行比特数 = 一个 window 覆盖的比特数
     const std::size_t win_rows  = p.win_height_rows(); // 已是“比特行”数量
@@ -53,7 +58,7 @@ BerStats compute_and_print_ber(const std::vector<uint8_t>& ref_bits,
 
     // 为了可见性，把被剔除的前后窗口比特数也打印出来
     const std::size_t L = std::min(ref_bits.size(), rx_bits.size());
-    const std::size_t row_bits = 111;
+    const std::size_t row_bits = kInfoBitsPerRow;
     const std::size_t win_bits = std::min(L, p.win_height_rows() * row_bits);
     const std::size_t cut_total = std::min(L, win_bits) + std::min(L > win_bits ? (L - win_bits) : 0, win_bits);
 
@@ -64,6 +69,41 @@ BerStats compute_and_print_ber(const std::vector<uint8_t>& ref_bits,
                   << ", cut=" << cut_total << " of " << L << ")\n";
     }
     return s;
+}
+
+std::vector<WindowBerStats> compute_ber_per_window(
+    const std::vector<uint8_t>& ref_bits,
+    const std::vector<uint8_t>& rx_bits,
+    const Params& p)
+{
+    const std::size_t L = std::min(ref_bits.size(), rx_bits.size());
+    const std::size_t win_bits = p.win_height_rows() * kInfoBitsPerRow;
+    std::vector<WindowBerStats> windows;
+    if (L == 0 || win_bits == 0) {
+        return windows;
+    }
+
+    const std::size_t num_windows = (L + win_bits - 1) / win_bits;
+    windows.reserve(num_windows);
+    for (std::size_t w = 0; w < num_windows; ++w) {
+        const std::size_t start = w * win_bits;
+        const std::size_t stop = std::min(L, start + win_bits);
+        std::size_t err = 0;
+        for (std::size_t i = start; i < stop; ++i) {
+            if ((ref_bits[i] ^ rx_bits[i]) & 1u) {
+                ++err;
+            }
+        }
+
+        WindowBerStats s;
+        s.window_idx = w;
+        s.errors = err;
+        s.total = stop - start;
+        s.ber = (s.total == 0) ? 0.0
+                               : static_cast<double>(s.errors) / static_cast<double>(s.total);
+        windows.push_back(s);
+    }
+    return windows;
 }
 
 } // namespace newcode

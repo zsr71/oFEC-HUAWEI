@@ -11,6 +11,13 @@ struct BerStats {
     double      ber{0.0};
 };
 
+struct WindowBerStats {
+    std::size_t window_idx{0};
+    std::size_t errors{0};
+    std::size_t total{0};
+    double      ber{0.0};
+};
+
 /**
  * 计算 BER（仅比较中间有效区间）：
  * 根据 Params 的窗口高度，丢弃首尾各一个 window 覆盖的比特，
@@ -35,5 +42,16 @@ BerStats compute_and_print_ber(const std::vector<uint8_t>& ref_bits,
                                const Params& p,
                                std::vector<std::size_t>* error_positions = nullptr,
                                bool quiet = false);
+
+/**
+ * 按 window 输出 BER 统计，不做现有 compute_ber() 的首尾 window 裁剪。
+ *
+ * 这里的输入应当已经是“完成 info_extract 之后”的一维信息比特流，
+ * 即已保持当前 warm-up 机制，但尚未做 BER 的前后 window 截断。
+ */
+std::vector<WindowBerStats> compute_ber_per_window(
+    const std::vector<uint8_t>& ref_bits,
+    const std::vector<uint8_t>& rx_bits,
+    const Params& p);
 
 } // namespace newcode

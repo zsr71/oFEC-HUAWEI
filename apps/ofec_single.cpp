@@ -13,7 +13,7 @@ static constexpr int         kBitgenSeed         = 20260319;    // 比特生成�
 static constexpr bool        kGenerateRandomBits = true;          // true=发送随机信息比特，false=发送全 0 比特
 
 // 信道参数
-static constexpr float       kEbN0_db                      = 3.052051f;   // 信道 Eb/N0，单位 dB
+static constexpr float       kEbN0_db                      = 3.06f;   // 信道 Eb/N0，单位 dB
 static constexpr int         kChannelSeed                  = 3182026; // 信道噪声随机种子，固定后可复现实验
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
@@ -22,7 +22,7 @@ static constexpr bool        kEnableEarlyStop              = true;   // true=启
 static const std::vector<int> kEarlyStopEnableList         = {0,0,0,0,1,1};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
 static constexpr int         kEarlyStopConditionMode       = 1;       // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionModeList  = {};      // 按 tile 覆盖早停条件模式；空表示所有 tile 沿用 kEarlyStopConditionMode
-static constexpr int         kEarlyStopActionMode          = 4;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta，6=直接输出 ±early-stop beta
+static constexpr int         kEarlyStopActionMode          = 6;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta，6=直接输出 ±early-stop beta
 static const std::vector<int> kEarlyStopActionModeList     = {};      // 按 tile 覆盖早停动作模式；空表示所有 tile 沿用 kEarlyStopActionMode
 static constexpr int         kEarlyStopBindGroupSize       = 1;       // 条件1专用的组绑定大小：1=逐 row；4=每 4 个 row 都通过才整体 early-stop
 static const std::vector<int> kEarlyStopBindGroupSizeList  = {};      // 按 tile 覆盖条件1绑定组大小；空表示所有 tile 沿用 kEarlyStopBindGroupSize
@@ -63,7 +63,7 @@ static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chas
   2.857143,6.179301,12.253626,20.119585,29.434408,40.000000
 };
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
-  2.857143,6.179301,12.253626,20.119585,29.434408,40.000000
+  99.857143,99.179301,99.253626,99.119585,99.434408,99.000000
 };
 static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,32}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                     // MUX 分组粒度，1 表示全局池化

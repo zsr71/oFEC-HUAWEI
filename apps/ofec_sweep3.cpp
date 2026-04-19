@@ -25,89 +25,89 @@ namespace {
 // ======== 用户可调参数区域 ========
 
 // 发端参数：交织 / 比特源 / 调制入口
-static constexpr const char* kInterleaverName = "identity";
-static constexpr unsigned kBitsPerSymbol = 1;
-static constexpr bool kGenerateRandomBits = true;
-static constexpr int kBitgenSeed = 20260319;
+static constexpr const char* kInterleaverName = "identity"; // 交织器名称，identity 表示不交织
+static constexpr unsigned kBitsPerSymbol = 1;               // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
+static constexpr bool kGenerateRandomBits = true;           // true=发送随机信息比特，false=发送全 0 比特
+static constexpr int kBitgenSeed = 20260319;                // 基础比特种子；每个 chunk 会在此基础上派生
 
 // 信道参数：噪声强度 / 信道随机性
-static constexpr float kEbN0Start = 3.07f;
-static constexpr float kEbN0End = 3.17f;
-static constexpr int kEbN0Points = 2;
-static constexpr int kChannelSeed = 3192026;
+static constexpr float kEbN0Start = 3.00f;   // 扫描起始 Eb/N0（dB）
+static constexpr float kEbN0End = 3.20f;     // 扫描结束 Eb/N0（dB）
+static constexpr int kEbN0Points = 20;        // Eb/N0 采样点数；含首尾端点
+static constexpr int kChannelSeed = 3192026; // 基础信道种子；每个 chunk 会在此基础上派生
 
 // 量化参数：只影响 LLR 量化口径
-static constexpr std::size_t kLlrBits = 6;
-static constexpr float kQuantClipRatio = 0.5f;
+static constexpr std::size_t kLlrBits = 6;      // LLR 位宽：16=浮点，2~15=qfloat
+static constexpr float kQuantClipRatio = 0.5f;  // 动态 clip 比例，0 表示禁用自适应 clip
 
 // 低 BER 聚合参数：每点多 chunk 聚合，直到达到停止条件
-static constexpr std::size_t kTilesPerWindow = 4;
-static constexpr std::size_t kChunkNumInfoBits = 8 * 110 * 16 * 111;
-static constexpr std::size_t kTargetPostErrors = 50;
-static constexpr std::size_t kMaxPostFecTotalBits = 2e8;
-static constexpr unsigned kMaxParallelChunksPerPoint = 0;  // 0=自动使用全部可用 worker
-static constexpr bool kEnableZeroErrorUpperBound = true;
-static constexpr double kTargetBerUpperBound = 1e-8;
-static constexpr double kConfidenceLevel = 0.95;
+static constexpr std::size_t kTilesPerWindow = 6;               // 本 app 使用的 TILES_PER_WIN；需与显式 alpha/beta 列表长度一致
+static constexpr std::size_t kChunkNumInfoBits = 8 * 132 * 16 * 111; // 每个 Monte Carlo chunk 的输入信息比特数
+static constexpr std::size_t kTargetPostErrors = 50;            // 单个 Eb/N0 点累计到这么多 post-FEC 错误后即可停止
+static constexpr std::size_t kMaxPostFecTotalBits = 2e8;        // 单个 Eb/N0 点允许累计比较的最大 post-FEC 比特数
+static constexpr unsigned kMaxParallelChunksPerPoint = 0;       // 单点并行 chunk 数上限；0=自动用全部可用 worker
+static constexpr bool kEnableZeroErrorUpperBound = true;        // true=零错时使用上置信界提前停止
+static constexpr double kTargetBerUpperBound = 1e-8;            // 零错上界目标：若上界已低于此值则提前停止
+static constexpr double kConfidenceLevel = 0.95;                // 零错上界使用的置信水平，例如 0.95 表示 95%
 
 // 解码参数：decoder 选择、Chase 参数、alpha/beta、MUX 调度
-static constexpr const char* kDecoderName = "chase_baseline";
-static const std::vector<const char*> kDecoderNameCandidates = {};
-static constexpr bool kNormalizeExtrinsic = false;
-static constexpr bool kNormalizeKnownPrefixTail = false;
-static const std::vector<int> kChaseLCandidates = {6};
-static constexpr int kChaseNTest = 64;
-static const std::vector<int> kChaseNTestCandidates = {};
-static constexpr int kChaseTopkKeep = 8;
-static const std::vector<int> kChaseTopkKeepCandidates = {};
-static constexpr int kChaseGroupMinimaBits = 4;
-static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4};
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32};
-static constexpr int kMuxGroupG = 1;
-static constexpr int kMuxSchedulingMode = 0;
-static const std::vector<int> kMuxSchedulingModeCandidates = {};
-static constexpr int kMuxPriorityRule = 0;
-static const std::vector<int> kMuxPriorityRuleCandidates = {};
-static constexpr bool kMuxEnableReconfig = false;
-static constexpr int kMuxBypassScheme = 3;
+static constexpr const char* kDecoderName = "chase_baseline";        // 默认 decoder 名称
+static const std::vector<const char*> kDecoderNameCandidates = {};   // decoder 扫描候选；空表示不扫 decoder 维度
+static constexpr bool kNormalizeExtrinsic = false;                   // 是否对 decoder 输出 extrinsic 做归一化
+static constexpr bool kNormalizeKnownPrefixTail = false;             // 是否对 known-prefix 后的尾部 LLR 做归一化
+static const std::vector<int> kChaseLCandidates = {6};              // Chase L 扫描候选
+static constexpr int kChaseNTest = 64;                              // 默认 Chase NTEST；若不单独扫则等于实际使用值
+static const std::vector<int> kChaseNTestCandidates = {};           // Chase NTEST 扫描候选；空表示不单独扫描
+static constexpr int kChaseTopkKeep = 8;                            // top-k/pruned decoder 保留候选数
+static const std::vector<int> kChaseTopkKeepCandidates = {};        // top-k 保留数扫描候选
+static constexpr int kChaseGroupMinimaBits = 4;                     // group-minima decoder 的分组 bit 数
+static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4}; // group-minima 分组 bit 数扫描候选
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 32, 32};   // 每个 tile 的 SISO 预算
+static constexpr int kMuxGroupG = 1;                                // MUX 分组粒度；1=全局池化
+static constexpr int kMuxSchedulingMode = 0;                        // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
+static const std::vector<int> kMuxSchedulingModeCandidates = {};    // MUX 调度模式扫描候选
+static constexpr int kMuxPriorityRule = 0;                          // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
+static const std::vector<int> kMuxPriorityRuleCandidates = {};      // MUX 优先级规则扫描候选
+static constexpr bool kMuxEnableReconfig = false;                   // 是否启用 reconfig MUX 调度
+static constexpr int kMuxBypassScheme = 3;                          // 旁路边方案编号：仅在 reconfig 打开时真正参与调度
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
-    {"custom_label",
-     {0.342857f, 0.387439f, 0.435806f, 0.485714f},
-     {8.571428f, 10.037715f, 16.865997f, 31.428572f},
-     {}},
+    {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
+     {0.428571,0.447738,0.482782,0.528162,0.581902,0.642857},               // 每个 tile 的 alpha 显式列表
+     {2.857143,6.179301,12.253626,20.119585,29.434408,40.000000},            // 每个 tile 的普通 beta 显式列表
+     {99,99,99,99,99,99}},                                                        // 每个 tile 的 early-stop 专用 beta 显式列表；空表示后续按默认规则回退
 };
 
 // 早停参数：总开关 -> 条件 -> 条件细参 -> 动作 -> 动作细参
-static constexpr bool kEnableEarlyStop = false;
-static const std::vector<int> kEarlyStopEnableList = {};
-static constexpr int kEarlyStopConditionMode = 1;
-static const std::vector<int> kEarlyStopConditionCandidates = {};
-static constexpr int kEarlyStopActionMode = 1;
-static constexpr int kEarlyStopBindGroupSize = 1;
-static const std::vector<int> kEarlyStopActionCandidates = {};
-static constexpr bool kEarlyStopCondV1RequireBch = true;
-static const std::vector<bool> kEarlyStopCondV1RequireBchCandidates = {};
-static constexpr bool kEarlyStopCondV1RequireOverall = true;
-static const std::vector<bool> kEarlyStopCondV1RequireOverallCandidates = {};
-static constexpr float kEarlyStopV2LlrAbsThreshold = 0.5f;
-static const std::vector<float> kEarlyStopV2LlrAbsThresholdCandidates = {};
-static constexpr int kEarlyStopV2MaxUnreliableBits = 8;
-static const std::vector<int> kEarlyStopV2MaxUnreliableBitsCandidates = {};
-static constexpr bool kEarlyStopCondV2IncludeOverall = true;
-static constexpr float kEarlyStopActionResidualDivisor = 0.4f;
-static constexpr float kEarlyStopActionHardLlrMag = 1.0f;
-static const std::vector<float> kEarlyStopActionBetaStartCandidates = {};
-static const std::vector<float> kEarlyStopActionBetaStepCandidates = {};
-static const std::vector<float> kEarlyStopActionHardLlrMagCandidates = {};
+static constexpr bool kEnableEarlyStop = false;                      // 早停总开关
+static const std::vector<int> kEarlyStopEnableList = {};            // 按 tile 覆盖早停开关；空表示全部沿用总开关
+static constexpr int kEarlyStopConditionMode = 1;                   // 早停条件模式：1=v1，2=v2
+static const std::vector<int> kEarlyStopConditionCandidates = {};   // 早停条件模式扫描候选
+static constexpr int kEarlyStopActionMode = 1;                      // 早停动作模式：1~6
+static constexpr int kEarlyStopBindGroupSize = 1;                   // 条件1的组绑定大小；1=逐 row，4=四个绑定
+static const std::vector<int> kEarlyStopActionCandidates = {};      // 早停动作模式扫描候选
+static constexpr bool kEarlyStopCondV1RequireBch = true;            // 条件1是否要求 BCH syndrome 全 0
+static const std::vector<bool> kEarlyStopCondV1RequireBchCandidates = {}; // 条件1 BCH 开关扫描候选
+static constexpr bool kEarlyStopCondV1RequireOverall = true;        // 条件1是否要求 overall parity 通过
+static const std::vector<bool> kEarlyStopCondV1RequireOverallCandidates = {}; // 条件1 overall 开关扫描候选
+static constexpr float kEarlyStopV2LlrAbsThreshold = 0.5f;          // 条件2判定“不可靠位”的 |LLR| 阈值
+static const std::vector<float> kEarlyStopV2LlrAbsThresholdCandidates = {}; // 条件2阈值扫描候选
+static constexpr int kEarlyStopV2MaxUnreliableBits = 8;             // 条件2允许的不可靠 bit 数上限
+static const std::vector<int> kEarlyStopV2MaxUnreliableBitsCandidates = {}; // 条件2 bit 数上限扫描候选
+static constexpr bool kEarlyStopCondV2IncludeOverall = true;        // 条件2是否把 overall parity bit 一起纳入统计
+static constexpr float kEarlyStopActionResidualDivisor = 0.4f;      // 动作2里 residual 的除数
+static constexpr float kEarlyStopActionHardLlrMag = 1.0f;           // 动作3里输出的固定 |LLR| 幅度
+static const std::vector<float> kEarlyStopActionBetaStartCandidates = {}; // early-stop 专用 beta 起点扫描候选
+static const std::vector<float> kEarlyStopActionBetaStepCandidates = {};  // early-stop 专用 beta 步长扫描候选
+static const std::vector<float> kEarlyStopActionHardLlrMagCandidates = {}; // 动作3 hard LLR 幅度扫描候选
 
 // Debug 参数：控制日志与 decoder trace
-static constexpr bool kQuietConsole = false;
-static constexpr bool kDecoderTraceEnable = false;
-static constexpr long kDecoderTraceRow = -1;
-static constexpr long kDecoderTraceCol = -1;
-static constexpr bool kDecoderTraceLogRead = false;
-static constexpr bool kDecoderTraceLogWrite = false;
-static constexpr bool kDecoderTraceLogMismatch = false;
+static constexpr bool kQuietConsole = false;           // true=减少控制台输出
+static constexpr bool kDecoderTraceEnable = false;     // decoder trace 总开关
+static constexpr long kDecoderTraceRow = -1;           // 追踪目标的全局 row；-1 表示不指定
+static constexpr long kDecoderTraceCol = -1;           // 追踪目标的全局 col；-1 表示不指定
+static constexpr bool kDecoderTraceLogRead = false;    // 是否打印 tile 读取映射
+static constexpr bool kDecoderTraceLogWrite = false;   // 是否打印 tile 写回映射
+static constexpr bool kDecoderTraceLogMismatch = false; // 是否打印同坐标写回不一致告警
 
 // ==================================
 
