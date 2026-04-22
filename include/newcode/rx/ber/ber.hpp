@@ -54,4 +54,15 @@ std::vector<WindowBerStats> compute_ber_per_window(
     const std::vector<uint8_t>& rx_bits,
     const Params& p);
 
+/**
+ * 按 tile 高度输出 BER 统计。
+ *
+ * 与 compute_ber_per_window() 类似，但窗口长度改为一个 tile 覆盖的比特数。
+ * 这里仍然基于一维信息比特流做局部切片统计，适合做 tile 尺度的时域分析。
+ */
+std::vector<WindowBerStats> compute_ber_per_tile_window(
+    const std::vector<uint8_t>& ref_bits,
+    const std::vector<uint8_t>& rx_bits,
+    const Params& p);
+
 } // namespace newcode

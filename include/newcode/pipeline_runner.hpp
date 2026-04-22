@@ -33,6 +33,9 @@ struct PipelineResult {
   std::vector<WindowBerStats> pre_fec_windows;
   std::vector<WindowBerStats> pre_fec_quantized_hard_windows;
   std::vector<WindowBerStats> post_fec_windows;
+  std::vector<WindowBerStats> pre_fec_tile_windows;
+  std::vector<WindowBerStats> pre_fec_quantized_hard_tile_windows;
+  std::vector<WindowBerStats> post_fec_tile_windows;
   bool has_pre_fec_quantized_hard = false;
   std::vector<double> tile_early_stop_pct;
   std::vector<double> tile_row_early_stop_pct;

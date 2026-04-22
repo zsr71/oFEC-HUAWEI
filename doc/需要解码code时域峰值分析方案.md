@@ -225,6 +225,74 @@ rolling_BER(invocation, W)
 
 这样后面可以直接在程序里做分段统计，不必全靠 Matlab 手工切。
 
+### 6.4 两种实现方案对比
+
+这里其实有两条路可以走。
+
+**方案 A：运行时直接记录 tile 级 BER 样本**
+
+做法是：
+- 每次 tile 处理完，就把该 tile 的误码数、比特数记下来
+- 最后导出一份按 `invocation + tile_index` 排列的 CSV
+
+优点：
+- 和 `need_decode` 的时域样本天然同粒度
+- 后面 Matlab 很容易直接做对齐
+- 能保留每个 tile 的局部波动
+
+缺点：
+- 需要在 tile 执行链路里额外埋点
+- 如果想记录很多中间量，代码会更散一点
+
+如果真要落地，通常要改：
+- [apps/ofec_ber_window_probe.cpp](/home/zsr71/projects/newcode/apps/ofec_ber_window_probe.cpp)
+  - 增加 tile 级 BER 样本导出
+- [include/newcode/pipeline_runner.hpp](/home/zsr71/projects/newcode/include/newcode/pipeline_runner.hpp)
+  - 如果希望 probe 结果里直接带 tile 级 BER 样本，需要扩 `PipelineResult`
+- [src/common/pipeline/pipeline_runner.cpp](/home/zsr71/projects/newcode/src/common/pipeline/pipeline_runner.cpp)
+  - 在 pipeline 结束后把 tile 级统计挂到结果对象上
+- [src/rx/ber/ber.cpp](/home/zsr71/projects/newcode/src/rx/ber/ber.cpp)
+  - 如果要新增按 tile 切分的 BER 统计函数，可以在这里补
+
+**方案 B：所有 window / tile 都跑完之后，再统一做 tile 级 BER 统计**
+
+做法是：
+- 运行时只保留 tile 的原始误差计数或必要的中间结果
+- 程序结束后再统一汇总成 tile 级 BER
+
+优点：
+- 主译码链路更干净
+- 对现有逻辑侵入更小
+- 更适合先做第一版验证
+
+缺点：
+- 如果没有提前保存足够的原始信息，后面很难严格反推出 tile 级 BER
+- tile 的时间对齐能力不如方案 A 直接
+
+如果真要落地，建议新加一个 tile 版 BER 统计函数，而不是直接改旧函数：
+- 保留现有 `compute_ber_per_window(...)`
+- 新增一个例如 `compute_ber_per_tile_window(...)` 的函数
+- 输入仍然是一维比特流，但窗口长度换成 tile 尺度
+- 调用点可以放在新的 probe app 或 pipeline 结果后处理里
+
+**我的判断**
+
+如果你的目标是：
+- 先分析最后一个 tile 的 `need_decode` 峰值和 BER 的相关性
+- 并且希望后面 Matlab 里更容易对齐
+
+那更推荐方案 A。
+
+如果你的目标是：
+- 先尽量少改代码
+- 只要能得到 tile 级 BER 的汇总结果就行
+
+那方案 B 更保守。
+
+更实际的折中是：
+- 先做方案 B，保证能算出 tile 级 BER
+- 如果后面发现时序对齐不够，再补方案 A 的细粒度样本
+
 ## 7. 实现难度判断
 
 你的感觉是对的：

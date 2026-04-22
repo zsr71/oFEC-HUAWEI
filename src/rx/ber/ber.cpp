@@ -8,6 +8,40 @@ namespace {
 
 constexpr std::size_t kInfoBitsPerRow = 111;
 
+std::vector<WindowBerStats> compute_ber_per_segment_bits(
+    const std::vector<uint8_t>& ref_bits,
+    const std::vector<uint8_t>& rx_bits,
+    std::size_t segment_bits)
+{
+    const std::size_t L = std::min(ref_bits.size(), rx_bits.size());
+    std::vector<WindowBerStats> segments;
+    if (L == 0 || segment_bits == 0) {
+        return segments;
+    }
+
+    const std::size_t num_segments = (L + segment_bits - 1) / segment_bits;
+    segments.reserve(num_segments);
+    for (std::size_t idx = 0; idx < num_segments; ++idx) {
+        const std::size_t start = idx * segment_bits;
+        const std::size_t stop = std::min(L, start + segment_bits);
+        std::size_t err = 0;
+        for (std::size_t i = start; i < stop; ++i) {
+            if ((ref_bits[i] ^ rx_bits[i]) & 1u) {
+                ++err;
+            }
+        }
+
+        WindowBerStats s;
+        s.window_idx = idx;
+        s.errors = err;
+        s.total = stop - start;
+        s.ber = (s.total == 0) ? 0.0
+                               : static_cast<double>(s.errors) / static_cast<double>(s.total);
+        segments.push_back(s);
+    }
+    return segments;
+}
+
 } // namespace
 
 BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
@@ -76,34 +110,17 @@ std::vector<WindowBerStats> compute_ber_per_window(
     const std::vector<uint8_t>& rx_bits,
     const Params& p)
 {
-    const std::size_t L = std::min(ref_bits.size(), rx_bits.size());
     const std::size_t win_bits = p.win_height_rows() * kInfoBitsPerRow;
-    std::vector<WindowBerStats> windows;
-    if (L == 0 || win_bits == 0) {
-        return windows;
-    }
+    return compute_ber_per_segment_bits(ref_bits, rx_bits, win_bits);
+}
 
-    const std::size_t num_windows = (L + win_bits - 1) / win_bits;
-    windows.reserve(num_windows);
-    for (std::size_t w = 0; w < num_windows; ++w) {
-        const std::size_t start = w * win_bits;
-        const std::size_t stop = std::min(L, start + win_bits);
-        std::size_t err = 0;
-        for (std::size_t i = start; i < stop; ++i) {
-            if ((ref_bits[i] ^ rx_bits[i]) & 1u) {
-                ++err;
-            }
-        }
-
-        WindowBerStats s;
-        s.window_idx = w;
-        s.errors = err;
-        s.total = stop - start;
-        s.ber = (s.total == 0) ? 0.0
-                               : static_cast<double>(s.errors) / static_cast<double>(s.total);
-        windows.push_back(s);
-    }
-    return windows;
+std::vector<WindowBerStats> compute_ber_per_tile_window(
+    const std::vector<uint8_t>& ref_bits,
+    const std::vector<uint8_t>& rx_bits,
+    const Params& p)
+{
+    const std::size_t tile_bits = p.tile_height_rows() * kInfoBitsPerRow;
+    return compute_ber_per_segment_bits(ref_bits, rx_bits, tile_bits);
 }
 
 } // namespace newcode

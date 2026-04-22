@@ -28,10 +28,10 @@ std::vector<uint8_t> rx_info_from_bit_llr(const matrix::Matrix<float>& bit_llr_m
 
     const size_t RROWS = bit_llr_mat.rows();
 
-    // 跳过前置初始化行（不是“真实信息行”）
+    // 跳过完整已知前缀行（不是“真实信息行”）
     size_t warmup_rows = 0;
     {
-        const long tmp = static_cast<long>(p.tile_height_rows());
+        const long tmp = static_cast<long>(p.known_prefix_rows());
         if (tmp > 0) warmup_rows = static_cast<size_t>(tmp);
         warmup_rows = std::min(warmup_rows, RROWS); // 防溢出
     }

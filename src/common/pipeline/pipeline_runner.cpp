@@ -358,12 +358,16 @@ PipelineResult run_pipeline(const Params& params,
   result.post_fec_error_positions.clear();
   result.pre_fec_windows =
       compute_ber_per_window(tx_info_bits_ref, rx_info_bits_pre, params);
+  result.pre_fec_tile_windows =
+      compute_ber_per_tile_window(tx_info_bits_ref, rx_info_bits_pre, params);
   result.pre_fec  = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_pre,  pre_label.c_str(),
                                           params, &result.pre_fec_error_positions, config.quiet);
   if (has_pre_quantized) {
     const std::string pre_quant_label = label + " Pre-FEC (quantized hard)";
     result.pre_fec_quantized_hard_windows =
         compute_ber_per_window(tx_info_bits_ref, rx_info_bits_pre_quantized, params);
+    result.pre_fec_quantized_hard_tile_windows =
+        compute_ber_per_tile_window(tx_info_bits_ref, rx_info_bits_pre_quantized, params);
     result.pre_fec_quantized_hard = compute_and_print_ber(
         tx_info_bits_ref, rx_info_bits_pre_quantized, pre_quant_label.c_str(),
         params, &result.pre_fec_quantized_hard_error_positions, config.quiet);
@@ -371,6 +375,8 @@ PipelineResult run_pipeline(const Params& params,
   }
   result.post_fec_windows =
       compute_ber_per_window(tx_info_bits_ref, rx_info_bits_post, params);
+  result.post_fec_tile_windows =
+      compute_ber_per_tile_window(tx_info_bits_ref, rx_info_bits_post, params);
   result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(),
                                           params, &result.post_fec_error_positions, config.quiet);
   result.tile_early_stop_pct = compute_early_stop_percentages(decode_result.tile_stats);
