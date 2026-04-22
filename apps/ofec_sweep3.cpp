@@ -45,7 +45,8 @@ static constexpr std::size_t kTilesPerWindow = 6;               // 本 app 使�
 static constexpr std::size_t kChunkNumInfoBits = 8 * 132 * 16 * 111; // 每个 Monte Carlo chunk 的输入信息比特数
 static constexpr std::size_t kTargetPostErrors = 50;            // 单个 Eb/N0 点累计到这么多 post-FEC 错误后即可停止
 static constexpr std::size_t kMaxPostFecTotalBits = 2e8;        // 单个 Eb/N0 点允许累计比较的最大 post-FEC 比特数
-static constexpr unsigned kMaxParallelChunksPerPoint = 0;       // 单点并行 chunk 数上限；0=自动用全部可用 worker
+static constexpr unsigned kMaxTotalWorkers = 0;                 // 全局同时运行 chunk 数上限；0=自动使用 NTHREADS/机器可用 worker
+static constexpr unsigned kMaxInflightChunksPerPoint = 16;      // 单个 Eb/N0 点最多同时挂起的 chunk 数；0=不额外限制
 static constexpr bool kEnableZeroErrorUpperBound = true;        // true=零错时使用上置信界提前停止
 static constexpr double kTargetBerUpperBound = 1e-8;            // 零错上界目标：若上界已低于此值则提前停止
 static constexpr double kConfidenceLevel = 0.95;                // 零错上界使用的置信水平，例如 0.95 表示 95%
@@ -136,6 +137,22 @@ struct AggregatedPointResult {
   double post_ber_upper_bound = std::numeric_limits<double>::quiet_NaN();
   StopReason stop_reason = StopReason::NoData;
   double elapsed_seconds = 0.0;
+};
+
+struct PointState {
+  AggregatedPointResult point;
+  std::size_t next_chunk_index = 0;
+  unsigned inflight_chunks = 0;
+  bool started = false;
+  bool launch_stopped = false;
+  bool completed = false;
+  std::chrono::steady_clock::time_point start_time{};
+};
+
+struct ActiveChunk {
+  std::size_t point_index = 0;
+  std::size_t chunk_index = 0;
+  std::future<ChunkResult> future;
 };
 
 std::string stop_reason_to_string(StopReason reason) {
@@ -404,92 +421,214 @@ ChunkResult run_chunk(const ofec_sweep::detail::SweepScenario& scenario,
   return chunk;
 }
 
-AggregatedPointResult run_low_ber_point(const ofec_sweep::detail::SweepScenario& scenario,
-                                        const ofec_sweep::SweepParameterConfig& config,
-                                        ofec_sweep::detail::DualOut& log,
-                                        unsigned point_workers) {
-  AggregatedPointResult point;
-  point.scenario = scenario;
+void log_point_progress(const PointState& state,
+                        bool force,
+                        ofec_sweep::detail::DualOut& log) {
+  const auto& point = state.point;
+  if (!force && point.chunks_completed > 0 && point.chunks_completed % 5 != 0 &&
+      point.chunks_completed > 3) {
+    return;
+  }
 
-  const auto start_time = std::chrono::steady_clock::now();
-  std::vector<std::pair<std::size_t, std::future<ChunkResult>>> active;
-  std::size_t next_chunk_index = 0;
-  bool stop_launch = false;
-
-  auto log_progress = [&](bool force) {
-    if (!force && point.chunks_completed > 0 && point.chunks_completed % 5 != 0 &&
-        point.chunks_completed > 3) {
-      return;
-    }
-    std::ostringstream oss;
-    oss << "[POINT] " << scenario.name
-        << " chunks=" << point.chunks_completed
-        << " post=" << point.post_fec.errors << "/" << point.post_fec.total;
-    if (point.post_fec.total > 0) {
-      oss << " ber=" << std::scientific << point.post_fec.ber << std::defaultfloat;
-    }
-    if (point.post_fec.errors == 0 && point.post_fec.total > 0) {
-      oss << " ub≈" << std::scientific << point.post_ber_upper_bound
-          << std::defaultfloat;
-    }
+  std::ostringstream oss;
+  oss << "[POINT] " << point.scenario.name
+      << " chunks=" << point.chunks_completed
+      << " inflight=" << state.inflight_chunks
+      << " post=" << point.post_fec.errors << "/" << point.post_fec.total;
+  if (point.post_fec.total > 0) {
+    oss << " ber=" << std::scientific << point.post_fec.ber << std::defaultfloat;
+  }
+  if (point.post_fec.errors == 0 && point.post_fec.total > 0) {
+    oss << " ub≈" << std::scientific << point.post_ber_upper_bound
+        << std::defaultfloat;
+  }
+  if (state.started) {
     const auto elapsed =
-        std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time);
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      state.start_time);
     oss << " elapsed=" << format_duration(elapsed);
-    log << oss.str() << "\n";
+  }
+  log << oss.str() << "\n";
+}
+
+bool mark_stop_if_needed(PointState& state, ofec_sweep::detail::DualOut& log) {
+  if (state.launch_stopped) {
+    return false;
+  }
+
+  state.point.stop_reason = evaluate_stop_reason(state.point);
+  update_upper_bound_fields(state.point);
+  if (state.point.stop_reason == StopReason::NoData) {
+    return false;
+  }
+
+  state.launch_stopped = true;
+  log_point_progress(state, true, log);
+  log << "[INFO] stop reason for " << state.point.scenario.name << ": "
+      << stop_reason_to_string(state.point.stop_reason) << "\n";
+  return true;
+}
+
+void finalize_point_if_ready(PointState& state,
+                             const std::string& run_id,
+                             std::ostream& csv,
+                             ofec_sweep::detail::DualOut& log,
+                             std::size_t& completed_count) {
+  if (state.completed || !state.launch_stopped || state.inflight_chunks != 0) {
+    return;
+  }
+
+  if (state.point.stop_reason == StopReason::NoData) {
+    state.point.stop_reason = evaluate_stop_reason(state.point);
+    update_upper_bound_fields(state.point);
+  } else {
+    update_upper_bound_fields(state.point);
+  }
+  if (state.started) {
+    state.point.elapsed_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      state.start_time)
+            .count();
+  }
+
+  log << "[SUMMARY] " << state.point.scenario.name
+      << " Post-FEC BER=" << state.point.post_fec.ber
+      << " (errs=" << state.point.post_fec.errors << "/"
+      << state.point.post_fec.total << ")";
+  if (state.point.post_fec.errors == 0 &&
+      !std::isnan(state.point.post_ber_upper_bound)) {
+    log << " upper_bound<=" << state.point.post_ber_upper_bound;
+  }
+  log << " | chunks=" << state.point.chunks_completed
+      << " | stop=" << stop_reason_to_string(state.point.stop_reason)
+      << " | elapsed=" << format_duration(
+             std::chrono::duration<double>(state.point.elapsed_seconds))
+      << "\n";
+
+  write_csv_row_sweep3(csv, utils::now_stamp(), run_id, state.point);
+  csv.flush();
+  state.completed = true;
+  ++completed_count;
+}
+
+std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
+    const std::vector<ofec_sweep::detail::SweepScenario>& scenarios,
+    const ofec_sweep::SweepParameterConfig& config,
+    unsigned total_workers,
+    unsigned max_inflight_per_point,
+    const std::string& run_id,
+    std::ostream& csv,
+    ofec_sweep::detail::DualOut& log) {
+  std::vector<PointState> states;
+  states.reserve(scenarios.size());
+  for (const auto& scenario : scenarios) {
+    PointState state;
+    state.point.scenario = scenario;
+    states.push_back(std::move(state));
+  }
+
+  std::vector<ActiveChunk> active;
+  active.reserve(total_workers);
+  std::size_t completed_count = 0;
+  std::size_t next_launch_point = 0;
+
+  auto can_launch_for = [&](std::size_t point_index) {
+    const PointState& state = states[point_index];
+    return !state.completed && !state.launch_stopped &&
+           state.inflight_chunks < max_inflight_per_point;
   };
 
-  auto maybe_mark_stop = [&]() {
-    if (stop_launch) {
-      return;
+  auto launch_one = [&](std::size_t point_index) {
+    PointState& state = states[point_index];
+    if (!state.started) {
+      state.started = true;
+      state.start_time = std::chrono::steady_clock::now();
+      log << "\n[RUN] " << state.point.scenario.name << "\n";
     }
-    point.stop_reason = evaluate_stop_reason(point);
-    update_upper_bound_fields(point);
-    if (point.stop_reason != StopReason::NoData) {
-      stop_launch = true;
-      log_progress(true);
-      log << "[INFO] stop reason for " << scenario.name << ": "
-          << stop_reason_to_string(point.stop_reason) << "\n";
-    }
+
+    const std::size_t chunk_index = state.next_chunk_index++;
+    const auto scenario = state.point.scenario;
+    active.push_back(ActiveChunk{
+        point_index,
+        chunk_index,
+        std::async(std::launch::async, [scenario, config, chunk_index]() {
+          return run_chunk(scenario, config, chunk_index);
+        })});
+    ++state.inflight_chunks;
   };
 
-  while (!stop_launch || !active.empty()) {
-    while (!stop_launch && active.size() < point_workers) {
-      const std::size_t chunk_index = next_chunk_index++;
-      active.emplace_back(
-          chunk_index,
-          std::async(std::launch::async, [scenario, config, chunk_index]() {
-            return run_chunk(scenario, config, chunk_index);
-          }));
-    }
+  auto fill_workers = [&]() {
+    bool launched_any = false;
+    while (active.size() < total_workers && completed_count < states.size()) {
+      bool launched_this_round = false;
+      for (std::size_t offset = 0; offset < states.size(); ++offset) {
+        const std::size_t point_index =
+            (next_launch_point + offset) % states.size();
+        if (!can_launch_for(point_index)) {
+          continue;
+        }
 
-    bool consumed = false;
-    for (auto it = active.begin(); it != active.end(); ++it) {
-      if (it->second.wait_for(std::chrono::milliseconds(0)) ==
-          std::future_status::ready) {
-        ChunkResult chunk = it->second.get();
-        accumulate_chunk(point, chunk);
-        update_upper_bound_fields(point);
-        log_progress(false);
-        maybe_mark_stop();
-        active.erase(it);
-        consumed = true;
+        launch_one(point_index);
+        next_launch_point = (point_index + 1) % states.size();
+        launched_this_round = true;
+        launched_any = true;
+        break;
+      }
+
+      if (!launched_this_round) {
         break;
       }
     }
+    return launched_any;
+  };
 
-    if (!consumed) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  fill_workers();
+
+  while (completed_count < states.size()) {
+    bool consumed = false;
+    for (auto it = active.begin(); it != active.end(); ++it) {
+      if (it->future.wait_for(std::chrono::milliseconds(0)) !=
+          std::future_status::ready) {
+        continue;
+      }
+
+      const std::size_t point_index = it->point_index;
+      ChunkResult chunk = it->future.get();
+      active.erase(it);
+
+      PointState& state = states[point_index];
+      if (state.inflight_chunks > 0) {
+        --state.inflight_chunks;
+      }
+      accumulate_chunk(state.point, chunk);
+      update_upper_bound_fields(state.point);
+      log_point_progress(state, false, log);
+      mark_stop_if_needed(state, log);
+      finalize_point_if_ready(state, run_id, csv, log, completed_count);
+      fill_workers();
+
+      consumed = true;
+      break;
     }
+
+    if (consumed) {
+      continue;
+    }
+
+    if (active.empty()) {
+      log << "[ERROR] global scheduler has no active chunks before all points "
+             "completed\n";
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 
-  if (point.stop_reason == StopReason::NoData) {
-    point.stop_reason = evaluate_stop_reason(point);
-    update_upper_bound_fields(point);
+  std::vector<AggregatedPointResult> results;
+  results.reserve(states.size());
+  for (const auto& state : states) {
+    results.push_back(state.point);
   }
-  point.elapsed_seconds =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time)
-          .count();
-  return point;
+  return results;
 }
 
 ofec_sweep::SweepParameterConfig build_config() {
@@ -596,6 +735,10 @@ ofec_sweep::SweepParameterConfig build_config() {
       .chase_invocation = -1,
       .chase_csv_dir = {},
       .chase_expected_bits = {},
+      .chase_candidate_s1 = {},
+      .chase_candidate_s3 = {},
+      .chase_candidate_good = {},
+      .chase_candidate_corrected_errors = {},
       .targets = {},
       .active_chase_entries = {},
   };
@@ -668,14 +811,20 @@ int main() {
 
   const unsigned available_workers =
       ofec_sweep::detail::resolve_worker_count(config);
-  const unsigned point_workers =
-      (kMaxParallelChunksPerPoint == 0)
+  const unsigned total_workers =
+      (kMaxTotalWorkers == 0)
           ? available_workers
-          : std::max(1u, std::min(available_workers, kMaxParallelChunksPerPoint));
+          : std::max(1u, std::min(available_workers, kMaxTotalWorkers));
+  const unsigned max_inflight_per_point =
+      (kMaxInflightChunksPerPoint == 0)
+          ? total_workers
+          : std::max(1u, std::min(total_workers, kMaxInflightChunksPerPoint));
 
   out << "[INFO] total scenarios = " << scenarios.size() << "\n";
-  out << "[INFO] point workers = " << point_workers << " (available="
+  out << "[INFO] total workers = " << total_workers << " (available="
       << available_workers << ")\n";
+  out << "[INFO] max inflight chunks per point = "
+      << max_inflight_per_point << "\n";
   out << "[INFO] chunk_num_info_bits = " << kChunkNumInfoBits << "\n";
   out << "[INFO] target_post_errors = " << kTargetPostErrors << "\n";
   out << "[INFO] max_post_fec_total_bits = " << kMaxPostFecTotalBits << "\n";
@@ -685,25 +834,13 @@ int main() {
         << ", confidence=" << kConfidenceLevel << "\n";
   }
 
-  for (const auto& scenario : scenarios) {
-    out << "\n[RUN] " << scenario.name << "\n";
-    AggregatedPointResult point =
-        run_low_ber_point(scenario, config, out, point_workers);
-    out << "[SUMMARY] " << scenario.name
-        << " Post-FEC BER=" << point.post_fec.ber
-        << " (errs=" << point.post_fec.errors << "/" << point.post_fec.total
-        << ")";
-    if (point.post_fec.errors == 0 && !std::isnan(point.post_ber_upper_bound)) {
-      out << " upper_bound<=" << point.post_ber_upper_bound;
-    }
-    out << " | chunks=" << point.chunks_completed
-        << " | stop=" << stop_reason_to_string(point.stop_reason)
-        << " | elapsed=" << format_duration(
-               std::chrono::duration<double>(point.elapsed_seconds))
-        << "\n";
-
-    write_csv_row_sweep3(csv, utils::now_stamp(), run_id, point);
-  }
+  run_low_ber_scenarios_global(scenarios,
+                               config,
+                               total_workers,
+                               max_inflight_per_point,
+                               run_id,
+                               csv,
+                               out);
 
   return 0;
 }
