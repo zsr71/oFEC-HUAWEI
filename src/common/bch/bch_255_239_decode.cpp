@@ -1,4 +1,5 @@
 #include "newcode/common/bch/bch_255_239.hpp"
+#include <algorithm>
 #include <cstring>
 
 namespace bch
@@ -121,17 +122,31 @@ static int chien_and_correct(uint8_t* cw255, const uint8_t sigma[3], int L)
 
 bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255,
                                     uint8_t* out255,
-                                    int* corrected_errors)
+                                    int* corrected_errors,
+                                    Bch255239DecodeTrace* trace)
 {
     using G = GF256;
     G::init();
     if (corrected_errors) *corrected_errors = 0;
+    if (trace) {
+        *trace = Bch255239DecodeTrace{};
+    }
 
     uint8_t cw[GF256::N];
     std::memcpy(cw, in255, GF256::N);
 
     uint8_t S[4]; compute_syndromes_1_4(cw, S);
-    if ((S[0]|S[1]|S[2]|S[3]) == 0) { std::memcpy(out255, cw, GF256::N); return true; }
+    if (trace) {
+        std::copy(S, S + 4, trace->input_syndromes.begin());
+    }
+    if ((S[0]|S[1]|S[2]|S[3]) == 0) {
+        if (trace) {
+            trace->output_syndromes = trace->input_syndromes;
+            trace->has_output_syndromes = true;
+        }
+        std::memcpy(out255, cw, GF256::N);
+        return true;
+    }
 
     uint8_t sigma[3]; int L = berlekamp_massey_t2(S, sigma);
     if (L < 0 || L > 2) {
@@ -148,6 +163,10 @@ bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255,
     }
 
     uint8_t S2[4]; compute_syndromes_1_4(cw, S2);
+    if (trace) {
+        std::copy(S2, S2 + 4, trace->output_syndromes.begin());
+        trace->has_output_syndromes = true;
+    }
     bool ok = ((S2[0]|S2[1]|S2[2]|S2[3]) == 0);
     if (corrected_errors) *corrected_errors = ok ? corr : -1;
     std::memcpy(out255, cw, GF256::N);
@@ -180,4 +199,4 @@ uint8_t bch_255_239_syndrome_nonzero_mask_cw_255(const uint8_t* in255)
     return mask;
 }
 
-} // namespace newcode
+} // namespace bch

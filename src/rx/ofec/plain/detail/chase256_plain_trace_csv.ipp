@@ -98,6 +98,31 @@ static void dump_chase_csv(const newcode::Params::DebugTraceConfig& trace,
             }
             out << '\n';
         }
+
+        const bool has_candidate_syndrome =
+            trace.chase_candidate_s1.size() == trace.chase_candidate_s3.size() &&
+            !trace.chase_candidate_s1.empty();
+        if (has_candidate_syndrome) {
+            const bool has_candidate_status =
+                trace.chase_candidate_good.size() == trace.chase_candidate_s1.size() &&
+                trace.chase_candidate_corrected_errors.size() == trace.chase_candidate_s1.size();
+            out << '\n';
+            out << "CandidateIndex,S1,S3";
+            if (has_candidate_status) {
+                out << ",BchGood,CorrectedErrors";
+            }
+            out << '\n';
+            for (std::size_t c = 0; c < trace.chase_candidate_s1.size(); ++c) {
+                out << c << ','
+                    << int(trace.chase_candidate_s1[c]) << ','
+                    << int(trace.chase_candidate_s3[c]);
+                if (has_candidate_status) {
+                    out << ',' << int(trace.chase_candidate_good[c])
+                        << ',' << trace.chase_candidate_corrected_errors[c];
+                }
+                out << '\n';
+            }
+        }
     }
 }
 

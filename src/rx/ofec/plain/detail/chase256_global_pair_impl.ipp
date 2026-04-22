@@ -64,6 +64,19 @@ void chase_decode_256_global_pair(const LLR* Lin256,
     comps.reserve(static_cast<std::size_t>(NTEST));
 
     std::vector<uint8_t> tmp_in(BCH_N_TOTAL), cw255(BCH_N_CORE);
+    auto trace_copy = p.debug_trace;
+    const bool collect_candidate_syndromes =
+        trace_copy.enable && trace_copy.dump_chase_csv;
+    if (collect_candidate_syndromes) {
+        trace_copy.chase_candidate_s1.clear();
+        trace_copy.chase_candidate_s3.clear();
+        trace_copy.chase_candidate_good.clear();
+        trace_copy.chase_candidate_corrected_errors.clear();
+        trace_copy.chase_candidate_s1.reserve(static_cast<std::size_t>(NTEST));
+        trace_copy.chase_candidate_s3.reserve(static_cast<std::size_t>(NTEST));
+        trace_copy.chase_candidate_good.reserve(static_cast<std::size_t>(NTEST));
+        trace_copy.chase_candidate_corrected_errors.reserve(static_cast<std::size_t>(NTEST));
+    }
 
     for (int c = 0; c < NTEST; ++c)
     {
@@ -76,9 +89,19 @@ void chase_decode_256_global_pair(const LLR* Lin256,
         }
 
         int corrected_errors = 0;
+        bch::Bch255239DecodeTrace decode_trace;
         bool ok = bch::bch_255_239_decode_hiho_cw_255(tmp_in.data(),
                                                       cw255.data(),
-                                                      &corrected_errors);
+                                                      &corrected_errors,
+                                                      collect_candidate_syndromes
+                                                          ? &decode_trace
+                                                          : nullptr);
+        if (collect_candidate_syndromes) {
+            trace_copy.chase_candidate_s1.push_back(decode_trace.input_syndromes[0]);
+            trace_copy.chase_candidate_s3.push_back(decode_trace.input_syndromes[2]);
+            trace_copy.chase_candidate_good.push_back(ok ? 1u : 0u);
+            trace_copy.chase_candidate_corrected_errors.push_back(corrected_errors);
+        }
 
         auto& CW = CW_all[static_cast<std::size_t>(c)];
         std::copy(cw255.begin(), cw255.end(), CW.begin());
@@ -134,7 +157,6 @@ void chase_decode_256_global_pair(const LLR* Lin256,
         ML[PAR_IDX] = parity256_from255(ML.data());
     }
 
-    auto trace_copy = p.debug_trace;
     if (!trace_copy.active_chase_entries.empty()) {
         for (auto& entry : trace_copy.active_chase_entries) {
             entry.cplus_bits.clear();

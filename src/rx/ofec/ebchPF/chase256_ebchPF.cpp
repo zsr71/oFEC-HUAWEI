@@ -205,6 +205,31 @@ static void dump_chase_csv(const newcode::Params::DebugTraceConfig& trace,
             }
             out << '\n';
         }
+
+        const bool has_candidate_syndrome =
+            trace.chase_candidate_s1.size() == trace.chase_candidate_s3.size() &&
+            !trace.chase_candidate_s1.empty();
+        if (has_candidate_syndrome) {
+            const bool has_candidate_status =
+                trace.chase_candidate_good.size() == trace.chase_candidate_s1.size() &&
+                trace.chase_candidate_corrected_errors.size() == trace.chase_candidate_s1.size();
+            out << '\n';
+            out << "CandidateIndex,S1,S3";
+            if (has_candidate_status) {
+                out << ",BchGood,CorrectedErrors";
+            }
+            out << '\n';
+            for (std::size_t c = 0; c < trace.chase_candidate_s1.size(); ++c) {
+                out << c << ','
+                    << int(trace.chase_candidate_s1[c]) << ','
+                    << int(trace.chase_candidate_s3[c]);
+                if (has_candidate_status) {
+                    out << ',' << int(trace.chase_candidate_good[c])
+                        << ',' << trace.chase_candidate_corrected_errors[c];
+                }
+                out << '\n';
+            }
+        }
     }
 }
 
@@ -257,6 +282,19 @@ void chase_decode_256_ebchPF(const LLR* Lin256,
     std::vector<Comp> comps; comps.reserve(NTEST);
 
     std::vector<uint8_t> tmp_in(BCH_N_TOTAL), cw255(BCH_N_CORE);
+    auto trace_copy = p.debug_trace;
+    const bool collect_candidate_syndromes =
+        trace_copy.enable && trace_copy.dump_chase_csv;
+    if (collect_candidate_syndromes) {
+        trace_copy.chase_candidate_s1.clear();
+        trace_copy.chase_candidate_s3.clear();
+        trace_copy.chase_candidate_good.clear();
+        trace_copy.chase_candidate_corrected_errors.clear();
+        trace_copy.chase_candidate_s1.reserve(static_cast<std::size_t>(NTEST));
+        trace_copy.chase_candidate_s3.reserve(static_cast<std::size_t>(NTEST));
+        trace_copy.chase_candidate_good.reserve(static_cast<std::size_t>(NTEST));
+        trace_copy.chase_candidate_corrected_errors.reserve(static_cast<std::size_t>(NTEST));
+    }
 
     for (int c = 0; c < NTEST; ++c)
     {
@@ -267,17 +305,27 @@ void chase_decode_256_ebchPF(const LLR* Lin256,
 
         // BCH decode over 255 (hard-input, hard-output)
         int corrected_errors = 0;
-        bool ok =bch::bch_255_239_decode_hiho_cw_255(tmp_in.data(),
+        bch::Bch255239DecodeTrace decode_trace;
+        bool ok = bch::bch_255_239_decode_hiho_cw_255(tmp_in.data(),
                                                  cw255.data(),
-                                                 &corrected_errors);
+                                                 &corrected_errors,
+                                                 collect_candidate_syndromes
+                                                     ? &decode_trace
+                                                     : nullptr);
 
         // build full 256-bit codeword
         auto& CW = CW_all[c];
         std::copy(cw255.begin(), cw255.end(), CW.begin());
         uint8_t parity = parity256_from255(CW.data());
 
-        if (parity != tmp_in[PAR_IDX] &&(corrected_errors==2) ) 
+        if (parity != tmp_in[PAR_IDX] && (corrected_errors == 2))
         { ok = false; corrected_errors = -1; }
+        if (collect_candidate_syndromes) {
+            trace_copy.chase_candidate_s1.push_back(decode_trace.input_syndromes[0]);
+            trace_copy.chase_candidate_s3.push_back(decode_trace.input_syndromes[2]);
+            trace_copy.chase_candidate_good.push_back(ok ? 1u : 0u);
+            trace_copy.chase_candidate_corrected_errors.push_back(corrected_errors);
+        }
 
         CW[PAR_IDX] = parity256_from255(CW.data());
 
@@ -315,7 +363,6 @@ void chase_decode_256_ebchPF(const LLR* Lin256,
             ml_S += y[k] * (ML[k] ? -1.f : +1.f);
     }
 
-    auto trace_copy = p.debug_trace;
     if (!trace_copy.active_chase_entries.empty()) {
         for (auto& entry : trace_copy.active_chase_entries) {
             entry.cplus_bits.clear();

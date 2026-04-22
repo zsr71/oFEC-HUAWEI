@@ -21,7 +21,7 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     =  64 * 132 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     =  32 * 132 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 56456;                 // 随机种子
   int    CHANNEL_SEED      = BITGEN_SEED + 656;    // 信道噪声随机种子
   bool   BITGEN_RANDOM_BITS = true;             // true=随机比特，false=全 0
@@ -109,6 +109,10 @@ struct Params {
     std::string chase_csv_dir;           // CSV 输出目录（为空则使用默认）
     std::shared_ptr<std::vector<std::vector<int8_t>>> chase_expected_bits;
     const std::vector<int8_t>* chase_expected_bits_row = nullptr;
+    std::vector<uint8_t> chase_candidate_s1;
+    std::vector<uint8_t> chase_candidate_s3;
+    std::vector<uint8_t> chase_candidate_good;
+    std::vector<int> chase_candidate_corrected_errors;
     struct TraceTarget {
       long row = -1;
       long col = -1;

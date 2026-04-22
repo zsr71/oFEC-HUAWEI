@@ -210,6 +210,10 @@ int main() {
     .chase_invocation = -1,
     .chase_csv_dir = {},
     .chase_expected_bits = {},
+    .chase_candidate_s1 = {},
+    .chase_candidate_s3 = {},
+    .chase_candidate_good = {},
+    .chase_candidate_corrected_errors = {},
     .targets = {},
     .active_chase_entries = {},
   };
