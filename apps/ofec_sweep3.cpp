@@ -46,7 +46,9 @@ static constexpr std::size_t kChunkNumInfoBits = 8 * 132 * 16 * 111; // 每个 M
 static constexpr std::size_t kTargetPostErrors = 50;            // 单个 Eb/N0 点累计到这么多 post-FEC 错误后即可停止
 static constexpr std::size_t kMaxPostFecTotalBits = 2e8;        // 单个 Eb/N0 点允许累计比较的最大 post-FEC 比特数
 static constexpr unsigned kMaxTotalWorkers = 0;                 // 全局同时运行 chunk 数上限；0=自动使用 NTHREADS/机器可用 worker
-static constexpr unsigned kMaxInflightChunksPerPoint = 16;      // 单个 Eb/N0 点最多同时挂起的 chunk 数；0=不额外限制
+static constexpr unsigned kMaxInflightChunksPerPoint = 16;      // 单个 Eb/N0 点的基础挂起 chunk 上限；0=不额外限制
+static constexpr bool kEnableDynamicInflightPerPoint = true;    // true=剩余 Eb/N0 点变少时动态提高单点挂起上限
+static constexpr unsigned kMaxDynamicInflightChunksPerPoint = 0; // 动态单点挂起上限封顶；0=不封顶，最多到全局 worker
 static constexpr bool kEnableZeroErrorUpperBound = true;        // true=零错时使用上置信界提前停止
 static constexpr double kTargetBerUpperBound = 1e-8;            // 零错上界目标：若上界已低于此值则提前停止
 static constexpr double kConfidenceLevel = 0.95;                // 零错上界使用的置信水平，例如 0.95 表示 95%
@@ -201,9 +203,9 @@ void ensure_csv_header_sweep3(const std::string& csv_path) {
 
   std::ofstream fout(csv_path, std::ios::out | std::ios::app);
   fout << "timestamp,run_id,scenario,decoder_name,ebn0_db,"
+          "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
           "chunk_num_info_bits,chunks_completed,target_post_errors,max_post_fec_total_bits,"
           "confidence_level,post_ber_is_upper_bound,post_ber_upper_bound,stop_reason,elapsed_seconds,"
-          "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
           "bitgen_seed_base,channel_seed_base,"
           "alpha_list,beta_list,early_stop_beta_list,"
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
@@ -222,6 +224,12 @@ void write_csv_row_sweep3(std::ostream& csv,
       << point.scenario.name << ','
       << point.scenario.decoder_name << ','
       << point.scenario.ebn0_db << ','
+      << point.pre_fec.ber << ','
+      << point.pre_fec.errors << ','
+      << point.pre_fec.total << ','
+      << point.post_fec.ber << ','
+      << point.post_fec.errors << ','
+      << point.post_fec.total << ','
       << kChunkNumInfoBits << ','
       << point.chunks_completed << ','
       << kTargetPostErrors << ','
@@ -235,12 +243,6 @@ void write_csv_row_sweep3(std::ostream& csv,
   }
   csv << stop_reason_to_string(point.stop_reason) << ','
       << point.elapsed_seconds << ','
-      << point.pre_fec.ber << ','
-      << point.pre_fec.errors << ','
-      << point.pre_fec.total << ','
-      << point.post_fec.ber << ','
-      << point.post_fec.errors << ','
-      << point.post_fec.total << ','
       << point.scenario.bitgen_seed << ','
       << point.scenario.channel_seed << ','
       << '"' << join_vec(point.scenario.alpha_list, '|', 6) << "\","
@@ -470,8 +472,6 @@ bool mark_stop_if_needed(PointState& state, ofec_sweep::detail::DualOut& log) {
 }
 
 void finalize_point_if_ready(PointState& state,
-                             const std::string& run_id,
-                             std::ostream& csv,
                              ofec_sweep::detail::DualOut& log,
                              std::size_t& completed_count) {
   if (state.completed || !state.launch_stopped || state.inflight_chunks != 0) {
@@ -505,8 +505,6 @@ void finalize_point_if_ready(PointState& state,
              std::chrono::duration<double>(state.point.elapsed_seconds))
       << "\n";
 
-  write_csv_row_sweep3(csv, utils::now_stamp(), run_id, state.point);
-  csv.flush();
   state.completed = true;
   ++completed_count;
 }
@@ -515,9 +513,8 @@ std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
     const std::vector<ofec_sweep::detail::SweepScenario>& scenarios,
     const ofec_sweep::SweepParameterConfig& config,
     unsigned total_workers,
-    unsigned max_inflight_per_point,
-    const std::string& run_id,
-    std::ostream& csv,
+    unsigned base_inflight_per_point,
+    unsigned dynamic_inflight_cap,
     ofec_sweep::detail::DualOut& log) {
   std::vector<PointState> states;
   states.reserve(scenarios.size());
@@ -531,11 +528,40 @@ std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
   active.reserve(total_workers);
   std::size_t completed_count = 0;
   std::size_t next_launch_point = 0;
+  unsigned last_logged_effective_limit = 0;
+
+  auto count_launchable_points = [&]() {
+    std::size_t count = 0;
+    for (const auto& state : states) {
+      if (!state.completed && !state.launch_stopped) {
+        ++count;
+      }
+    }
+    return count;
+  };
+
+  auto effective_inflight_limit = [&]() {
+    unsigned limit = base_inflight_per_point;
+    if (kEnableDynamicInflightPerPoint) {
+      const std::size_t active_points = count_launchable_points();
+      if (active_points > 0) {
+        const unsigned dynamic_limit =
+            static_cast<unsigned>((total_workers + active_points - 1) /
+                                  active_points);
+        limit = std::max(limit, dynamic_limit);
+      }
+    }
+
+    if (dynamic_inflight_cap > 0) {
+      limit = std::min(limit, dynamic_inflight_cap);
+    }
+    return std::max(1u, std::min(total_workers, limit));
+  };
 
   auto can_launch_for = [&](std::size_t point_index) {
     const PointState& state = states[point_index];
     return !state.completed && !state.launch_stopped &&
-           state.inflight_chunks < max_inflight_per_point;
+           state.inflight_chunks < effective_inflight_limit();
   };
 
   auto launch_one = [&](std::size_t point_index) {
@@ -560,6 +586,15 @@ std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
   auto fill_workers = [&]() {
     bool launched_any = false;
     while (active.size() < total_workers && completed_count < states.size()) {
+      const unsigned current_limit = effective_inflight_limit();
+      if (current_limit != last_logged_effective_limit) {
+        last_logged_effective_limit = current_limit;
+        log << "[INFO] effective max inflight chunks per point = "
+            << current_limit
+            << " (launchable_points=" << count_launchable_points()
+            << ")\n";
+      }
+
       bool launched_this_round = false;
       for (std::size_t offset = 0; offset < states.size(); ++offset) {
         const std::size_t point_index =
@@ -604,7 +639,7 @@ std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
       update_upper_bound_fields(state.point);
       log_point_progress(state, false, log);
       mark_stop_if_needed(state, log);
-      finalize_point_if_ready(state, run_id, csv, log, completed_count);
+      finalize_point_if_ready(state, log, completed_count);
       fill_workers();
 
       consumed = true;
@@ -815,16 +850,25 @@ int main() {
       (kMaxTotalWorkers == 0)
           ? available_workers
           : std::max(1u, std::min(available_workers, kMaxTotalWorkers));
-  const unsigned max_inflight_per_point =
+  const unsigned base_inflight_per_point =
       (kMaxInflightChunksPerPoint == 0)
           ? total_workers
           : std::max(1u, std::min(total_workers, kMaxInflightChunksPerPoint));
+  const unsigned dynamic_inflight_cap =
+      (kMaxDynamicInflightChunksPerPoint == 0)
+          ? total_workers
+          : std::max(1u,
+                     std::min(total_workers,
+                              kMaxDynamicInflightChunksPerPoint));
 
   out << "[INFO] total scenarios = " << scenarios.size() << "\n";
   out << "[INFO] total workers = " << total_workers << " (available="
       << available_workers << ")\n";
-  out << "[INFO] max inflight chunks per point = "
-      << max_inflight_per_point << "\n";
+  out << "[INFO] base max inflight chunks per point = "
+      << base_inflight_per_point << "\n";
+  out << "[INFO] dynamic inflight per point = "
+      << (kEnableDynamicInflightPerPoint ? "enabled" : "disabled")
+      << " (cap=" << dynamic_inflight_cap << ")\n";
   out << "[INFO] chunk_num_info_bits = " << kChunkNumInfoBits << "\n";
   out << "[INFO] target_post_errors = " << kTargetPostErrors << "\n";
   out << "[INFO] max_post_fec_total_bits = " << kMaxPostFecTotalBits << "\n";
@@ -834,13 +878,25 @@ int main() {
         << ", confidence=" << kConfidenceLevel << "\n";
   }
 
-  run_low_ber_scenarios_global(scenarios,
-                               config,
-                               total_workers,
-                               max_inflight_per_point,
-                               run_id,
-                               csv,
-                               out);
+  auto results = run_low_ber_scenarios_global(scenarios,
+                                              config,
+                                              total_workers,
+                                              base_inflight_per_point,
+                                              dynamic_inflight_cap,
+                                              out);
+  std::sort(results.begin(),
+            results.end(),
+            [](const AggregatedPointResult& lhs,
+               const AggregatedPointResult& rhs) {
+              if (lhs.scenario.ebn0_db != rhs.scenario.ebn0_db) {
+                return lhs.scenario.ebn0_db < rhs.scenario.ebn0_db;
+              }
+              return lhs.scenario.name < rhs.scenario.name;
+            });
+  for (const auto& point : results) {
+    write_csv_row_sweep3(csv, utils::now_stamp(), run_id, point);
+  }
+  csv.flush();
 
   return 0;
 }
