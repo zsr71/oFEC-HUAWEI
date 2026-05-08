@@ -9,6 +9,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -73,6 +74,10 @@ static constexpr int kMuxPriorityRule = 0;                          // 新 MUX �
 static const std::vector<int> kMuxPriorityRuleCandidates = {};      // MUX 优先级规则扫描候选
 static constexpr bool kMuxEnableReconfig = false;                   // 是否启用 reconfig MUX 调度
 static constexpr int kMuxBypassScheme = 3;                          // 旁路边方案编号：仅在 reconfig 打开时真正参与调度
+static constexpr bool kHybridEnable = false;                        // true=启用方案三软硬混合前置分流
+static const std::vector<int> kHybridEnableList = {};               // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
+static constexpr bool kHybridFastClassifier = false;                // true=启用 S0/S1/S3 快速分类器
+static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只归一化 soft rows，false=保持兼容行为
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
     {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
      {0.428571,0.447738,0.482782,0.528162,0.581902,0.642857},               // 每个 tile 的 alpha 显式列表
@@ -175,6 +180,17 @@ std::string join_vec(const std::vector<float>& values, char sep, int precision) 
   return ofec_sweep::detail::join_vec(values, sep, precision);
 }
 
+std::string join_int_vec(const std::vector<int>& values, char sep) {
+  std::ostringstream oss;
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i > 0) {
+      oss << sep;
+    }
+    oss << values[i];
+  }
+  return oss.str();
+}
+
 std::string format_duration(std::chrono::duration<double> duration) {
   if (duration.count() < 0.0) {
     duration = std::chrono::duration<double>(0.0);
@@ -210,6 +226,7 @@ void ensure_csv_header_sweep3(const std::string& csv_path) {
           "alpha_list,beta_list,early_stop_beta_list,"
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
           "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_bypass_scheme,"
+          "hybrid_enable,hybrid_enable_list,hybrid_fast_classifier,hybrid_normalize_soft_only,"
           "early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
@@ -256,6 +273,10 @@ void write_csv_row_sweep3(std::ostream& csv,
       << point.scenario.mux_scheduling_mode << ','
       << point.scenario.mux_early_stop_priority_rule << ','
       << point.scenario.mux_bypass_scheme << ','
+      << (kHybridEnable ? 1 : 0) << ','
+      << '"' << join_int_vec(kHybridEnableList, '|') << "\","
+      << (kHybridFastClassifier ? 1 : 0) << ','
+      << (kHybridNormalizeSoftOnly ? 1 : 0) << ','
       << point.scenario.early_stop_condition_mode << ','
       << point.scenario.early_stop_action_mode << ','
       << point.scenario.early_stop_bind_group_size << ','
@@ -679,6 +700,15 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.LLR_CLIP_RATIO = kQuantClipRatio;
   config.base_params.LLR_BITS = kLlrBits;
   config.base_params.SISO_ACTIVE_LIST = kSisoActiveList;
+  config.base_params.HYBRID_ENABLE = kHybridEnable;
+  config.base_params.HYBRID_ENABLE_LIST = kHybridEnableList;
+  config.base_params.HYBRID_USE_FAST_CLASSIFIER = kHybridFastClassifier;
+  config.base_params.HYBRID_NORMALIZE_SOFT_ONLY = kHybridNormalizeSoftOnly;
+  if (!kHybridEnableList.empty() &&
+      kHybridEnableList.size() != kTilesPerWindow) {
+    throw std::invalid_argument(
+        "kHybridEnableList length must equal kTilesPerWindow when non-empty");
+  }
 
   config.interleaver_name = kInterleaverName;
   config.decoder_name = kDecoderName;
@@ -786,6 +816,10 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.MUX_EARLY_STOP_PRIORITY_RULE = kMuxPriorityRule;
   config.base_params.MUX_ENABLE_RECONFIG = kMuxEnableReconfig;
   config.base_params.MUX_EXTRA_BYPASS_EDGES = selected_mux_bypass_edges;
+  config.base_params.HYBRID_ENABLE = kHybridEnable;
+  config.base_params.HYBRID_ENABLE_LIST = kHybridEnableList;
+  config.base_params.HYBRID_USE_FAST_CLASSIFIER = kHybridFastClassifier;
+  config.base_params.HYBRID_NORMALIZE_SOFT_ONLY = kHybridNormalizeSoftOnly;
   config.base_params.EARLY_STOP_ENABLE_LIST = kEarlyStopEnableList;
   config.base_params.EARLY_STOP_CONDITION_MODE = kEarlyStopConditionMode;
   config.base_params.EARLY_STOP_ACTION_MODE = kEarlyStopActionMode;

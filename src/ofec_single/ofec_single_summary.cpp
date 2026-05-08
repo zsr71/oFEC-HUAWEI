@@ -111,6 +111,14 @@ void log_run_overview(const Config& cfg,
       << params.MUX_SCHEDULING_MODE << "/"
       << params.MUX_EARLY_STOP_PRIORITY_RULE
       << ", reconfig = " << (params.MUX_ENABLE_RECONFIG ? "ON" : "OFF") << "\n";
+  log << "[INFO] Hybrid prepass = "
+      << (params.HYBRID_ENABLE ? "ON" : "OFF")
+      << ", per-tile enable list = "
+      << format_compact_int_list(params.HYBRID_ENABLE_LIST)
+      << ", fast_classifier = "
+      << (params.HYBRID_USE_FAST_CLASSIFIER ? "ON" : "OFF")
+      << ", normalize_soft_only = "
+      << (params.HYBRID_NORMALIZE_SOFT_ONLY ? "ON" : "OFF") << "\n";
   log << "[INFO] Dump quantized LLR = "
       << (cfg.dump_quantized_llr ? "ON" : "OFF");
   if (cfg.dump_quantized_llr) {
@@ -159,6 +167,14 @@ void log_pipeline_results(const newcode::PipelineResult& result,
   if (!result.tile_row_early_stop_pct.empty()) {
     log << "[RESULT] EarlyStop (per-row) hit rates (%): "
         << format_compact_double_list(result.tile_row_early_stop_pct) << "\n";
+  }
+  if (!result.tile_hard_finish_count.empty()) {
+    log << "[RESULT] Hybrid hard-finish counts: "
+        << format_compact_size_t_list(result.tile_hard_finish_count) << "\n";
+  }
+  if (!result.tile_hard_finish_pct.empty()) {
+    log << "[RESULT] Hybrid hard-finish rates (% of rows): "
+        << format_compact_double_list(result.tile_hard_finish_pct) << "\n";
   }
 
   if (!result.tile_unscheduled_count.empty()) {

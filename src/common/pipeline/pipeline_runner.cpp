@@ -107,6 +107,17 @@ std::vector<std::size_t> collect_need_siso_before_mux_counts(
   return counts;
 }
 
+std::vector<std::size_t> collect_hard_finish_counts(
+    const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::vector<std::size_t> counts;
+  counts.reserve(counters.size());
+  for (const auto& counter : counters) {
+    counts.push_back(counter.row_hard_finish);
+  }
+  return counts;
+}
+
 std::vector<std::size_t> collect_unscheduled_counts(
     const std::vector<TileEarlyStopCounter>& counters)
 {
@@ -127,6 +138,22 @@ std::vector<double> compute_unscheduled_percentages(
     double value = 0.0;
     if (counter.row_total > 0) {
       value = static_cast<double>(counter.row_unscheduled) /
+              static_cast<double>(counter.row_total) * 100.0;
+    }
+    pct.push_back(value);
+  }
+  return pct;
+}
+
+std::vector<double> compute_hard_finish_percentages(
+    const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::vector<double> pct;
+  pct.reserve(counters.size());
+  for (const auto& counter : counters) {
+    double value = 0.0;
+    if (counter.row_total > 0) {
+      value = static_cast<double>(counter.row_hard_finish) /
               static_cast<double>(counter.row_total) * 100.0;
     }
     pct.push_back(value);
@@ -383,6 +410,10 @@ PipelineResult run_pipeline(const Params& params,
   result.tile_row_early_stop_pct = compute_row_early_stop_percentages(decode_result.tile_stats);
   result.tile_early_stop_samples =
       collect_tile_early_stop_samples(decode_result.tile_stats);
+  result.tile_hard_finish_count =
+      collect_hard_finish_counts(decode_result.tile_stats);
+  result.tile_hard_finish_pct =
+      compute_hard_finish_percentages(decode_result.tile_stats);
   result.tile_need_siso_before_mux_count =
       collect_need_siso_before_mux_counts(decode_result.tile_stats);
   result.tile_unscheduled_count =

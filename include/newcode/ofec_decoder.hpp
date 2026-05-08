@@ -13,6 +13,9 @@ struct TileEarlyStopSample {
   std::size_t tile_index = 0;
   std::size_t rows_total = 0;
   std::size_t rows_passed = 0;
+  std::size_t rows_hard_finish = 0;
+  std::size_t rows_need_siso_before_mux = 0;
+  std::size_t rows_unscheduled = 0;
 };
 
 struct TileEarlyStopCounter {
@@ -20,6 +23,7 @@ struct TileEarlyStopCounter {
   std::size_t total = 0;
   std::size_t row_triggered = 0;
   std::size_t row_total = 0;
+  std::size_t row_hard_finish = 0;
   std::size_t row_need_siso_before_mux = 0;
   std::size_t row_unscheduled = 0;
   std::vector<TileEarlyStopSample> samples;
@@ -31,6 +35,7 @@ struct TileProcessResult {
   bool early_stop_triggered = false;
   std::size_t rows_early_stop = 0;
   std::size_t rows_total = 0;
+  std::size_t rows_hard_finish = 0;
   std::size_t rows_need_siso_before_mux = 0;
   std::size_t rows_unscheduled = 0;
 };

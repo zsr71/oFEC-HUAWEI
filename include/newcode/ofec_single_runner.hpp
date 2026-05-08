@@ -52,6 +52,10 @@ struct Config {
   int mux_early_stop_priority_rule = 0;
   bool mux_enable_reconfig = false;
   std::vector<newcode::mux::MuxEdge> mux_extra_bypass_edges;
+  bool hybrid_enable = false;
+  std::vector<int> hybrid_enable_list;
+  bool hybrid_use_fast_classifier = false;
+  bool hybrid_normalize_soft_only = false;
   std::string interleaver_name;
   std::string decoder_name;
   bool generate_random_bits = true;

@@ -47,6 +47,11 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   if (!mux_ok.ok) {
     throw std::invalid_argument("ofec_decode_llr: " + mux_ok.error);
   }
+  if (!p.HYBRID_ENABLE_LIST.empty() &&
+      p.HYBRID_ENABLE_LIST.size() != p.TILES_PER_WIN) {
+    throw std::invalid_argument(
+        "ofec_decode_llr: HYBRID_ENABLE_LIST length must equal TILES_PER_WIN");
+  }
   const std::size_t rows_to_decode =
       static_cast<std::size_t>(p.CHASE_SBR) *
       newcode::Params::BITS_PER_SUBBLOCK_DIM;

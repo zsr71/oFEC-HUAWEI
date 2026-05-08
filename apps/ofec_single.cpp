@@ -10,16 +10,16 @@
 static constexpr const char* kLabel              = "debug_L6";    // 运行标签：日志名、输出文件名前缀都会带这个名字
 static constexpr int         kChaseL_override    = 6;             // Chase L，-1 表示使用 Params 里的默认值
 static constexpr int         kBitgenSeed         = 20260319;    // 比特生成随机种子，固定后可复现实验
-static constexpr bool        kGenerateRandomBits = true;          // true=发送随机信息比特，false=发送全 0 比特
+static constexpr bool        kGenerateRandomBits = true;       // true=发送随机信息比特，false=发送全 0 比特
 
 // 信道参数
-static constexpr float       kEbN0_db                      = 3.06f;   // 信道 Eb/N0，单位 dB
+static constexpr float       kEbN0_db                      = 3.05f;   // 信道 Eb/N0，单位 dB
 static constexpr int         kChannelSeed                  = 3182026; // 信道噪声随机种子，固定后可复现实验
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
 //早停参数
-static constexpr bool        kEnableEarlyStop              = true;   // true=启用早停，false=完全关闭早停路径
-static const std::vector<int> kEarlyStopEnableList         = {0,0,0,0,1,1};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
+static constexpr bool        kEnableEarlyStop              = false;   // true=启用早停，false=完全关闭早停路径
+static const std::vector<int> kEarlyStopEnableList         = {1,1,1,1,1,1};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
 static constexpr int         kEarlyStopConditionMode       = 1;       // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionModeList  = {};      // 按 tile 覆盖早停条件模式；空表示所有 tile 沿用 kEarlyStopConditionMode
 static constexpr int         kEarlyStopActionMode          = 6;       // 早停命中后的动作：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta，6=直接输出 ±early-stop beta
@@ -71,6 +71,10 @@ static constexpr int  kMuxSchedulingMode  = 0;                     // MUX 调度
 static constexpr int  kMuxPriorityRule    = 0;                     // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
 static constexpr bool kMuxEnableReconfig  = false;                 // true 表示启用重配置版 MUX 调度
 static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边集合方案编号：1=scheme1，2=scheme2
+static constexpr bool kHybridEnable       = true;                 // true=方案三软硬混合前置分流开关
+static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 0, 1}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
+static constexpr bool kHybridFastClassifier = true;               // 预留：是否启用 S0/S1/S3 快速分类器
+static constexpr bool kHybridNormalizeSoftOnly = false;            // true=只归一化 soft rows，false=保持当前兼容行为
 
 // LLR 导出相关
 static constexpr bool        kDumpQuantizedLlr = false;                         // 是否导出量化后的信道 LLR
@@ -170,6 +174,10 @@ int main() {
     .mux_early_stop_priority_rule = kMuxPriorityRule,
     .mux_enable_reconfig = kMuxEnableReconfig,
     .mux_extra_bypass_edges = selected_mux_bypass_edges,
+    .hybrid_enable = kHybridEnable,
+    .hybrid_enable_list = kHybridEnableList,
+    .hybrid_use_fast_classifier = kHybridFastClassifier,
+    .hybrid_normalize_soft_only = kHybridNormalizeSoftOnly,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,
     .generate_random_bits = kGenerateRandomBits,

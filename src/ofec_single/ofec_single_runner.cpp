@@ -12,12 +12,16 @@ void dump_tile_early_stop_samples_csv(
     std::filesystem::create_directories(parent);
   }
   std::ofstream out(output_path);
-  out << "invocation,tile_index,rows_total,rows_passed\n";
+  out << "invocation,tile_index,rows_total,rows_passed,"
+         "rows_hard_finish,rows_need_siso_before_mux,rows_unscheduled\n";
   for (const auto& sample : samples) {
     out << sample.invocation << ','
         << sample.tile_index << ','
         << sample.rows_total << ','
-        << sample.rows_passed << '\n';
+        << sample.rows_passed << ','
+        << sample.rows_hard_finish << ','
+        << sample.rows_need_siso_before_mux << ','
+        << sample.rows_unscheduled << '\n';
   }
 }
 

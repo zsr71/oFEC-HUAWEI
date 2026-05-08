@@ -77,8 +77,13 @@ static int berlekamp_massey_t2(const uint8_t S[4], uint8_t sigma[3])
 
     for (int n = 0; n < 4; ++n)
     {
+        // 本实现只支持 t=2，因此 sigma/C/B 只保留 0..2 三项。
+        // 一旦 BM 过程已经判定 L>2，后续样本不可纠，必须提前退出，
+        // 否则 discrepancy 计算会访问 C[3] 越界。
+        if (L > 2) return L;
+
         uint8_t d = S[n];
-        for (int i = 1; i <= L; ++i) d ^= G::mul(C[i], S[n-i]);
+        for (int i = 1; i <= L && i <= 2; ++i) d ^= G::mul(C[i], S[n-i]);
 
         if (d == 0) { m++; continue; }
 
@@ -89,6 +94,10 @@ static int berlekamp_massey_t2(const uint8_t S[4], uint8_t sigma[3])
 
         if (2*L <= n) { L = n + 1 - L; B[0]=T0; B[1]=T1; B[2]=T2; b=d; m=1; }
         else          { m++; }
+
+        // L>2 表示当前硬判码字已经超过 BCH(255,239) 的 t=2 能力。
+        // 这里立即返回，让上层按“硬译码失败”处理，不再继续构造 sigma。
+        if (L > 2) return L;
     }
     sigma[0]=C[0]; sigma[1]=C[1]; sigma[2]=C[2];
     return L; // 0/1/2
@@ -151,7 +160,8 @@ bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255,
     uint8_t sigma[3]; int L = berlekamp_massey_t2(S, sigma);
     if (L < 0 || L > 2) {
         if (corrected_errors) *corrected_errors = -1;
-        std::memcpy(out255, cw, GF256::N);
+        // 失败时不向外暴露任何“半纠错”结果，统一回传原始输入。
+        std::memcpy(out255, in255, GF256::N);
         return false;
     }
 
@@ -168,9 +178,18 @@ bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255,
         trace->has_output_syndromes = true;
     }
     bool ok = ((S2[0]|S2[1]|S2[2]|S2[3]) == 0);
-    if (corrected_errors) *corrected_errors = ok ? corr : -1;
-    std::memcpy(out255, cw, GF256::N);
-    return ok;
+    if (ok) {
+        if (corrected_errors) *corrected_errors = corr;
+        std::memcpy(out255, cw, GF256::N);
+        return true;
+    }
+
+    // Chien 已经翻过 cw，但最终 syndrome 仍未清零，说明这不是合法纠错结果。
+    // 按接口契约：只有 return true 才允许 out255 携带纠错后的合法码字；
+    // return false 时必须回传原始输入，避免上层误用半成品 cw。
+    if (corrected_errors) *corrected_errors = -1;
+    std::memcpy(out255, in255, GF256::N);
+    return false;
 }
 
 bool bch_255_239_syndromes_zero_cw_255(const uint8_t* in255)

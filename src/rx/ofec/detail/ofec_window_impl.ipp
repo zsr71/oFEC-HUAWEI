@@ -117,6 +117,10 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             pick_int(p.EARLY_STOP_BIND_GROUP_SIZE_LIST,
                      t,
                      p.EARLY_STOP_BIND_GROUP_SIZE);
+        tile_params.HYBRID_ENABLE =
+            pick_int(p.HYBRID_ENABLE_LIST,
+                     t,
+                     p.HYBRID_ENABLE ? 1 : 0) != 0;
         tile_params.ALPHA = pick_float(p.ALPHA_LIST, t, p.ALPHA);
         tile_params.debug_trace.chase_tile_index = static_cast<int>(t);
         tile_params.debug_trace.chase_invocation =
@@ -147,6 +151,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
       }
       counter.row_total += tile_result.rows_total;
       counter.row_triggered += tile_result.rows_early_stop;
+      counter.row_hard_finish += tile_result.rows_hard_finish;
       counter.row_need_siso_before_mux += tile_result.rows_need_siso_before_mux;
       counter.row_unscheduled += tile_result.rows_unscheduled;
       counter.samples.push_back(TileEarlyStopSample{
@@ -154,6 +159,9 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
           .tile_index = t,
           .rows_total = tile_result.rows_total,
           .rows_passed = tile_result.rows_early_stop,
+          .rows_hard_finish = tile_result.rows_hard_finish,
+          .rows_need_siso_before_mux = tile_result.rows_need_siso_before_mux,
+          .rows_unscheduled = tile_result.rows_unscheduled,
       });
     }
 

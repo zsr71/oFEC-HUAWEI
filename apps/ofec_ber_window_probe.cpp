@@ -29,7 +29,7 @@ static constexpr unsigned kMaxParallelEbN0 = 0;  // Eb/N0 并行度上限；0=�
 static constexpr unsigned kMaxParallelSeeds = 0; // 每个 Eb/N0 内部的 seed 并行度上限；0=自动使用硬件并发
 
 // 测试点与 seed
-static const std::vector<float> kEbN0List = {3.042051f}; // 需要测试的 Eb/N0 列表
+static const std::vector<float> kEbN0List = {3.05f}; // 需要测试的 Eb/N0 列表
 static constexpr int kBitgenSeedBase = 20260319;         // 基础比特种子；实际每个 seed 在此基础上递增
 static constexpr int kChannelSeedBase = 3182026;         // 基础信道种子；实际每个 seed 在此基础上递增
 static constexpr int kSeedCount = 1;                    // 每个 Eb/N0 点重复运行的 seed 数量
@@ -45,7 +45,7 @@ static constexpr bool        kEnableEarlyStop              = true;   // 早停�
 static const std::vector<int> kEarlyStopEnableList         = {0,0,0,0,1,1}; // 按 tile 覆盖早停总开关：0=关，非 0=开
 static constexpr int         kEarlyStopConditionMode       = 1;      // 早停条件模式：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionModeList  = {};     // 按 tile 覆盖条件模式；空表示沿用全局值
-static constexpr int         kEarlyStopActionMode          = 4;      // 早停动作模式：1~6
+static constexpr int         kEarlyStopActionMode          = 1;      // 早停动作模式：1~6
 static const std::vector<int> kEarlyStopActionModeList     = {};     // 按 tile 覆盖动作模式；空表示沿用全局值
 static constexpr int         kEarlyStopBindGroupSize       = 1;      // 条件1的绑定组大小：1=逐 row，4=四个绑定
 static const std::vector<int> kEarlyStopBindGroupSizeList  = {};     // 按 tile 覆盖绑定组大小；空表示沿用全局值
@@ -78,14 +78,18 @@ static const std::vector<float> kBetaExplicit = {
     2.857143f, 6.179301f, 12.253626f, 20.119585f, 29.434408f, 40.000000f // 每个 tile 的普通 beta 显式列表
 };
 static const std::vector<float> kEarlyStopActionBetaExplicit = {
-    2.857143f, 6.179301f, 12.253626f, 20.119585f, 29.434408f, 40.000000f // 每个 tile 的 early-stop 专用 beta 显式列表
+    99.857143f, 99.179301f, 99.253626f, 99.119585f, 99.434408f, 99.000000f // 每个 tile 的 early-stop 专用 beta 显式列表
 };
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 32, 8}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                             // MUX 分组粒度，1 表示全局池化
 static constexpr int  kMuxSchedulingMode  = 0;                             // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                             // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
 static constexpr bool kMuxEnableReconfig  = false;                         // true 表示启用重配置版 MUX 调度
 static constexpr int  kMuxBypassScheme    = 1;                             // 旁路边集合方案编号：1=scheme1，2=scheme2
+static constexpr bool kHybridEnable       = false;                         // true=方案三软硬混合前置分流开关
+static const std::vector<int> kHybridEnableList = {0,0,0,0,0,0};                      // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
+static constexpr bool kHybridFastClassifier = false;                       // true=启用 S0/S1/S3 快速分类器
+static constexpr bool kHybridNormalizeSoftOnly = false;                    // true=只归一化 soft rows，false=保持当前兼容行为
 
 // ==================================
 
@@ -146,6 +150,9 @@ struct TileEarlyStopSampleRow {
   std::size_t tile_index = 0;
   std::size_t rows_total = 0;
   std::size_t rows_passed = 0;
+  std::size_t rows_hard_finish = 0;
+  std::size_t rows_need_siso_before_mux = 0;
+  std::size_t rows_unscheduled = 0;
 };
 
 // 某个 Eb/N0 点的完整结果。
@@ -155,6 +162,10 @@ struct TileEarlyStopSampleRow {
 // - 原始逐 seed、逐 window / tile 行
 struct EbN0RunResult {
   float ebn0_db = 0.0f;
+  newcode::BerStats pre_fec{};
+  newcode::BerStats pre_fec_quantized_hard{};
+  newcode::BerStats post_fec{};
+  bool has_pre_fec_quantized_hard = false;
   std::vector<AggregatedWindowStats> aggregated;
   std::vector<AggregatedWindowStats> tile_aggregated;
   std::vector<RawWindowRow> raw_rows;
@@ -214,6 +225,79 @@ unsigned resolved_parallel_seeds_for_ebn0(unsigned ebn0_parallelism) {
   return std::max(1u, hc / std::max(1u, ebn0_parallelism));
 }
 
+// 输出一个 Eb/N0 点的整体 BER 汇总，风格接近 ofec_single。
+void log_ebn0_result_summary(io::DualWriter& log,
+                             const EbN0RunResult& result) {
+  log << "[RESULT] Eb/N0=" << result.ebn0_db << " dB"
+      << " | Pre-FEC BER=" << result.pre_fec.ber
+      << " (errs=" << result.pre_fec.errors
+      << "/" << result.pre_fec.total << ")";
+  if (result.has_pre_fec_quantized_hard) {
+    log << " | Pre-FEC BER (quantized hard)="
+        << result.pre_fec_quantized_hard.ber
+        << " (errs=" << result.pre_fec_quantized_hard.errors
+        << "/" << result.pre_fec_quantized_hard.total << ")";
+  }
+  log << " | Post-FEC BER=" << result.post_fec.ber
+      << " (errs=" << result.post_fec.errors
+      << "/" << result.post_fec.total << ")\n";
+
+  log << "[DETAIL] Eb/N0=" << result.ebn0_db
+      << " seeds=" << kSeedCount
+      << " windows=" << result.aggregated.size()
+      << " tiles=" << result.tile_aggregated.size()
+      << " raw_window_rows=" << result.raw_rows.size()
+      << " raw_tile_rows=" << result.raw_tile_rows.size()
+      << " early_stop_sample_rows=" << result.tile_early_stop_rows.size()
+      << "\n";
+}
+
+// 输出所有 Eb/N0 点累加后的总汇总。
+void log_probe_total_summary(io::DualWriter& log,
+                             const std::vector<EbN0RunResult>& results) {
+  newcode::BerStats pre{};
+  newcode::BerStats pre_quantized{};
+  newcode::BerStats post{};
+  bool has_pre_quantized = false;
+
+  for (const auto& result : results) {
+    pre.errors += result.pre_fec.errors;
+    pre.total += result.pre_fec.total;
+    if (result.has_pre_fec_quantized_hard) {
+      has_pre_quantized = true;
+      pre_quantized.errors += result.pre_fec_quantized_hard.errors;
+      pre_quantized.total += result.pre_fec_quantized_hard.total;
+    }
+    post.errors += result.post_fec.errors;
+    post.total += result.post_fec.total;
+  }
+
+  pre.ber = (pre.total == 0)
+                ? 0.0
+                : static_cast<double>(pre.errors) /
+                      static_cast<double>(pre.total);
+  pre_quantized.ber =
+      (pre_quantized.total == 0)
+          ? 0.0
+          : static_cast<double>(pre_quantized.errors) /
+                static_cast<double>(pre_quantized.total);
+  post.ber = (post.total == 0)
+                 ? 0.0
+                 : static_cast<double>(post.errors) /
+                       static_cast<double>(post.total);
+
+  log << "[SUMMARY] Total Eb/N0 points=" << results.size()
+      << " | Pre-FEC BER=" << pre.ber
+      << " (errs=" << pre.errors << "/" << pre.total << ")";
+  if (has_pre_quantized) {
+    log << " | Pre-FEC BER (quantized hard)=" << pre_quantized.ber
+        << " (errs=" << pre_quantized.errors
+        << "/" << pre_quantized.total << ")";
+  }
+  log << " | Post-FEC BER=" << post.ber
+      << " (errs=" << post.errors << "/" << post.total << ")\n";
+}
+
 // 写逐 seed、逐 window 的原始 CSV 表头。
 // 这份表主要用于时域曲线、窗口分布和 Matlab 事后分析。
 void write_raw_header(std::ofstream& out) {
@@ -231,7 +315,9 @@ void write_raw_tile_header(std::ofstream& out) {
 
 // 写 tile early-stop 样本 CSV 表头。
 void write_tile_early_stop_samples_header(std::ofstream& out) {
-  out << "ebn0_db,seed_index,bitgen_seed,channel_seed,invocation,tile_index,rows_total,rows_passed\n";
+  out << "ebn0_db,seed_index,bitgen_seed,channel_seed,invocation,tile_index,"
+         "rows_total,rows_passed,rows_hard_finish,rows_need_siso_before_mux,"
+         "rows_unscheduled\n";
   out.flush();
 }
 
@@ -250,6 +336,35 @@ void write_aggregated_tile_header(std::ofstream& out) {
          "agg_pre_errs,agg_pre_bits,agg_pre_ber,"
          "agg_post_errs,agg_post_bits,agg_post_ber\n";
   out.flush();
+}
+
+// 聚合一个 seed 的整体 BER 到当前 Eb/N0 结果。
+void accumulate_overall_ber(EbN0RunResult& out,
+                            const newcode::PipelineResult& result) {
+  out.pre_fec.errors += result.pre_fec.errors;
+  out.pre_fec.total += result.pre_fec.total;
+  out.pre_fec.ber = (out.pre_fec.total == 0)
+                        ? 0.0
+                        : static_cast<double>(out.pre_fec.errors) /
+                              static_cast<double>(out.pre_fec.total);
+
+  if (result.has_pre_fec_quantized_hard) {
+    out.has_pre_fec_quantized_hard = true;
+    out.pre_fec_quantized_hard.errors += result.pre_fec_quantized_hard.errors;
+    out.pre_fec_quantized_hard.total += result.pre_fec_quantized_hard.total;
+    out.pre_fec_quantized_hard.ber =
+        (out.pre_fec_quantized_hard.total == 0)
+            ? 0.0
+            : static_cast<double>(out.pre_fec_quantized_hard.errors) /
+                  static_cast<double>(out.pre_fec_quantized_hard.total);
+  }
+
+  out.post_fec.errors += result.post_fec.errors;
+  out.post_fec.total += result.post_fec.total;
+  out.post_fec.ber = (out.post_fec.total == 0)
+                         ? 0.0
+                         : static_cast<double>(out.post_fec.errors) /
+                               static_cast<double>(out.post_fec.total);
 }
 
 // 构造 probe 用的基础 ofec_single 配置。
@@ -293,6 +408,10 @@ ofec_single::Config make_base_config() {
       .mux_early_stop_priority_rule = kMuxPriorityRule,
       .mux_enable_reconfig = kMuxEnableReconfig,
       .mux_extra_bypass_edges = selected_mux_bypass_edges,
+      .hybrid_enable = kHybridEnable,
+      .hybrid_enable_list = kHybridEnableList,
+      .hybrid_use_fast_classifier = kHybridFastClassifier,
+      .hybrid_normalize_soft_only = kHybridNormalizeSoftOnly,
       .interleaver_name = kInterleaverName,
       .decoder_name = kDecoderName,
       .generate_random_bits = kGenerateRandomBits,
@@ -331,7 +450,7 @@ std::vector<SeedRunResult> run_seed_tasks(std::vector<SeedTask> tasks,
       return out;
     });
   };
-
+  //限制的是 seed 任务并行数
   for (auto& task : tasks) {
     pending.push_back(launch_task(std::move(task)));
     if (pending.size() >= max_parallel_seeds) {
@@ -339,6 +458,7 @@ std::vector<SeedRunResult> run_seed_tasks(std::vector<SeedTask> tasks,
       pending.erase(pending.begin());
     }
   }
+  //收集剩余 seed 异步任务结果，并按 seed 编号排序
   for (auto& future : pending) {
     seed_results.push_back(future.get());
   }
@@ -363,6 +483,8 @@ EbN0RunResult run_ebn0_probe(EbN0TaskGroup task_group,
 
   for (const auto& seed_result : seed_results) {
     const newcode::PipelineResult& result = seed_result.pipeline_result;
+    accumulate_overall_ber(out, result);
+
     const std::size_t max_windows =
         std::max(result.pre_fec_windows.size(), result.post_fec_windows.size());
     ensure_aggregated_size(out.aggregated, max_windows);
@@ -436,6 +558,9 @@ EbN0RunResult run_ebn0_probe(EbN0TaskGroup task_group,
           .tile_index = sample.tile_index,
           .rows_total = sample.rows_total,
           .rows_passed = sample.rows_passed,
+          .rows_hard_finish = sample.rows_hard_finish,
+          .rows_need_siso_before_mux = sample.rows_need_siso_before_mux,
+          .rows_unscheduled = sample.rows_unscheduled,
       });
     }
   }
@@ -527,7 +652,8 @@ int main() {
         << " dB, seed_parallelism=" << seed_parallel << '\n';
     pending_ebn0.push_back(std::async(std::launch::async, [task_group = std::move(task_group), pipeline_cfg, seed_parallel]() mutable {
       return run_ebn0_probe(std::move(task_group), pipeline_cfg, seed_parallel);
-    }));
+    }));//移交给一个异步线程执行
+    //并行限流代码
     if (pending_ebn0.size() >= ebn0_parallel) {
       ebn0_results.push_back(pending_ebn0.front().get());
       pending_ebn0.erase(pending_ebn0.begin());
@@ -535,7 +661,8 @@ int main() {
   }
   for (auto& future : pending_ebn0) {
     ebn0_results.push_back(future.get());
-  }
+  }//收集所有剩余异步任务结果
+  //然后按 Eb/N0 从低到高排列结果
   std::sort(ebn0_results.begin(), ebn0_results.end(),
             [](const EbN0RunResult& lhs, const EbN0RunResult& rhs) {
               return lhs.ebn0_db < rhs.ebn0_db;
@@ -543,6 +670,8 @@ int main() {
 
   // 8) 把逐 seed、逐 window / tile 的原始结果和聚合结果写回 CSV。
   for (const auto& ebn0_result : ebn0_results) {
+    log_ebn0_result_summary(log, ebn0_result);
+
     for (const auto& row : ebn0_result.raw_rows) {
       raw_csv << std::fixed << std::setprecision(6)
               << row.ebn0_db << ','
@@ -582,7 +711,10 @@ int main() {
                                   << sample.invocation << ','
                                   << sample.tile_index << ','
                                   << sample.rows_total << ','
-                                  << sample.rows_passed << '\n';
+                                  << sample.rows_passed << ','
+                                  << sample.rows_hard_finish << ','
+                                  << sample.rows_need_siso_before_mux << ','
+                                  << sample.rows_unscheduled << '\n';
     }
 
     for (const auto& entry : ebn0_result.aggregated) {
@@ -630,8 +762,8 @@ int main() {
                           << entry.agg_post_bits << ','
                           << agg_post_ber << '\n';
     }
-    log << "[INFO] Eb/N0=" << ebn0_result.ebn0_db << '\n';
   }
+  log_probe_total_summary(log, ebn0_results);
 
   // 9) 收尾日志，提示输出已经写到哪个目录。
   log << "[INFO] outputs saved under " << output_dir.string() << "\n";

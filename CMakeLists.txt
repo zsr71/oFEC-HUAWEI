@@ -194,6 +194,11 @@ add_executable(ofec_ber_window_probe
 )
 target_link_libraries(ofec_ber_window_probe PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
 
+add_executable(ofec_hybrid_regression_check
+  apps/ofec_hybrid_regression_check.cpp
+)
+target_link_libraries(ofec_hybrid_regression_check PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
+
 add_executable(tpc_single
   apps/TPC_single.cpp
   src/tpc/tpc_decoder.cpp
