@@ -76,7 +76,8 @@ static constexpr bool kMuxEnableReconfig = false;                   // 是否启
 static constexpr int kMuxBypassScheme = 3;                          // 旁路边方案编号：仅在 reconfig 打开时真正参与调度
 static constexpr bool kHybridEnable = false;                        // true=启用方案三软硬混合前置分流
 static const std::vector<int> kHybridEnableList = {};               // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
-static constexpr bool kHybridFastClassifier = false;                // true=启用 S0/S1/S3 快速分类器
+static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
+    newcode::HybridClassifierMode::LegacyHardDecode;                // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier
 static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只归一化 soft rows，false=保持兼容行为
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
     {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
@@ -191,6 +192,18 @@ std::string join_int_vec(const std::vector<int>& values, char sep) {
   return oss.str();
 }
 
+const char* hybrid_classifier_mode_name(newcode::HybridClassifierMode mode) {
+  switch (mode) {
+    case newcode::HybridClassifierMode::LegacyHardDecode:
+      return "legacy_hard_decode";
+    case newcode::HybridClassifierMode::RepoFastClassifier:
+      return "repo_fast_classifier";
+    case newcode::HybridClassifierMode::FriendS1S3Classifier:
+      return "friend_s1s3_classifier";
+  }
+  return "unknown";
+}
+
 std::string format_duration(std::chrono::duration<double> duration) {
   if (duration.count() < 0.0) {
     duration = std::chrono::duration<double>(0.0);
@@ -226,7 +239,7 @@ void ensure_csv_header_sweep3(const std::string& csv_path) {
           "alpha_list,beta_list,early_stop_beta_list,"
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
           "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_bypass_scheme,"
-          "hybrid_enable,hybrid_enable_list,hybrid_fast_classifier,hybrid_normalize_soft_only,"
+          "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_normalize_soft_only,"
           "early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
@@ -275,7 +288,7 @@ void write_csv_row_sweep3(std::ostream& csv,
       << point.scenario.mux_bypass_scheme << ','
       << (kHybridEnable ? 1 : 0) << ','
       << '"' << join_int_vec(kHybridEnableList, '|') << "\","
-      << (kHybridFastClassifier ? 1 : 0) << ','
+      << hybrid_classifier_mode_name(kHybridClassifierMode) << ','
       << (kHybridNormalizeSoftOnly ? 1 : 0) << ','
       << point.scenario.early_stop_condition_mode << ','
       << point.scenario.early_stop_action_mode << ','
@@ -702,7 +715,9 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.SISO_ACTIVE_LIST = kSisoActiveList;
   config.base_params.HYBRID_ENABLE = kHybridEnable;
   config.base_params.HYBRID_ENABLE_LIST = kHybridEnableList;
-  config.base_params.HYBRID_USE_FAST_CLASSIFIER = kHybridFastClassifier;
+  config.base_params.HYBRID_CLASSIFIER_MODE = kHybridClassifierMode;
+  config.base_params.HYBRID_USE_FAST_CLASSIFIER =
+      kHybridClassifierMode != newcode::HybridClassifierMode::LegacyHardDecode;
   config.base_params.HYBRID_NORMALIZE_SOFT_ONLY = kHybridNormalizeSoftOnly;
   if (!kHybridEnableList.empty() &&
       kHybridEnableList.size() != kTilesPerWindow) {
@@ -818,7 +833,9 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.MUX_EXTRA_BYPASS_EDGES = selected_mux_bypass_edges;
   config.base_params.HYBRID_ENABLE = kHybridEnable;
   config.base_params.HYBRID_ENABLE_LIST = kHybridEnableList;
-  config.base_params.HYBRID_USE_FAST_CLASSIFIER = kHybridFastClassifier;
+  config.base_params.HYBRID_CLASSIFIER_MODE = kHybridClassifierMode;
+  config.base_params.HYBRID_USE_FAST_CLASSIFIER =
+      kHybridClassifierMode != newcode::HybridClassifierMode::LegacyHardDecode;
   config.base_params.HYBRID_NORMALIZE_SOFT_ONLY = kHybridNormalizeSoftOnly;
   config.base_params.EARLY_STOP_ENABLE_LIST = kEarlyStopEnableList;
   config.base_params.EARLY_STOP_CONDITION_MODE = kEarlyStopConditionMode;
