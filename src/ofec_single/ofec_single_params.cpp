@@ -197,7 +197,9 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.MUX_EXTRA_BYPASS_EDGES = cfg.mux_extra_bypass_edges;
   params.HYBRID_ENABLE = cfg.hybrid_enable;
   params.HYBRID_ENABLE_LIST = cfg.hybrid_enable_list;
-  params.HYBRID_USE_FAST_CLASSIFIER = cfg.hybrid_use_fast_classifier;
+  params.HYBRID_CLASSIFIER_MODE = cfg.hybrid_classifier_mode;
+  params.HYBRID_USE_FAST_CLASSIFIER =
+      cfg.hybrid_classifier_mode != newcode::HybridClassifierMode::LegacyHardDecode;
   params.HYBRID_NORMALIZE_SOFT_ONLY = cfg.hybrid_normalize_soft_only;
   if (!params.HYBRID_ENABLE_LIST.empty() &&
       params.HYBRID_ENABLE_LIST.size() != tiles) {

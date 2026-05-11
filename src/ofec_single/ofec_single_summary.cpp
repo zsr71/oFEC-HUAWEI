@@ -1,4 +1,5 @@
 #include "newcode/ofec_single_runner.hpp"
+#include "newcode/ofec/hybrid/hybrid_classifier.hpp"
 #include "newcode/io/dualwriter.hpp"
 #include <algorithm>
 #include <iomanip>
@@ -8,6 +9,18 @@ namespace ofec_single {
 namespace {
 
 constexpr std::size_t kDefaultPositionsToPrint = 10;
+
+const char* hybrid_classifier_mode_name(newcode::HybridClassifierMode mode) {
+  switch (mode) {
+    case newcode::HybridClassifierMode::LegacyHardDecode:
+      return "legacy_hard_decode";
+    case newcode::HybridClassifierMode::RepoFastClassifier:
+      return "repo_fast_classifier";
+    case newcode::HybridClassifierMode::FriendS1S3Classifier:
+      return "friend_s1s3_classifier";
+  }
+  return "unknown";
+}
 
 std::string format_compact_int_list(const std::vector<int>& values) {
   std::ostringstream oss;
@@ -115,8 +128,9 @@ void log_run_overview(const Config& cfg,
       << (params.HYBRID_ENABLE ? "ON" : "OFF")
       << ", per-tile enable list = "
       << format_compact_int_list(params.HYBRID_ENABLE_LIST)
-      << ", fast_classifier = "
-      << (params.HYBRID_USE_FAST_CLASSIFIER ? "ON" : "OFF")
+      << ", classifier_mode = "
+      << hybrid_classifier_mode_name(
+             newcode::detail::effective_hybrid_classifier_mode(params))
       << ", normalize_soft_only = "
       << (params.HYBRID_NORMALIZE_SOFT_ONLY ? "ON" : "OFF") << "\n";
   log << "[INFO] Dump quantized LLR = "

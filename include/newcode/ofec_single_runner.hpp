@@ -54,7 +54,8 @@ struct Config {
   std::vector<newcode::mux::MuxEdge> mux_extra_bypass_edges;
   bool hybrid_enable = false;
   std::vector<int> hybrid_enable_list;
-  bool hybrid_use_fast_classifier = false;
+  newcode::HybridClassifierMode hybrid_classifier_mode =
+      newcode::HybridClassifierMode::LegacyHardDecode;
   bool hybrid_normalize_soft_only = false;
   std::string interleaver_name;
   std::string decoder_name;

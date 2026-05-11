@@ -18,7 +18,7 @@ static constexpr int         kChannelSeed                  = 3182026; // 信道�
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
 //早停参数
-static constexpr bool        kEnableEarlyStop              = false;   // true=启用早停，false=完全关闭早停路径
+static constexpr bool        kEnableEarlyStop              = true;   // true=启用早停，false=完全关闭早停路径
 static const std::vector<int> kEarlyStopEnableList         = {1,1,1,1,1,1};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
 static constexpr int         kEarlyStopConditionMode       = 1;       // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionModeList  = {};      // 按 tile 覆盖早停条件模式；空表示所有 tile 沿用 kEarlyStopConditionMode
@@ -65,7 +65,7 @@ static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chas
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
   99.857143,99.179301,99.253626,99.119585,99.434408,99.000000
 };
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,32}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,4}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                     // MUX 分组粒度，1 表示全局池化
 static constexpr int  kMuxSchedulingMode  = 0;                     // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                     // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
@@ -73,7 +73,8 @@ static constexpr bool kMuxEnableReconfig  = false;                 // true 表�
 static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边集合方案编号：1=scheme1，2=scheme2
 static constexpr bool kHybridEnable       = true;                 // true=方案三软硬混合前置分流开关
 static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 0, 1}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
-static constexpr bool kHybridFastClassifier = true;               // 预留：是否启用 S0/S1/S3 快速分类器
+static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
+    newcode::HybridClassifierMode::FriendS1S3Classifier;            // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier
 static constexpr bool kHybridNormalizeSoftOnly = false;            // true=只归一化 soft rows，false=保持当前兼容行为
 
 // LLR 导出相关
@@ -176,7 +177,7 @@ int main() {
     .mux_extra_bypass_edges = selected_mux_bypass_edges,
     .hybrid_enable = kHybridEnable,
     .hybrid_enable_list = kHybridEnableList,
-    .hybrid_use_fast_classifier = kHybridFastClassifier,
+    .hybrid_classifier_mode = kHybridClassifierMode,
     .hybrid_normalize_soft_only = kHybridNormalizeSoftOnly,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,

@@ -1,33 +1,13 @@
 #pragma once
 
-#include "newcode/common/bch/bch_255_239.hpp"
-#include "newcode/common/qfloat/llr_utils.hpp"
+#include "newcode/ofec/hybrid/hybrid_classifier.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cstdint>
-#include <cmath>
 #include <vector>
 
 namespace newcode {
 namespace detail {
-
-// hybrid prepass 对单行的分类标签。
-// 目前真正参与流程控制的只有：
-// - BchHardDecoded: 前置硬纠成功，本轮直接完成
-// - HardFail: 前置硬纠失败，继续留给 soft path
-// 其他标签先作为后续 fast-classifier 的预留枚举，便于后面平滑扩展。
-enum class HybridRowClass : uint8_t {
-  None = 0,         // 默认：尚未分类/不启用 hybrid prepass
-  BchHardDecoded,   // 前置硬纠成功：该行本轮直接产出 lout，不再进入 Chase
-  Clean,            // 预留：syndrome/判据认为“干净”的码字
-  ParityOnly,       // 预留：仅 parity 位错误（理论上可直接修复/跳过 Chase）
-  OneMain,          // 预留：主错误位为 1（可能可硬纠）
-  OneMainPlusParity,// 预留：1 个主错误 + parity 区问题
-  TwoMain,          // 预留：主错误位为 2（可能可硬纠）
-  Suspicious,       // 预留：可疑样本（通常应送去 soft decode）
-  HardFail          // 前置硬纠失败：保持在 soft candidate 集合内
-};
 
 // 方案三里把“资源竞争语义”和“执行动作语义”拆开后，
 // 每一行最终只会落到这四种执行标签之一。
@@ -92,192 +72,6 @@ inline void load_row_vectors(const TilePrepared<LLR>& prep,
   }
 }
 
-struct HybridFastGf256Tables {
-  std::array<uint8_t, 255> alpha_to{};
-  std::array<int16_t, 256> index_of{};
-};
-
-inline const HybridFastGf256Tables& hybrid_fast_gf256_tables() {
-  // 这张表只初始化一次：后面的快速分类只需要查表，不再重复生成 GF(256) 结构。
-  static const HybridFastGf256Tables tables = [] {
-    HybridFastGf256Tables t{};
-    t.index_of.fill(-1);
-    uint16_t a = 1;
-    for (int i = 0; i < 255; ++i) {
-      t.alpha_to[static_cast<std::size_t>(i)] = static_cast<uint8_t>(a);
-      t.index_of[static_cast<std::size_t>(t.alpha_to[static_cast<std::size_t>(i)])] =
-          static_cast<int16_t>(i);
-      a <<= 1;
-      if (a & 0x100u) {
-        a ^= 0x11Du;
-      }
-    }
-    return t;
-  }();
-  return tables;
-}
-
-inline uint8_t hybrid_fast_gf_mul(uint8_t x, uint8_t y) {
-  // GF(256) 乘法改写成 log/antilog 查表和模 255 的指数相加，避免逐位多项式乘法。
-  if (x == 0u || y == 0u) {
-    return 0u;
-  }
-  const auto& tables = hybrid_fast_gf256_tables();
-  const int lx = tables.index_of[static_cast<std::size_t>(x)];
-  const int ly = tables.index_of[static_cast<std::size_t>(y)];
-  return tables.alpha_to[static_cast<std::size_t>((lx + ly) % 255)];
-}
-
-inline uint8_t hybrid_fast_gf_cube(uint8_t x) {
-  return hybrid_fast_gf_mul(hybrid_fast_gf_mul(x, x), x);
-}
-
-inline int hybrid_fast_gf_log(uint8_t x) {
-  if (x == 0u) {
-    return -1;
-  }
-  return hybrid_fast_gf256_tables().index_of[static_cast<std::size_t>(x)];
-}
-
-inline uint8_t overall_parity_syndrome_256(
-    const std::array<uint8_t, newcode::Params::BCH_N>& cw) {
-  uint8_t parity = 0u;
-  for (uint8_t bit : cw) {
-    parity ^= static_cast<uint8_t>(bit & 1u);
-  }
-  return parity;
-}
-
-inline void recompute_overall_parity(
-    std::array<uint8_t, newcode::Params::BCH_N>* cw) {
-  uint8_t parity = 0u;
-  for (std::size_t i = 0; i < newcode::Params::BCH_OVERALL_IDX; ++i) {
-    parity ^= static_cast<uint8_t>((*cw)[i] & 1u);
-  }
-  (*cw)[newcode::Params::BCH_OVERALL_IDX] = parity;
-}
-
-template <typename CoreLLR>
-std::array<uint8_t, newcode::Params::BCH_N> hard_decision_bits_256(
-    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec) {
-  std::array<uint8_t, newcode::Params::BCH_N> hard_bits{};
-  for (std::size_t i = 0; i < hard_bits.size(); ++i) {
-    hard_bits[i] = (qfloat::llr_to_float(lin_vec[i]) < 0.0f) ? 1u : 0u;
-  }
-  return hard_bits;
-}
-
-template <typename CoreLLR>
-void materialize_hard_finish_lout(
-    const std::array<uint8_t, newcode::Params::BCH_N>& cw,
-    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
-    const newcode::Params& p,
-    std::array<float, newcode::Params::BCH_N>* y2) {
-  const float hard_mag = std::fabs(p.HARD_LLR_MAG);
-  for (std::size_t i = 0; i < cw.size(); ++i) {
-    const float sign = cw[i] ? -1.0f : 1.0f;
-    const float lpost = sign * hard_mag;
-    const float lin = qfloat::llr_to_float(lin_vec[i]);
-    (*y2)[i] = lpost - lin;
-  }
-}
-
-inline bool hard_word_valid_256(
-    const std::array<uint8_t, newcode::Params::BCH_N>& cw) {
-  // 这里不是只看 BCH(255,239) 主体是否可纠，还要把扩展出来的 overall parity
-  // 一起算进去。只有“主体 syndrome 清零 + overall parity 也正确”时，
-  // 这个 256 位码字才算真正的 HardFinish 候选。
-  return bch::bch_255_239_syndromes_zero_cw_255(cw.data()) &&
-         overall_parity_syndrome_256(cw) == 0u;
-}
-
-template <typename CoreLLR>
-bool run_fast_classifier_hard_finish(
-    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
-    std::array<float, newcode::Params::BCH_N>* y2,
-    const newcode::Params& p,
-    HybridRowClass* out_class) {
-  // E2 快速分类器：
-  // 先用 S0/S1/S3 做低成本分流；只有 TwoCandidate 再调用现有 BCH t=2 译码器。
-  // 这里不接 kSiHoActiveList，所有进入本函数的 candidate 都允许尝试分类。
-  // 这一步先做硬判，把软输入压成 0/1 码字，后面的分类都基于这个硬判结果展开。
-  auto cw = hard_decision_bits_256(lin_vec);
-  // S0 是整体校验位对应的 syndrome，用来判断是否只差 overall parity。
-  const uint8_t s0 = overall_parity_syndrome_256(cw);
-  // S1/S3 来自 BCH 现有 syndrome 计算；这里只取 E2 分类真正需要的两个量。
-  const auto syndromes = bch::bch_255_239_syndromes_1_4_cw_255(cw.data());
-  const uint8_t s1 = syndromes[0];
-  const uint8_t s3 = syndromes[2];
-  // 单错情况下，S3 应该等于 S1^3；提前算出来便于做分支判断。
-  const uint8_t s1_cubed = hybrid_fast_gf_cube(s1);
-
-  auto finish_with = [&](HybridRowClass cls) -> bool {
-    // 先确认当前硬判/翻转后的码字本身是合法 BCH 码字，再把它 materialize 到 y2。
-    if (!hard_word_valid_256(cw)) {
-      *out_class = HybridRowClass::HardFail;
-      return false;
-    }
-    // 只有校验通过后，才把硬纠结果写成最终输出；这里不会再跑 Chase。
-    materialize_hard_finish_lout(cw, lin_vec, p, y2);
-    *out_class = cls;
-    return true;
-  };
-
-  // Clean：三个 syndrome 全为 0，说明硬判结果已经是合法码字，直接收尾。
-  if (s0 == 0u && s1 == 0u && s3 == 0u) {
-    return finish_with(HybridRowClass::Clean);
-  }
-
-  // ParityOnly：只有 overall parity 不对，翻转整体校验位即可。
-  if (s0 == 1u && s1 == 0u && s3 == 0u) {
-    cw[newcode::Params::BCH_OVERALL_IDX] ^= 1u;
-    return finish_with(HybridRowClass::ParityOnly);
-  }
-
-  // OneMain / OneMainPlusParity：
-  // 当 S3 = S1^3 时，按单错模型可以直接用 S1 的 log 定位出唯一错误位。
-  if (s1 != 0u && s3 == s1_cubed) {
-    const int pos = hybrid_fast_gf_log(s1);
-    // log 结果必须落在 BCH 主体位范围内，不能指到 overall parity 位或越界。
-    if (pos < 0 || pos >= static_cast<int>(newcode::Params::BCH_OVERALL_IDX)) {
-      *out_class = HybridRowClass::HardFail;
-      return false;
-    }
-    // 先翻转 BCH 主体中的那个错误位。
-    cw[static_cast<std::size_t>(pos)] ^= 1u;
-    // 如果同时还存在 overall parity 错误，就把整体校验位也补上。
-    if (s0 == 0u) {
-      cw[newcode::Params::BCH_OVERALL_IDX] ^= 1u;
-      return finish_with(HybridRowClass::OneMainPlusParity);
-    }
-    return finish_with(HybridRowClass::OneMain);
-  }
-
-  // TwoMain：S0 通过但 S3 != S1^3，说明不是单错模型，交给现有 BCH t=2 译码器兜底。
-  if (s0 == 0u && s1 != 0u && s3 != s1_cubed) {
-    std::array<uint8_t, newcode::Params::BCH_N - 1> decoded{};
-    int corrected_errors = 0;
-    // 这里直接复用现有 BCH hard decoder，不在这里重复写 locator / Chien。
-    if (!bch::bch_255_239_decode_hiho_cw_255(cw.data(),
-                                             decoded.data(),
-                                             &corrected_errors) ||
-        corrected_errors != 2) {
-      *out_class = HybridRowClass::HardFail;
-      return false;
-    }
-    // t=2 译码成功后，把 255 位主体写回，再重算 overall parity，得到完整码字。
-    for (std::size_t i = 0; i < decoded.size(); ++i) {
-      cw[i] = decoded[i];
-    }
-    recompute_overall_parity(&cw);
-    return finish_with(HybridRowClass::TwoMain);
-  }
-
-  // 其余情况都说明当前硬判结果不满足这组快速分类规则，交回 soft path。
-  *out_class = HybridRowClass::HardFail;
-  return false;
-}
-
 template <typename LLR>
 void rebuild_soft_candidate_rows(
     TileDispatchPlan<typename TilePrepared<LLR>::CoreLLR>* plan) {
@@ -337,23 +131,41 @@ void run_hybrid_prepass(
     std::array<float, newcode::Params::BCH_N> y2{};
     load_row_vectors(prep, row, &lin_vec, &lch_vec);
 
-    // 两种 prepass 引擎：
-    // - HYBRID_USE_FAST_CLASSIFIER=false：保持原 E1，直接调用完整 BCH 硬译码
-    // - HYBRID_USE_FAST_CLASSIFIER=true ：先用 S0/S1/S3 快速分类，必要时才调用 BCH
-    HybridRowClass hard_class = HybridRowClass::BchHardDecoded;
-    const bool hard_ok = p.HYBRID_USE_FAST_CLASSIFIER
-                             ? run_fast_classifier_hard_finish(
-                                   lin_vec, &y2, p, &hard_class)
-                             : newcode::perform_hard_decode<CoreLLR>(
-                                   lin_vec, lch_vec, y2, p);
+    // hybrid prepass 引擎支持三种模式：
+    // - LegacyHardDecode：保持原 E1，直接调用完整 BCH 硬译码
+    // - RepoFastClassifier：当前仓库的 S0/S1/S3 快速分类
+    // - FriendS1S3Classifier：朋友版 S1/S3 + Trace(mu) 思路
+    HybridRowClass hard_class = HybridRowClass::HardFail;
+    const auto classifier_mode = effective_hybrid_classifier_mode(p);
+    bool hard_ok = false;
+    if (classifier_mode == newcode::HybridClassifierMode::LegacyHardDecode) {
+      // 兼容旧路径：不经过 fast classifier，直接调用原完整 BCH 硬译码。
+      hard_ok = newcode::perform_hard_decode<CoreLLR>(lin_vec, lch_vec, y2, p);
+      hard_class = hard_ok ? HybridRowClass::BchHardDecoded
+                           : HybridRowClass::HardFail;
+    } else {
+      // 新路径：先进入独立的分类器模块，由它决定：
+      // - 是否能直接 hard-finish
+      // - 如果能，属于哪种 hard-finish 分类
+      // - 如果不能，失败原因是什么
+      hard_ok = run_selected_hybrid_classifier_hard_finish(
+          lin_vec, &y2, p, &hard_class);
+    }
     if (!hard_ok) {
-      // 标记“硬纠失败”的原因标签（目前仅用于调试/统计；不改变 tag）。
-      plan->rows[row].hybrid_class = HybridRowClass::HardFail;
-      plan->hybrid_classes[row] = HybridRowClass::HardFail;
+      // 标记“未进入 hard-finish”的原因标签：
+      // - HardFail: 明确不满足当前 hard path 条件
+      // - Suspicious: 预留给“分类上可疑，但不能直接产出 hard-finish”的情况
+      //
+      // 注意：这里不会把 tag 改成 Unscheduled。
+      // 也就是说，prepass 失败并不等于这一行被丢弃，
+      // 它仍然保留 SoftDecode 身份，后面继续参加 MUX / SISO 竞争。
+      plan->rows[row].hybrid_class = hard_class;
+      plan->hybrid_classes[row] = hard_class;
       continue;
     }
 
     // 硬纠成功：将该行从 SoftDecode 改为 HardFinish，并缓存输出。
+    // 从这一刻起，这行不再进入 Chase；decode 阶段只需要把缓存的 y2 直接回填。
     plan->rows[row].tag = RowDispatchTag::HardFinish;
     plan->rows[row].hybrid_class = hard_class;
     plan->hybrid_classes[row] = hard_class;

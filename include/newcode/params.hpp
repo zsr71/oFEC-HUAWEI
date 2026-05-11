@@ -8,6 +8,12 @@
 
 namespace newcode {
 
+enum class HybridClassifierMode : uint8_t {
+  LegacyHardDecode = 0,
+  RepoFastClassifier = 1,
+  FriendS1S3Classifier = 2
+};
+
 struct Params {
   // ===== 编码结构常量（与 oFEC 布局一致） =====
   static constexpr size_t NUM_SUBBLOCK_COLS     = 8;   // 每行包含的子块数量
@@ -94,6 +100,8 @@ struct Params {
   float HARD_LLR_MAG = 99.0f;                                      // 硬判决映射的 |LLR| 大小
   bool HYBRID_ENABLE = false;                                     // 软硬混合总开关：true 时允许 soft tile 先做 row 级 hard-finish prepass
   std::vector<int> HYBRID_ENABLE_LIST;                            // 按 tile 覆盖 hybrid 开关：0=关，非 0=开；空表示沿用 HYBRID_ENABLE
+  HybridClassifierMode HYBRID_CLASSIFIER_MODE =
+      HybridClassifierMode::LegacyHardDecode;                     // hybrid prepass 的分类器模式；Legacy=直接 perform_hard_decode
   bool HYBRID_USE_FAST_CLASSIFIER = false;                        // 预留：后续是否启用 S0/S1/S3 快速分类器
   bool HYBRID_NORMALIZE_SOFT_ONLY = false;                        // true 时仅对 soft-decode 行做 extrinsic normalize；false 保持兼容行为
   bool HYBRID_VERIFY_DISABLED_MATCH_LEGACY = false;               // 调试校验：当 HYBRID_ENABLE=false 时，额外跑旧 soft 路径并逐项比对结果
