@@ -77,7 +77,7 @@ static constexpr int kMuxBypassScheme = 3;                          // 旁路边
 static constexpr bool kHybridEnable = false;                        // true=启用方案三软硬混合前置分流
 static const std::vector<int> kHybridEnableList = {};               // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
-    newcode::HybridClassifierMode::LegacyHardDecode;                // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier
+    newcode::HybridClassifierMode::LegacyHardDecode;                // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只归一化 soft rows，false=保持兼容行为
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
     {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
@@ -200,6 +200,8 @@ const char* hybrid_classifier_mode_name(newcode::HybridClassifierMode mode) {
       return "repo_fast_classifier";
     case newcode::HybridClassifierMode::FriendS1S3Classifier:
       return "friend_s1s3_classifier";
+    case newcode::HybridClassifierMode::FriendS1S3WithS0Classifier:
+      return "friend_s1s3_with_s0_classifier";
   }
   return "unknown";
 }

@@ -80,16 +80,16 @@ static const std::vector<float> kBetaExplicit = {
 static const std::vector<float> kEarlyStopActionBetaExplicit = {
     99.857143f, 99.179301f, 99.253626f, 99.119585f, 99.434408f, 99.000000f // 每个 tile 的 early-stop 专用 beta 显式列表
 };
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 32, 4}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 24, 4}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                             // MUX 分组粒度，1 表示全局池化
 static constexpr int  kMuxSchedulingMode  = 0;                             // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                             // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
 static constexpr bool kMuxEnableReconfig  = false;                         // true 表示启用重配置版 MUX 调度
 static constexpr int  kMuxBypassScheme    = 1;                             // 旁路边集合方案编号：1=scheme1，2=scheme2
 static constexpr bool kHybridEnable       = true;                         // true=方案三软硬混合前置分流开关
-static const std::vector<int> kHybridEnableList = {0,0,0,0,0,1};                      // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
+static const std::vector<int> kHybridEnableList = {0,0,0,0,1,1};                      // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
-    newcode::HybridClassifierMode::LegacyHardDecode;                       // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier
+    newcode::HybridClassifierMode::FriendS1S3Classifier;                       // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr bool kHybridNormalizeSoftOnly = false;                    // true=只归一化 soft rows，false=保持当前兼容行为
 
 // ==================================

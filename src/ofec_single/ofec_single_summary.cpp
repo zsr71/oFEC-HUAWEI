@@ -18,6 +18,8 @@ const char* hybrid_classifier_mode_name(newcode::HybridClassifierMode mode) {
       return "repo_fast_classifier";
     case newcode::HybridClassifierMode::FriendS1S3Classifier:
       return "friend_s1s3_classifier";
+    case newcode::HybridClassifierMode::FriendS1S3WithS0Classifier:
+      return "friend_s1s3_with_s0_classifier";
   }
   return "unknown";
 }

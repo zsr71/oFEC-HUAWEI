@@ -11,7 +11,8 @@ namespace newcode {
 enum class HybridClassifierMode : uint8_t {
   LegacyHardDecode = 0,
   RepoFastClassifier = 1,
-  FriendS1S3Classifier = 2
+  FriendS1S3Classifier = 2,
+  FriendS1S3WithS0Classifier = 3
 };
 
 struct Params {

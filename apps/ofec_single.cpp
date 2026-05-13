@@ -74,7 +74,7 @@ static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边�
 static constexpr bool kHybridEnable       = true;                 // true=方案三软硬混合前置分流开关
 static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 0, 1}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
-    newcode::HybridClassifierMode::FriendS1S3Classifier;            // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier
+    newcode::HybridClassifierMode::FriendS1S3Classifier;            // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr bool kHybridNormalizeSoftOnly = false;            // true=只归一化 soft rows，false=保持当前兼容行为
 
 // LLR 导出相关

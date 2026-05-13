@@ -72,6 +72,13 @@ bool run_friend_fast_classifier_hard_finish(
     HybridRowClass* out_class);
 
 template <typename CoreLLR>
+bool run_friend_fast_classifier_with_s0_hard_finish(
+    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
+    std::array<float, newcode::Params::BCH_N>* y2,
+    const newcode::Params& p,
+    HybridRowClass* out_class);
+
+template <typename CoreLLR>
 bool run_selected_hybrid_classifier_hard_finish(
     const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
     std::array<float, newcode::Params::BCH_N>* y2,

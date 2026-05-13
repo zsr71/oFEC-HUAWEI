@@ -53,7 +53,7 @@ struct FriendEvalResult {
   std::string note;
 };
 
-struct RepoEvalResult {
+struct ModeEvalResult {
   UnifiedClass cls = UnifiedClass::HardFail;
   bool hard_finish = false;
   Codeword256 corrected{};
@@ -69,14 +69,24 @@ struct LaneResult {
   uint8_t s1_cubed = 0u;
   bool has_tr = false;
   uint8_t tr = 0u;
-  FriendClass friend_class = FriendClass::Invalid;
-  std::string friend_flags_text;
-  int friend_corrected_errors = -1;
+  FriendClass friend_raw_class = FriendClass::Invalid;
+  std::string friend_raw_flags_text;
+  int friend_raw_corrected_errors = -1;
   UnifiedClass repo_class = UnifiedClass::HardFail;
-  bool same_coarse_class = false;
-  bool same_hard_finish_codeword = false;
+  UnifiedClass friend_class = UnifiedClass::HardFail;
+  UnifiedClass friend_s0_class = UnifiedClass::HardFail;
+  bool repo_vs_friend_same_class = false;
+  bool repo_vs_friend_s0_same_class = false;
+  bool friend_vs_friend_s0_same_class = false;
+  bool repo_vs_friend_same_hard_finish_codeword = false;
+  bool repo_vs_friend_s0_same_hard_finish_codeword = false;
+  bool friend_vs_friend_s0_same_hard_finish_codeword = false;
   bool repo_hard_finish = false;
+  bool friend_hard_finish = false;
+  bool friend_s0_hard_finish = false;
+  std::string friend_raw_note;
   std::string friend_note;
+  std::string friend_s0_note;
   std::string repo_note;
 };
 
@@ -300,13 +310,19 @@ FriendEvalResult evaluate_friend_classifier(const LinVec256& lin_vec) {
   return out;
 }
 
-RepoEvalResult evaluate_repo_classifier(const LinVec256& lin_vec,
-                                        const newcode::Params& p) {
-  RepoEvalResult out;
+ModeEvalResult evaluate_mode_classifier(
+    const LinVec256& lin_vec,
+    const newcode::Params& p,
+    newcode::HybridClassifierMode mode) {
+  ModeEvalResult out;
   std::array<float, newcode::Params::BCH_N> y2{};
   RepoClass repo_class = RepoClass::HardFail;
-  const bool hard_ok =
-      newcode::detail::run_repo_fast_classifier_hard_finish(lin_vec, &y2, p, &repo_class);
+  newcode::Params local_p = p;
+  local_p.HYBRID_CLASSIFIER_MODE = mode;
+  local_p.HYBRID_USE_FAST_CLASSIFIER =
+      mode != newcode::HybridClassifierMode::LegacyHardDecode;
+  const bool hard_ok = newcode::detail::run_selected_hybrid_classifier_hard_finish(
+      lin_vec, &y2, local_p, &repo_class);
   out.cls = map_repo_class(repo_class);
   out.hard_finish = hard_ok;
   if (hard_ok) {
@@ -327,14 +343,14 @@ void print_row(const LaneResult& row) {
             << std::setw(6) << row.lane
             << std::setw(12) << row.flip_positions.size()
             << std::setw(24) << join_positions(row.flip_positions)
-            << std::setw(20) << friend_class_name(row.friend_class)
             << std::setw(20) << class_name(row.repo_class)
-            << std::setw(12) << (row.same_coarse_class ? "yes" : "no")
-            << std::setw(16)
-            << ((row.repo_hard_finish && row.same_hard_finish_codeword)
-                    ? "yes"
-                    : "no")
+            << std::setw(20) << class_name(row.friend_class)
+            << std::setw(24) << class_name(row.friend_s0_class)
+            << std::setw(12) << (row.repo_vs_friend_same_class ? "yes" : "no")
+            << std::setw(14) << (row.repo_vs_friend_s0_same_class ? "yes" : "no")
+            << std::setw(14) << (row.friend_vs_friend_s0_same_class ? "yes" : "no")
             << std::setw(22) << row.friend_note
+            << std::setw(22) << row.friend_s0_note
             << std::setw(22) << row.repo_note
             << '\n';
 }
@@ -351,27 +367,36 @@ void write_csv_report(const std::vector<LaneResult>& rows) {
     throw std::runtime_error("failed to open CSV output: " + out_file.string());
   }
 
-  out << "lane,flip_cnt,flip_positions,friend_class,repo_class,same_class,"
-         "same_hard_finish_codeword,friend_note,repo_note,friend_flags,"
-         "friend_corrected_errors,syndrome_summary,tr\n";
+  out << "lane,flip_cnt,flip_positions,"
+         "repo_class,friend_class,friend_s0_class,"
+         "repo_vs_friend_same_class,repo_vs_friend_s0_same_class,friend_vs_friend_s0_same_class,"
+         "repo_vs_friend_same_hard_finish_codeword,repo_vs_friend_s0_same_hard_finish_codeword,friend_vs_friend_s0_same_hard_finish_codeword,"
+         "friend_raw_class,friend_raw_flags,friend_raw_corrected_errors,"
+         "repo_note,friend_note,friend_s0_note,friend_raw_note,"
+         "syndrome_summary,tr\n";
   for (const auto& row : rows) {
     out << row.lane << ','
         << row.flip_positions.size() << ','
         << csv_escape(join_positions(row.flip_positions)) << ','
-        << friend_class_name(row.friend_class) << ','
         << class_name(row.repo_class) << ','
-        << (row.same_coarse_class ? "yes" : "no") << ','
-        << ((row.repo_hard_finish && row.same_hard_finish_codeword)
-                ? "yes"
-                : "no")
-        << ','
-        << csv_escape(row.friend_note) << ','
-        << csv_escape(row.repo_note) << ','
-        << csv_escape(row.friend_flags_text) << ',';
-    if (row.friend_corrected_errors >= 0) {
-      out << row.friend_corrected_errors;
+        << class_name(row.friend_class) << ','
+        << class_name(row.friend_s0_class) << ','
+        << (row.repo_vs_friend_same_class ? "yes" : "no") << ','
+        << (row.repo_vs_friend_s0_same_class ? "yes" : "no") << ','
+        << (row.friend_vs_friend_s0_same_class ? "yes" : "no") << ','
+        << (row.repo_vs_friend_same_hard_finish_codeword ? "yes" : "no") << ','
+        << (row.repo_vs_friend_s0_same_hard_finish_codeword ? "yes" : "no") << ','
+        << (row.friend_vs_friend_s0_same_hard_finish_codeword ? "yes" : "no") << ','
+        << friend_class_name(row.friend_raw_class) << ','
+        << csv_escape(row.friend_raw_flags_text) << ',';
+    if (row.friend_raw_corrected_errors >= 0) {
+      out << row.friend_raw_corrected_errors;
     }
     out << ','
+        << csv_escape(row.repo_note) << ','
+        << csv_escape(row.friend_note) << ','
+        << csv_escape(row.friend_s0_note) << ','
+        << csv_escape(row.friend_raw_note) << ','
         << csv_escape(syndrome_summary(row.s0, row.s1, row.s3, row.s1_cubed)) << ',';
     if (row.has_tr) {
       out << static_cast<int>(row.tr);
@@ -392,9 +417,15 @@ int main() {
   std::mt19937 error_rng(kErrorSeed);
 
   std::array<int, 6> repo_counts{};
-  std::array<int, 4> friend_class_counts{};
-  int class_mismatch_count = 0;
-  int hard_finish_codeword_mismatch_count = 0;
+  std::array<int, 6> friend_counts{};
+  std::array<int, 6> friend_s0_counts{};
+  std::array<int, 4> friend_raw_class_counts{};
+  int repo_vs_friend_class_mismatch_count = 0;
+  int repo_vs_friend_s0_class_mismatch_count = 0;
+  int friend_vs_friend_s0_class_mismatch_count = 0;
+  int repo_vs_friend_hard_finish_codeword_mismatch_count = 0;
+  int repo_vs_friend_s0_hard_finish_codeword_mismatch_count = 0;
+  int friend_vs_friend_s0_hard_finish_codeword_mismatch_count = 0;
   std::vector<LaneResult> rows;
   rows.reserve(kLaneCount);
 
@@ -402,11 +433,14 @@ int main() {
             << std::setw(6) << "lane"
             << std::setw(12) << "flip_cnt"
             << std::setw(24) << "flip_positions"
-            << std::setw(20) << "friend_class"
             << std::setw(20) << "repo_class"
-            << std::setw(12) << "same_map"
-            << std::setw(16) << "same_cw"
+            << std::setw(20) << "friend_class"
+            << std::setw(24) << "friend_s0_class"
+            << std::setw(12) << "r=f"
+            << std::setw(14) << "r=f+s0"
+            << std::setw(14) << "f=f+s0"
             << std::setw(22) << "friend_note"
+            << std::setw(22) << "friend_s0_note"
             << std::setw(22) << "repo_note"
             << '\n';
 
@@ -421,8 +455,13 @@ int main() {
     const uint8_t s3 = syndromes[2];
     const uint8_t s1_cubed = newcode::detail::hybrid_fast_gf_cube(s1);
 
-    const FriendEvalResult friend_result = evaluate_friend_classifier(lin_vec);
-    const RepoEvalResult repo_result = evaluate_repo_classifier(lin_vec, p);
+    const FriendEvalResult friend_raw_result = evaluate_friend_classifier(lin_vec);
+    const ModeEvalResult repo_result = evaluate_mode_classifier(
+        lin_vec, p, newcode::HybridClassifierMode::RepoFastClassifier);
+    const ModeEvalResult friend_result = evaluate_mode_classifier(
+        lin_vec, p, newcode::HybridClassifierMode::FriendS1S3Classifier);
+    const ModeEvalResult friend_s0_result = evaluate_mode_classifier(
+        lin_vec, p, newcode::HybridClassifierMode::FriendS1S3WithS0Classifier);
 
     LaneResult row;
     row.lane = lane;
@@ -437,68 +476,101 @@ int main() {
       row.has_tr = true;
       row.tr = trace_to_gf2(mu);
     }
-    row.friend_class = friend_result.cls;
+    row.friend_raw_class = friend_raw_result.cls;
     {
       std::ostringstream flag_oss;
       flag_oss << '['
-               << (friend_result.flags[0] ? 1 : 0) << ' '
-               << (friend_result.flags[1] ? 1 : 0) << ' '
-               << (friend_result.flags[2] ? 1 : 0) << ']';
-      row.friend_flags_text = flag_oss.str();
+               << (friend_raw_result.flags[0] ? 1 : 0) << ' '
+               << (friend_raw_result.flags[1] ? 1 : 0) << ' '
+               << (friend_raw_result.flags[2] ? 1 : 0) << ']';
+      row.friend_raw_flags_text = flag_oss.str();
     }
-    row.friend_corrected_errors = friend_result.corrected_errors;
+    row.friend_raw_corrected_errors = friend_raw_result.corrected_errors;
     row.repo_class = repo_result.cls;
-    auto mapped_friend = UnifiedClass::HardFail;
-    switch (friend_result.cls) {
-      case FriendClass::Invalid:
-        mapped_friend = UnifiedClass::HardFail;
-        break;
-      case FriendClass::ZeroError:
-        mapped_friend = (row.s0 == 0u) ? UnifiedClass::Clean : UnifiedClass::ParityOnly;
-        break;
-      case FriendClass::OneError:
-        mapped_friend = (row.s0 == 0u) ? UnifiedClass::OneMainPlusParity : UnifiedClass::OneMain;
-        break;
-      case FriendClass::TwoCandidate:
-        mapped_friend = UnifiedClass::TwoMain;
-        break;
-    }
-    row.same_coarse_class = (mapped_friend == repo_result.cls);
+    row.friend_class = friend_result.cls;
+    row.friend_s0_class = friend_s0_result.cls;
+    row.repo_vs_friend_same_class = (repo_result.cls == friend_result.cls);
+    row.repo_vs_friend_s0_same_class = (repo_result.cls == friend_s0_result.cls);
+    row.friend_vs_friend_s0_same_class = (friend_result.cls == friend_s0_result.cls);
     row.repo_hard_finish = repo_result.hard_finish;
+    row.friend_hard_finish = friend_result.hard_finish;
+    row.friend_s0_hard_finish = friend_s0_result.hard_finish;
+    row.friend_raw_note = friend_raw_result.note;
     row.friend_note = friend_result.note;
+    row.friend_s0_note = friend_s0_result.note;
     row.repo_note = repo_result.note;
-    row.same_hard_finish_codeword =
-        friend_result.has_corrected &&
-        repo_result.hard_finish &&
-        same_codeword(friend_result.corrected, repo_result.corrected);
+    row.repo_vs_friend_same_hard_finish_codeword =
+        repo_result.hard_finish && friend_result.hard_finish &&
+        same_codeword(repo_result.corrected, friend_result.corrected);
+    row.repo_vs_friend_s0_same_hard_finish_codeword =
+        repo_result.hard_finish && friend_s0_result.hard_finish &&
+        same_codeword(repo_result.corrected, friend_s0_result.corrected);
+    row.friend_vs_friend_s0_same_hard_finish_codeword =
+        friend_result.hard_finish && friend_s0_result.hard_finish &&
+        same_codeword(friend_result.corrected, friend_s0_result.corrected);
 
-    ++friend_class_counts[static_cast<std::size_t>(friend_result.cls)];
+    ++friend_raw_class_counts[static_cast<std::size_t>(friend_raw_result.cls)];
     ++repo_counts[static_cast<std::size_t>(repo_result.cls)];
-    if (!row.same_coarse_class) {
-      ++class_mismatch_count;
+    ++friend_counts[static_cast<std::size_t>(friend_result.cls)];
+    ++friend_s0_counts[static_cast<std::size_t>(friend_s0_result.cls)];
+    if (!row.repo_vs_friend_same_class) {
+      ++repo_vs_friend_class_mismatch_count;
     }
-    if (friend_result.has_corrected && repo_result.hard_finish &&
-        !row.same_hard_finish_codeword) {
-      ++hard_finish_codeword_mismatch_count;
+    if (!row.repo_vs_friend_s0_same_class) {
+      ++repo_vs_friend_s0_class_mismatch_count;
+    }
+    if (!row.friend_vs_friend_s0_same_class) {
+      ++friend_vs_friend_s0_class_mismatch_count;
+    }
+    if (repo_result.hard_finish && friend_result.hard_finish &&
+        !row.repo_vs_friend_same_hard_finish_codeword) {
+      ++repo_vs_friend_hard_finish_codeword_mismatch_count;
+    }
+    if (repo_result.hard_finish && friend_s0_result.hard_finish &&
+        !row.repo_vs_friend_s0_same_hard_finish_codeword) {
+      ++repo_vs_friend_s0_hard_finish_codeword_mismatch_count;
+    }
+    if (friend_result.hard_finish && friend_s0_result.hard_finish &&
+        !row.friend_vs_friend_s0_same_hard_finish_codeword) {
+      ++friend_vs_friend_s0_hard_finish_codeword_mismatch_count;
     }
     rows.push_back(row);
     print_row(row);
   }
 
   std::cout << "\nSummary\n";
-  for (std::size_t i = 0; i < friend_class_counts.size(); ++i) {
+  for (std::size_t i = 0; i < friend_raw_class_counts.size(); ++i) {
     const auto cls = static_cast<FriendClass>(i);
-    std::cout << "  friend_" << std::setw(14) << friend_class_name(cls)
-              << "=" << std::setw(3) << friend_class_counts[i] << '\n';
+    std::cout << "  friend_raw_" << std::setw(10) << friend_class_name(cls)
+              << "=" << std::setw(3) << friend_raw_class_counts[i] << '\n';
   }
   for (std::size_t i = 0; i < repo_counts.size(); ++i) {
     const auto cls = static_cast<UnifiedClass>(i);
     std::cout << "  repo_" << std::setw(16) << class_name(cls)
               << "=" << std::setw(3) << repo_counts[i] << '\n';
   }
-  std::cout << "  class_mismatch_count=" << class_mismatch_count << '\n';
-  std::cout << "  hard_finish_codeword_mismatch_count="
-            << hard_finish_codeword_mismatch_count << '\n';
+  for (std::size_t i = 0; i < friend_counts.size(); ++i) {
+    const auto cls = static_cast<UnifiedClass>(i);
+    std::cout << "  friend_" << std::setw(14) << class_name(cls)
+              << "=" << std::setw(3) << friend_counts[i] << '\n';
+  }
+  for (std::size_t i = 0; i < friend_s0_counts.size(); ++i) {
+    const auto cls = static_cast<UnifiedClass>(i);
+    std::cout << "  friend_s0_" << std::setw(11) << class_name(cls)
+              << "=" << std::setw(3) << friend_s0_counts[i] << '\n';
+  }
+  std::cout << "  repo_vs_friend_class_mismatch_count="
+            << repo_vs_friend_class_mismatch_count << '\n';
+  std::cout << "  repo_vs_friend_s0_class_mismatch_count="
+            << repo_vs_friend_s0_class_mismatch_count << '\n';
+  std::cout << "  friend_vs_friend_s0_class_mismatch_count="
+            << friend_vs_friend_s0_class_mismatch_count << '\n';
+  std::cout << "  repo_vs_friend_hard_finish_codeword_mismatch_count="
+            << repo_vs_friend_hard_finish_codeword_mismatch_count << '\n';
+  std::cout << "  repo_vs_friend_s0_hard_finish_codeword_mismatch_count="
+            << repo_vs_friend_s0_hard_finish_codeword_mismatch_count << '\n';
+  std::cout << "  friend_vs_friend_s0_hard_finish_codeword_mismatch_count="
+            << friend_vs_friend_s0_hard_finish_codeword_mismatch_count << '\n';
   write_csv_report(rows);
   std::cout << "  csv_output=/home/zsr71/projects/newcode/data/ofec_fast_classifier_compare.csv\n";
   return 0;

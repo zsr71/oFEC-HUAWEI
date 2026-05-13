@@ -298,6 +298,89 @@ bool run_friend_fast_classifier_hard_finish(
 }
 
 template <typename CoreLLR>
+bool run_friend_fast_classifier_with_s0_hard_finish(
+    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
+    std::array<float, newcode::Params::BCH_N>* y2,
+    const newcode::Params& p,
+    HybridRowClass* out_class) {
+  // 第三方案：
+  // - 0 错 / 1 错分支保持朋友版思路；
+  // - 2 错入口同时要求 Trace(mu)==0 与 S0==0；
+  // - 只有“主体像 2 错”且“整体奇偶也像偶数错”时，才进入 BCH t=2 硬解码。
+  auto cw = hard_decision_bits_256(lin_vec);
+  const uint8_t s0 = overall_parity_syndrome_256(cw);
+  const auto syndromes = bch::bch_255_239_syndromes_1_4_cw_255(cw.data());
+  const uint8_t s1 = syndromes[0];
+  const uint8_t s3 = syndromes[2];
+
+  auto finish_with = [&](HybridRowClass cls) -> bool {
+    if (!hard_word_valid_256(cw)) {
+      *out_class = HybridRowClass::HardFail;
+      return false;
+    }
+    materialize_hard_finish_lout(cw, lin_vec, p, y2);
+    *out_class = cls;
+    return true;
+  };
+
+  if (s1 == 0u) {
+    if (s3 != 0u) {
+      *out_class = HybridRowClass::HardFail;
+      return false;
+    }
+    if (s0 == 1u) {
+      cw[newcode::Params::BCH_OVERALL_IDX] ^= 1u;
+      return finish_with(HybridRowClass::ParityOnly);
+    }
+    return finish_with(HybridRowClass::Clean);
+  }
+
+  const uint8_t s1_sq = hybrid_fast_gf_mul(s1, s1);
+  const uint8_t s1_cubed = hybrid_fast_gf_mul(s1_sq, s1);
+  if (s3 == s1_cubed) {
+    const int pos = hybrid_fast_gf_log(s1);
+    if (pos < 0 || pos >= static_cast<int>(newcode::Params::BCH_OVERALL_IDX)) {
+      *out_class = HybridRowClass::HardFail;
+      return false;
+    }
+    cw[static_cast<std::size_t>(pos)] ^= 1u;
+    if (s0 == 0u) {
+      cw[newcode::Params::BCH_OVERALL_IDX] ^= 1u;
+      return finish_with(HybridRowClass::OneMainPlusParity);
+    }
+    return finish_with(HybridRowClass::OneMain);
+  }
+
+  const uint8_t numerator = static_cast<uint8_t>(s1_cubed ^ s3);
+  const uint8_t mu = hybrid_fast_gf_div(numerator, s1_cubed);
+  const uint8_t tr = hybrid_fast_trace_to_gf2(mu);
+  if (tr != 0u) {
+    *out_class = HybridRowClass::HardFail;
+    return false;
+  }
+  if (s0 != 0u) {
+    // 与朋友版相比，这里额外要求 overall parity 也满足偶数错特征。
+    *out_class = HybridRowClass::HardFail;
+    return false;
+  }
+
+  std::array<uint8_t, newcode::Params::BCH_N - 1> decoded{};
+  int corrected_errors = 0;
+  if (!bch::bch_255_239_decode_hiho_cw_255(cw.data(),
+                                           decoded.data(),
+                                           &corrected_errors) ||
+      corrected_errors != 2) {
+    *out_class = HybridRowClass::HardFail;
+    return false;
+  }
+  for (std::size_t i = 0; i < decoded.size(); ++i) {
+    cw[i] = decoded[i];
+  }
+  recompute_overall_parity(&cw);
+  return finish_with(HybridRowClass::TwoMain);
+}
+
+template <typename CoreLLR>
 bool run_selected_hybrid_classifier_hard_finish(
     const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
     std::array<float, newcode::Params::BCH_N>* y2,
@@ -311,6 +394,9 @@ bool run_selected_hybrid_classifier_hard_finish(
       return run_repo_fast_classifier_hard_finish(lin_vec, y2, p, out_class);
     case newcode::HybridClassifierMode::FriendS1S3Classifier:
       return run_friend_fast_classifier_hard_finish(lin_vec, y2, p, out_class);
+    case newcode::HybridClassifierMode::FriendS1S3WithS0Classifier:
+      return run_friend_fast_classifier_with_s0_hard_finish(
+          lin_vec, y2, p, out_class);
     case newcode::HybridClassifierMode::LegacyHardDecode:
     default:
       *out_class = HybridRowClass::HardFail;
