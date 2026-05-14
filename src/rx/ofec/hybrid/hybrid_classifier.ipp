@@ -285,10 +285,15 @@ bool run_friend_fast_classifier_hard_finish(
   int corrected_errors = 0;
   if (!bch::bch_255_239_decode_hiho_cw_255(cw.data(),
                                            decoded.data(),
-                                           &corrected_errors) ||
-      corrected_errors != 2) {
-    *out_class = HybridRowClass::HardFail;
-    return false;
+                                           &corrected_errors)) {
+    throw std::runtime_error(
+        "FriendS1S3Classifier: BCH t=2 decode failed on a row "
+        "that already passed the TwoMain prechecks.");
+  }
+  if (corrected_errors != 2) {
+    throw std::runtime_error(
+        "FriendS1S3Classifier: BCH decode succeeded but the row "
+        "was not corrected as exactly two errors.");
   }
   for (std::size_t i = 0; i < decoded.size(); ++i) {
     cw[i] = decoded[i];
