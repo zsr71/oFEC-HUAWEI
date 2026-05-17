@@ -104,7 +104,9 @@ inline void materialize_hard_finish_lout(
     const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
     const newcode::Params& p,
     std::array<float, newcode::Params::BCH_N>* y2) {
-  const float hard_mag = std::fabs(p.HARD_LLR_MAG);
+  // hybrid prepass 的 hard-finish 输出单独使用 HYBRID_HARD_LLR_MAG，
+  // 这样可以和 legacy hard-decode 的 HARD_LLR_MAG 分开扫参与调节。
+  const float hard_mag = std::fabs(p.HYBRID_HARD_LLR_MAG);
   for (std::size_t i = 0; i < cw.size(); ++i) {
     const float sign = cw[i] ? -1.0f : 1.0f;
     const float lpost = sign * hard_mag;

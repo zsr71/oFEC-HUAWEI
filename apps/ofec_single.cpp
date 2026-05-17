@@ -65,7 +65,7 @@ static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chas
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
   99.857143,99.179301,99.253626,99.119585,99.434408,99.000000
 };
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,4}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,16,4}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                     // MUX 分组粒度，1 表示全局池化
 static constexpr int  kMuxSchedulingMode  = 0;                     // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                     // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
@@ -73,8 +73,12 @@ static constexpr bool kMuxEnableReconfig  = false;                 // true 表�
 static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边集合方案编号：1=scheme1，2=scheme2
 static constexpr bool kHybridEnable       = true;                 // true=方案三软硬混合前置分流开关
 static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 0, 1}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
+static constexpr float kHybridHardLlrMag = 0.0f;                // hybrid hard-finish 默认输出 |LLR| 幅度
+static const std::vector<float> kHybridHardLlrMagList = {0,0,0,0,0,99};      // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度；空=沿用 kHybridHardLlrMag
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
-    newcode::HybridClassifierMode::FriendS1S3Classifier;            // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
+    newcode::HybridClassifierMode::RepoFastClassifier;            // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
+static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
+    newcode::HybridSisoBackfillMode::TwoErrorOnly;                    // Disabled / TwoErrorOnly
 static constexpr bool kHybridNormalizeSoftOnly = false;            // true=只归一化 soft rows，false=保持当前兼容行为
 
 // LLR 导出相关
@@ -177,7 +181,10 @@ int main() {
     .mux_extra_bypass_edges = selected_mux_bypass_edges,
     .hybrid_enable = kHybridEnable,
     .hybrid_enable_list = kHybridEnableList,
+    .hybrid_hard_llr_mag = kHybridHardLlrMag,
+    .hybrid_hard_llr_mag_list = kHybridHardLlrMagList,
     .hybrid_classifier_mode = kHybridClassifierMode,
+    .hybrid_siso_backfill_mode = kHybridSisoBackfillMode,
     .hybrid_normalize_soft_only = kHybridNormalizeSoftOnly,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,

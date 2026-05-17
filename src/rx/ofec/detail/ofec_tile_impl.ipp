@@ -413,7 +413,8 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
     // 1. 建 dispatch plan
     // 2. 只让 soft candidate 参加 MUX
     // 3. 按计划执行并合并结果
-    auto dispatch_plan = build_tile_dispatch_plan(prep, early_stop_stats, p);
+    auto dispatch_plan = build_tile_dispatch_plan(
+        prep, early_stop_stats, siso_active_for_tile, p);
     rows_need_siso_before_mux = count_soft_candidates_before_mux(dispatch_plan);
     rows_hard_finish = dispatch_plan.rows_hard_finish;
     run_mux_on_soft_candidates(&dispatch_plan,

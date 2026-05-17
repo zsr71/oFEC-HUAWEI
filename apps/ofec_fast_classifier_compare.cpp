@@ -410,6 +410,7 @@ void write_csv_report(const std::vector<LaneResult>& rows) {
 int main() {
   newcode::Params p;
   p.HARD_LLR_MAG = 99.0f;
+  p.HYBRID_HARD_LLR_MAG = 99.0f;
   p.HYBRID_ENABLE = true;
   p.HYBRID_USE_FAST_CLASSIFIER = true;
 

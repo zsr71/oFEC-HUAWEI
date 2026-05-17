@@ -24,6 +24,16 @@ const char* hybrid_classifier_mode_name(newcode::HybridClassifierMode mode) {
   return "unknown";
 }
 
+const char* hybrid_siso_backfill_mode_name(newcode::HybridSisoBackfillMode mode) {
+  switch (mode) {
+    case newcode::HybridSisoBackfillMode::Disabled:
+      return "disabled";
+    case newcode::HybridSisoBackfillMode::TwoErrorOnly:
+      return "two_error_only";
+  }
+  return "unknown";
+}
+
 std::string format_compact_int_list(const std::vector<int>& values) {
   std::ostringstream oss;
   oss << "[";
@@ -52,6 +62,22 @@ std::string format_compact_size_t_list(const std::vector<std::size_t>& values) {
 
 std::string format_compact_double_list(const std::vector<double>& values,
                                        int precision = 1) {
+  std::ostringstream oss;
+  oss.setf(std::ios::fixed);
+  oss << std::setprecision(precision);
+  oss << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i) {
+      oss << ", ";
+    }
+    oss << values[i];
+  }
+  oss << "]";
+  return oss.str();
+}
+
+std::string format_compact_float_list(const std::vector<float>& values,
+                                      int precision = 1) {
   std::ostringstream oss;
   oss.setf(std::ios::fixed);
   oss << std::setprecision(precision);
@@ -130,9 +156,15 @@ void log_run_overview(const Config& cfg,
       << (params.HYBRID_ENABLE ? "ON" : "OFF")
       << ", per-tile enable list = "
       << format_compact_int_list(params.HYBRID_ENABLE_LIST)
+      << ", hard_llr_mag = "
+      << params.HYBRID_HARD_LLR_MAG
+      << ", per-tile hard_llr_mag list = "
+      << format_compact_float_list(params.HYBRID_HARD_LLR_MAG_LIST)
       << ", classifier_mode = "
       << hybrid_classifier_mode_name(
              newcode::detail::effective_hybrid_classifier_mode(params))
+      << ", siso_backfill_mode = "
+      << hybrid_siso_backfill_mode_name(params.HYBRID_SISO_BACKFILL_MODE)
       << ", normalize_soft_only = "
       << (params.HYBRID_NORMALIZE_SOFT_ONLY ? "ON" : "OFF") << "\n";
   log << "[INFO] Dump quantized LLR = "

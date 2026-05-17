@@ -95,10 +95,40 @@ void rebuild_soft_candidate_rows(
   plan->rows_soft_candidate = plan->soft_candidate_rows.size();
 }
 
+inline bool hybrid_class_is_siso_backfill_candidate(
+    HybridRowClass row_class,
+    newcode::HybridSisoBackfillMode mode) {
+  switch (mode) {
+    case newcode::HybridSisoBackfillMode::TwoErrorOnly:
+      return row_class == HybridRowClass::TwoMain;
+    case newcode::HybridSisoBackfillMode::Disabled:
+    default:
+      return false;
+  }
+}
+
+template <typename CoreLLR>
+inline void apply_hard_finish_to_plan(
+    std::size_t row,
+    HybridRowClass hard_class,
+    const std::array<float, newcode::Params::BCH_N>& y2,
+    TileDispatchPlan<CoreLLR>* plan) {
+  plan->rows[row].tag = RowDispatchTag::HardFinish;
+  plan->rows[row].hybrid_class = hard_class;
+  plan->hybrid_classes[row] = hard_class;
+  plan->hard_finish_valid[row] = true;
+  for (std::size_t col = 0; col < static_cast<std::size_t>(newcode::Params::BCH_N);
+       ++col) {
+    plan->hard_finish_lout[row][col] = y2[col];
+  }
+  ++plan->rows_hard_finish;
+}
+
 template <typename LLR>
 void run_hybrid_prepass(
     const TilePrepared<LLR>& prep,
     const std::vector<bool>& early_stop_row_flags,
+    int siso_active_for_tile,
     const newcode::Params& p,
     TileDispatchPlan<typename TilePrepared<LLR>::CoreLLR>* plan) {
   using CoreLLR = typename TilePrepared<LLR>::CoreLLR;
@@ -111,8 +141,19 @@ void run_hybrid_prepass(
 
   // hybrid prepass 的目标：
   // - 对“尚未 early-stop 且仍处于 SoftDecode”的行，先尝试一把硬纠（BCH hard decode）
-  // - 硬纠成功：这行变成 HardFinish，本轮直接产出输出，不再进入 Chase
+  // - 硬纠成功：通常会变成 HardFinish，本轮直接产出输出，不再进入 Chase
+  // - 当开启 SISO backfill 时，部分 hard-finish 候选可以被保留给后续 soft path，以尽量用满 SISO
   // - 硬纠失败：这行保留 SoftDecode，后续仍参与 MUX/SISO 竞争与 Chase
+  const auto classifier_mode = effective_hybrid_classifier_mode(p);
+  const bool enable_siso_backfill =
+      classifier_mode != newcode::HybridClassifierMode::LegacyHardDecode &&
+      p.HYBRID_SISO_BACKFILL_MODE != newcode::HybridSisoBackfillMode::Disabled;
+  struct DeferredHardFinishCandidate {
+    std::size_t row = 0;
+    HybridRowClass hard_class = HybridRowClass::None;
+    std::array<float, newcode::Params::BCH_N> y2{};
+  };
+  std::vector<DeferredHardFinishCandidate> deferred_candidates;
   const std::size_t rows = prep.lin_matrix.rows();
   for (std::size_t row = 0; row < rows; ++row) {
     if (row < early_stop_row_flags.size() && early_stop_row_flags[row]) {
@@ -131,12 +172,12 @@ void run_hybrid_prepass(
     std::array<float, newcode::Params::BCH_N> y2{};
     load_row_vectors(prep, row, &lin_vec, &lch_vec);
 
-    // hybrid prepass 引擎支持三种模式：
+    // hybrid prepass 引擎支持四种模式：
     // - LegacyHardDecode：保持原 E1，直接调用完整 BCH 硬译码
     // - RepoFastClassifier：当前仓库的 S0/S1/S3 快速分类
     // - FriendS1S3Classifier：朋友版 S1/S3 + Trace(mu) 思路
+    // - FriendS1S3WithS0Classifier：朋友版 + S0 约束的 2 错入口
     HybridRowClass hard_class = HybridRowClass::HardFail;
-    const auto classifier_mode = effective_hybrid_classifier_mode(p);
     bool hard_ok = false;
     if (classifier_mode == newcode::HybridClassifierMode::LegacyHardDecode) {
       // 兼容旧路径：不经过 fast classifier，直接调用原完整 BCH 硬译码。
@@ -164,18 +205,47 @@ void run_hybrid_prepass(
       continue;
     }
 
+    if (enable_siso_backfill &&
+        hybrid_class_is_siso_backfill_candidate(
+            hard_class, p.HYBRID_SISO_BACKFILL_MODE)) {
+      // 这类行在分类上已经可以 hard-finish，但当前策略允许先保留为 soft 候选，
+      // 等整块 tile 的分类结果都出来后，再结合 SISO 预算决定要不要真正收掉。
+      plan->rows[row].hybrid_class = hard_class;
+      plan->hybrid_classes[row] = hard_class;
+      deferred_candidates.push_back(
+          DeferredHardFinishCandidate{row, hard_class, y2});
+      continue;
+    }
+
     // 硬纠成功：将该行从 SoftDecode 改为 HardFinish，并缓存输出。
     // 从这一刻起，这行不再进入 Chase；decode 阶段只需要把缓存的 y2 直接回填。
-    plan->rows[row].tag = RowDispatchTag::HardFinish;
-    plan->rows[row].hybrid_class = hard_class;
-    plan->hybrid_classes[row] = hard_class;
-    plan->hard_finish_valid[row] = true;
-    for (std::size_t col = 0; col < static_cast<std::size_t>(newcode::Params::BCH_N);
-         ++col) {
-      // 这里缓存的是“core 输出语义”的 y2/lout（float），后面 merge 阶段直接回填即可。
-      plan->hard_finish_lout[row][col] = y2[col];
+    apply_hard_finish_to_plan(row, hard_class, y2, plan);
+  }
+
+  if (enable_siso_backfill && !deferred_candidates.empty()) {
+    // 当前策略先把 deferred 候选都留在 SoftDecode 集合里。
+    // 如果此时剩余 soft 行数仍然多于 SISO 预算，说明即便收掉一部分 deferred，
+    // 也不会导致 SISO 吃不满；这种情况下再把多出来的 deferred 收回 HardFinish。
+    const std::size_t soft_rows_before_deferred_accept = static_cast<std::size_t>(
+        std::count_if(plan->rows.begin(),
+                      plan->rows.end(),
+                      [](const RowDispatchEntry& entry) {
+                        return entry.tag == RowDispatchTag::SoftDecode;
+                      }));
+    const std::size_t siso_budget =
+        static_cast<std::size_t>(std::max(siso_active_for_tile, 0));
+    const std::size_t max_deferred_accept =
+        (soft_rows_before_deferred_accept > siso_budget)
+            ? (soft_rows_before_deferred_accept - siso_budget)
+            : 0u;
+    const std::size_t deferred_accept_count =
+        std::min(max_deferred_accept, deferred_candidates.size());
+    for (std::size_t i = 0; i < deferred_accept_count; ++i) {
+      apply_hard_finish_to_plan(deferred_candidates[i].row,
+                                deferred_candidates[i].hard_class,
+                                deferred_candidates[i].y2,
+                                plan);
     }
-    ++plan->rows_hard_finish;
   }
 
   // prepass 会把一部分 SoftDecode 行改成 HardFinish，
@@ -187,6 +257,7 @@ template <typename LLR>
 TileDispatchPlan<typename TilePrepared<LLR>::CoreLLR> build_tile_dispatch_plan(
     const TilePrepared<LLR>& prep,
     const TileEarlyStopResult& early_stop_stats,
+    int siso_active_for_tile,
     const newcode::Params& p) {
   using CoreLLR = typename TilePrepared<LLR>::CoreLLR;
   TileDispatchPlan<CoreLLR> plan;
@@ -232,7 +303,8 @@ TileDispatchPlan<typename TilePrepared<LLR>::CoreLLR> build_tile_dispatch_plan(
   // 关闭 HYBRID_ENABLE 时，这一步不会改变行的调度语义，只会重建 soft 候选列表；
   // 打开时，部分 SoftDecode 行会被升级成 HardFinish。
   // 第二步再让 hybrid prepass 把一部分 SoftDecode 行拿走变成 HardFinish。
-  run_hybrid_prepass(prep, early_stop_stats.row_passed_flags, p, &plan);
+  run_hybrid_prepass(
+      prep, early_stop_stats.row_passed_flags, siso_active_for_tile, p, &plan);
   // 返回完整 tile 的调度计划：
   // - 早停行：EarlyStopAction
   // - hybrid 成功行：HardFinish

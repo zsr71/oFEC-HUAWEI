@@ -121,6 +121,10 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             pick_int(p.HYBRID_ENABLE_LIST,
                      t,
                      p.HYBRID_ENABLE ? 1 : 0) != 0;
+        tile_params.HYBRID_HARD_LLR_MAG =
+            pick_float(p.HYBRID_HARD_LLR_MAG_LIST,
+                       t,
+                       p.HYBRID_HARD_LLR_MAG);
         tile_params.ALPHA = pick_float(p.ALPHA_LIST, t, p.ALPHA);
         tile_params.debug_trace.chase_tile_index = static_cast<int>(t);
         tile_params.debug_trace.chase_invocation =

@@ -197,7 +197,10 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.MUX_EXTRA_BYPASS_EDGES = cfg.mux_extra_bypass_edges;
   params.HYBRID_ENABLE = cfg.hybrid_enable;
   params.HYBRID_ENABLE_LIST = cfg.hybrid_enable_list;
+  params.HYBRID_HARD_LLR_MAG = cfg.hybrid_hard_llr_mag;
+  params.HYBRID_HARD_LLR_MAG_LIST = cfg.hybrid_hard_llr_mag_list;
   params.HYBRID_CLASSIFIER_MODE = cfg.hybrid_classifier_mode;
+  params.HYBRID_SISO_BACKFILL_MODE = cfg.hybrid_siso_backfill_mode;
   params.HYBRID_USE_FAST_CLASSIFIER =
       cfg.hybrid_classifier_mode != newcode::HybridClassifierMode::LegacyHardDecode;
   params.HYBRID_NORMALIZE_SOFT_ONLY = cfg.hybrid_normalize_soft_only;
@@ -205,6 +208,21 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       params.HYBRID_ENABLE_LIST.size() != tiles) {
     log << "[ERROR] hybrid_enable_list 长度必须等于 TILES_PER_WIN\n";
     return std::nullopt;
+  }
+  if (!std::isfinite(params.HYBRID_HARD_LLR_MAG)) {
+    log << "[ERROR] hybrid_hard_llr_mag 必须是有限数\n";
+    return std::nullopt;
+  }
+  if (!params.HYBRID_HARD_LLR_MAG_LIST.empty() &&
+      params.HYBRID_HARD_LLR_MAG_LIST.size() != tiles) {
+    log << "[ERROR] hybrid_hard_llr_mag_list 长度必须等于 TILES_PER_WIN\n";
+    return std::nullopt;
+  }
+  for (float hard_mag : params.HYBRID_HARD_LLR_MAG_LIST) {
+    if (!std::isfinite(hard_mag)) {
+      log << "[ERROR] hybrid_hard_llr_mag_list 的元素必须是有限数\n";
+      return std::nullopt;
+    }
   }
   const auto mux_ok =
       newcode::mux::validate_siso_active_list(params.SISO_ACTIVE_LIST, tiles);

@@ -76,8 +76,12 @@ static constexpr bool kMuxEnableReconfig = false;                   // 是否启
 static constexpr int kMuxBypassScheme = 3;                          // 旁路边方案编号：仅在 reconfig 打开时真正参与调度
 static constexpr bool kHybridEnable = false;                        // true=启用方案三软硬混合前置分流
 static const std::vector<int> kHybridEnableList = {};               // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
+static constexpr float kHybridHardLlrMag = 99.0f;                   // hybrid hard-finish 默认输出 |LLR| 幅度
+static const std::vector<float> kHybridHardLlrMagList = {};         // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度；空=沿用 kHybridHardLlrMag
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
     newcode::HybridClassifierMode::LegacyHardDecode;                // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
+static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
+    newcode::HybridSisoBackfillMode::Disabled;                      // Disabled / TwoErrorOnly
 static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只归一化 soft rows，false=保持兼容行为
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
     {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
@@ -206,6 +210,16 @@ const char* hybrid_classifier_mode_name(newcode::HybridClassifierMode mode) {
   return "unknown";
 }
 
+const char* hybrid_siso_backfill_mode_name(newcode::HybridSisoBackfillMode mode) {
+  switch (mode) {
+    case newcode::HybridSisoBackfillMode::Disabled:
+      return "disabled";
+    case newcode::HybridSisoBackfillMode::TwoErrorOnly:
+      return "two_error_only";
+  }
+  return "unknown";
+}
+
 std::string format_duration(std::chrono::duration<double> duration) {
   if (duration.count() < 0.0) {
     duration = std::chrono::duration<double>(0.0);
@@ -241,7 +255,7 @@ void ensure_csv_header_sweep3(const std::string& csv_path) {
           "alpha_list,beta_list,early_stop_beta_list,"
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
           "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_bypass_scheme,"
-          "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_normalize_soft_only,"
+          "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_siso_backfill_mode,hybrid_normalize_soft_only,"
           "early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
@@ -291,6 +305,7 @@ void write_csv_row_sweep3(std::ostream& csv,
       << (kHybridEnable ? 1 : 0) << ','
       << '"' << join_int_vec(kHybridEnableList, '|') << "\","
       << hybrid_classifier_mode_name(kHybridClassifierMode) << ','
+      << hybrid_siso_backfill_mode_name(kHybridSisoBackfillMode) << ','
       << (kHybridNormalizeSoftOnly ? 1 : 0) << ','
       << point.scenario.early_stop_condition_mode << ','
       << point.scenario.early_stop_action_mode << ','
@@ -717,7 +732,10 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.SISO_ACTIVE_LIST = kSisoActiveList;
   config.base_params.HYBRID_ENABLE = kHybridEnable;
   config.base_params.HYBRID_ENABLE_LIST = kHybridEnableList;
+  config.base_params.HYBRID_HARD_LLR_MAG = kHybridHardLlrMag;
+  config.base_params.HYBRID_HARD_LLR_MAG_LIST = kHybridHardLlrMagList;
   config.base_params.HYBRID_CLASSIFIER_MODE = kHybridClassifierMode;
+  config.base_params.HYBRID_SISO_BACKFILL_MODE = kHybridSisoBackfillMode;
   config.base_params.HYBRID_USE_FAST_CLASSIFIER =
       kHybridClassifierMode != newcode::HybridClassifierMode::LegacyHardDecode;
   config.base_params.HYBRID_NORMALIZE_SOFT_ONLY = kHybridNormalizeSoftOnly;
@@ -725,6 +743,11 @@ ofec_sweep::SweepParameterConfig build_config() {
       kHybridEnableList.size() != kTilesPerWindow) {
     throw std::invalid_argument(
         "kHybridEnableList length must equal kTilesPerWindow when non-empty");
+  }
+  if (!kHybridHardLlrMagList.empty() &&
+      kHybridHardLlrMagList.size() != kTilesPerWindow) {
+    throw std::invalid_argument(
+        "kHybridHardLlrMagList length must equal kTilesPerWindow when non-empty");
   }
 
   config.interleaver_name = kInterleaverName;
@@ -835,7 +858,10 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.MUX_EXTRA_BYPASS_EDGES = selected_mux_bypass_edges;
   config.base_params.HYBRID_ENABLE = kHybridEnable;
   config.base_params.HYBRID_ENABLE_LIST = kHybridEnableList;
+  config.base_params.HYBRID_HARD_LLR_MAG = kHybridHardLlrMag;
+  config.base_params.HYBRID_HARD_LLR_MAG_LIST = kHybridHardLlrMagList;
   config.base_params.HYBRID_CLASSIFIER_MODE = kHybridClassifierMode;
+  config.base_params.HYBRID_SISO_BACKFILL_MODE = kHybridSisoBackfillMode;
   config.base_params.HYBRID_USE_FAST_CLASSIFIER =
       kHybridClassifierMode != newcode::HybridClassifierMode::LegacyHardDecode;
   config.base_params.HYBRID_NORMALIZE_SOFT_ONLY = kHybridNormalizeSoftOnly;
