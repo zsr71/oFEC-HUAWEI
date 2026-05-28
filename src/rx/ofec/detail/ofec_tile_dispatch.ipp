@@ -101,9 +101,33 @@ inline bool hybrid_class_is_siso_backfill_candidate(
   switch (mode) {
     case newcode::HybridSisoBackfillMode::TwoErrorOnly:
       return row_class == HybridRowClass::TwoMain;
+    case newcode::HybridSisoBackfillMode::OneAndTwoErrorPriority:
+      return row_class == HybridRowClass::OneMain ||
+             row_class == HybridRowClass::OneMainPlusParity ||
+             row_class == HybridRowClass::TwoMain;
     case newcode::HybridSisoBackfillMode::Disabled:
     default:
       return false;
+  }
+}
+
+inline int hybrid_siso_backfill_reclaim_priority(
+    HybridRowClass row_class,
+    newcode::HybridSisoBackfillMode mode) {
+  switch (mode) {
+    case newcode::HybridSisoBackfillMode::TwoErrorOnly:
+      return row_class == HybridRowClass::TwoMain ? 0 : -1;
+    case newcode::HybridSisoBackfillMode::OneAndTwoErrorPriority:
+      if (row_class == HybridRowClass::OneMain) {
+        return 0;
+      }
+      if (row_class == HybridRowClass::OneMainPlusParity) {
+        return 1;
+      }
+      return row_class == HybridRowClass::TwoMain ? 2 : -1;
+    case newcode::HybridSisoBackfillMode::Disabled:
+    default:
+      return -1;
   }
 }
 
@@ -153,7 +177,9 @@ void run_hybrid_prepass(
     HybridRowClass hard_class = HybridRowClass::None;
     std::array<float, newcode::Params::BCH_N> y2{};
   };
-  std::vector<DeferredHardFinishCandidate> deferred_candidates;
+  std::array<std::vector<DeferredHardFinishCandidate>, 3>
+      deferred_candidates_by_priority;
+  std::size_t deferred_candidates_total = 0;
   const std::size_t rows = prep.lin_matrix.rows();
   for (std::size_t row = 0; row < rows; ++row) {
     if (row < early_stop_row_flags.size() && early_stop_row_flags[row]) {
@@ -212,8 +238,13 @@ void run_hybrid_prepass(
       // 等整块 tile 的分类结果都出来后，再结合 SISO 预算决定要不要真正收掉。
       plan->rows[row].hybrid_class = hard_class;
       plan->hybrid_classes[row] = hard_class;
-      deferred_candidates.push_back(
-          DeferredHardFinishCandidate{row, hard_class, y2});
+      const int reclaim_priority = hybrid_siso_backfill_reclaim_priority(
+          hard_class, p.HYBRID_SISO_BACKFILL_MODE);
+      if (reclaim_priority >= 0) {
+        deferred_candidates_by_priority[static_cast<std::size_t>(reclaim_priority)]
+            .push_back(DeferredHardFinishCandidate{row, hard_class, y2});
+        ++deferred_candidates_total;
+      }
       continue;
     }
 
@@ -222,7 +253,7 @@ void run_hybrid_prepass(
     apply_hard_finish_to_plan(row, hard_class, y2, plan);
   }
 
-  if (enable_siso_backfill && !deferred_candidates.empty()) {
+  if (enable_siso_backfill && deferred_candidates_total > 0) {
     // 当前策略先把 deferred 候选都留在 SoftDecode 集合里。
     // 如果此时剩余 soft 行数仍然多于 SISO 预算，说明即便收掉一部分 deferred，
     // 也不会导致 SISO 吃不满；这种情况下再把多出来的 deferred 收回 HardFinish。
@@ -239,12 +270,22 @@ void run_hybrid_prepass(
             ? (soft_rows_before_deferred_accept - siso_budget)
             : 0u;
     const std::size_t deferred_accept_count =
-        std::min(max_deferred_accept, deferred_candidates.size());
-    for (std::size_t i = 0; i < deferred_accept_count; ++i) {
-      apply_hard_finish_to_plan(deferred_candidates[i].row,
-                                deferred_candidates[i].hard_class,
-                                deferred_candidates[i].y2,
-                                plan);
+        std::min(max_deferred_accept, deferred_candidates_total);
+    std::size_t reclaimed = 0;
+    for (const auto& candidates_at_priority : deferred_candidates_by_priority) {
+      for (const auto& candidate : candidates_at_priority) {
+        if (reclaimed >= deferred_accept_count) {
+          break;
+        }
+        apply_hard_finish_to_plan(candidate.row,
+                                  candidate.hard_class,
+                                  candidate.y2,
+                                  plan);
+        ++reclaimed;
+      }
+      if (reclaimed >= deferred_accept_count) {
+        break;
+      }
     }
   }
 

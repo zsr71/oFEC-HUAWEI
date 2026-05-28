@@ -30,6 +30,8 @@ const char* hybrid_siso_backfill_mode_name(newcode::HybridSisoBackfillMode mode)
       return "disabled";
     case newcode::HybridSisoBackfillMode::TwoErrorOnly:
       return "two_error_only";
+    case newcode::HybridSisoBackfillMode::OneAndTwoErrorPriority:
+      return "one_and_two_error_priority";
   }
   return "unknown";
 }

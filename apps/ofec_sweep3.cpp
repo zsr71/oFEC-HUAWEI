@@ -81,7 +81,7 @@ static const std::vector<float> kHybridHardLlrMagList = {};         // 按 tile 
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
     newcode::HybridClassifierMode::LegacyHardDecode;                // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
-    newcode::HybridSisoBackfillMode::Disabled;                      // Disabled / TwoErrorOnly
+    newcode::HybridSisoBackfillMode::Disabled;                      // Disabled / TwoErrorOnly / OneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只归一化 soft rows，false=保持兼容行为
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
     {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
@@ -216,6 +216,8 @@ const char* hybrid_siso_backfill_mode_name(newcode::HybridSisoBackfillMode mode)
       return "disabled";
     case newcode::HybridSisoBackfillMode::TwoErrorOnly:
       return "two_error_only";
+    case newcode::HybridSisoBackfillMode::OneAndTwoErrorPriority:
+      return "one_and_two_error_priority";
   }
   return "unknown";
 }

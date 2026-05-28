@@ -93,7 +93,7 @@ static const std::vector<float> kHybridHardLlrMagList = {};              // 按 
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
     newcode::HybridClassifierMode::FriendS1S3Classifier;                       // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
-    newcode::HybridSisoBackfillMode::TwoErrorOnly;                                 // Disabled / TwoErrorOnly
+    newcode::HybridSisoBackfillMode::TwoErrorOnly;                                 // Disabled / TwoErrorOnly / OneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;                    // true=只归一化 soft rows，false=保持当前兼容行为
 
 // ==================================

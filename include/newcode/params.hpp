@@ -17,7 +17,8 @@ enum class HybridClassifierMode : uint8_t {
 
 enum class HybridSisoBackfillMode : uint8_t {
   Disabled = 0,
-  TwoErrorOnly = 1
+  TwoErrorOnly = 1,
+  OneAndTwoErrorPriority = 2
 };
 
 struct Params {
