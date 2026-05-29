@@ -30,8 +30,8 @@ static constexpr unsigned kMaxParallelSeeds = 0; // 每个 Eb/N0 内部的 seed 
 
 // 测试点与 seed
 static const std::vector<float> kEbN0List = {3.05f}; // 需要测试的 Eb/N0 列表
-static constexpr int kBitgenSeedBase = 20260319;         // 基础比特种子；实际每个 seed 在此基础上递增
-static constexpr int kChannelSeedBase = 3182026;         // 基础信道种子；实际每个 seed 在此基础上递增
+static constexpr int kBitgenSeedBase = 20260529;         // 基础比特种子；实际每个 seed 在此基础上递增
+static constexpr int kChannelSeedBase = 5292026;         // 基础信道种子；实际每个 seed 在此基础上递增
 static constexpr int kSeedCount = 1;                    // 每个 Eb/N0 点重复运行的 seed 数量
 
 // 发射端参数

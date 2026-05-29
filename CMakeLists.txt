@@ -204,6 +204,28 @@ add_executable(ofec_fast_classifier_compare
 )
 target_link_libraries(ofec_fast_classifier_compare PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
 
+add_executable(ofec_two_stream_shared_decoder
+  apps/ofec_two_stream_shared_decoder.cpp
+  src/ofec_single/ofec_single_dual_writer.cpp
+  src/ofec_single/ofec_single_params.cpp
+  src/two_stream_shared/shared_bch_hard_decode64.cpp
+  src/two_stream_shared/two_stream_shared_runner.cpp
+)
+target_link_libraries(ofec_two_stream_shared_decoder PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
+
+add_executable(ofec_two_stream_shared_sweep
+  apps/ofec_two_stream_shared_sweep.cpp
+  src/ofec_single/ofec_single_dual_writer.cpp
+  src/ofec_single/ofec_single_params.cpp
+  src/ofec_sweep/ofec_sweep_io.cpp
+  src/ofec_sweep/ofec_sweep_scenarios.cpp
+  src/ofec_sweep/ofec_sweep_runner.cpp
+  src/two_stream_shared/shared_bch_hard_decode64.cpp
+  src/two_stream_shared/two_stream_shared_runner.cpp
+)
+target_include_directories(ofec_two_stream_shared_sweep PRIVATE src/ofec_sweep)
+target_link_libraries(ofec_two_stream_shared_sweep PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
+
 add_executable(tpc_single
   apps/TPC_single.cpp
   src/tpc/tpc_decoder.cpp
