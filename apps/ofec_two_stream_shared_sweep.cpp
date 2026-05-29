@@ -131,6 +131,7 @@ static constexpr bool kDecoderTraceLogMismatch = false; // 是否打印同坐标
 
 // ==================================
 
+// ======== 结果结构 / 运行状态 ========
 enum class StopReason {
   TargetPostErrors,
   MaxPostFecBits,
@@ -181,6 +182,7 @@ struct ActiveChunk {
   std::future<ChunkResult> future;
 };
 
+// ======== 基础格式 / 字符串辅助 ========
 std::string stop_reason_to_string(StopReason reason) {
   switch (reason) {
     case StopReason::TargetPostErrors:
@@ -256,115 +258,7 @@ std::string format_duration(std::chrono::duration<double> duration) {
   return oss.str();
 }
 
-void ensure_csv_header_two_stream_shared_sweep(const std::string& csv_path) {
-  std::ifstream fin(csv_path);
-  if (fin.good() && fin.peek() != std::ifstream::traits_type::eof()) {
-    return;
-  }
-
-  std::ofstream fout(csv_path, std::ios::out | std::ios::app);
-  fout << "timestamp,run_id,ebn0_db,"
-          "pre_ber_a,pre_errs_a,pre_total_a,pre_quant_ber_a,pre_quant_errs_a,pre_quant_total_a,post_ber_a,post_errs_a,post_total_a,"
-          "pre_ber_b,pre_errs_b,pre_total_b,pre_quant_ber_b,pre_quant_errs_b,pre_quant_total_b,post_ber_b,post_errs_b,post_total_b,"
-          "chunk_num_info_bits,chunks_completed,target_post_errors,max_post_fec_total_bits,confidence_level,"
-          "stop_reason_a,post_ber_is_upper_bound_a,post_ber_upper_bound_a,"
-          "stop_reason_b,post_ber_is_upper_bound_b,post_ber_upper_bound_b,"
-          "elapsed_seconds,"
-          "bitgen_seed_a_base,channel_seed_a_base,bitgen_seed_b_base,channel_seed_b_base,"
-          "alpha_list,beta_list,siso_active_list,"
-          "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
-          "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_enable_reconfig,"
-          "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_siso_backfill_mode,hybrid_normalize_soft_only,"
-          "early_stop_enable,early_stop_enable_list,early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
-          "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
-          "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
-}
-
-void write_csv_row_two_stream_shared_sweep(std::ostream& csv,
-                                           const std::string& timestamp,
-                                           const std::string& run_id,
-                                           const AggregatedPointResult& point) {
-  csv << timestamp << ','
-      << run_id << ','
-      << point.ebn0_db << ','
-      << point.stream_a.pre_fec.ber << ','
-      << point.stream_a.pre_fec.errors << ','
-      << point.stream_a.pre_fec.total << ',';
-  if (point.stream_a.has_pre_fec_quantized_hard) {
-    csv << point.stream_a.pre_fec_quantized_hard.ber << ','
-        << point.stream_a.pre_fec_quantized_hard.errors << ','
-        << point.stream_a.pre_fec_quantized_hard.total << ',';
-  } else {
-    csv << ",,,";
-  }
-  csv << point.stream_a.post_fec.ber << ','
-      << point.stream_a.post_fec.errors << ','
-      << point.stream_a.post_fec.total << ','
-      << point.stream_b.pre_fec.ber << ','
-      << point.stream_b.pre_fec.errors << ','
-      << point.stream_b.pre_fec.total << ',';
-  if (point.stream_b.has_pre_fec_quantized_hard) {
-    csv << point.stream_b.pre_fec_quantized_hard.ber << ','
-        << point.stream_b.pre_fec_quantized_hard.errors << ','
-        << point.stream_b.pre_fec_quantized_hard.total << ',';
-  } else {
-    csv << ",,,";
-  }
-  csv << point.stream_b.post_fec.ber << ','
-      << point.stream_b.post_fec.errors << ','
-      << point.stream_b.post_fec.total << ','
-      << kChunkNumInfoBits << ','
-      << point.chunks_completed << ','
-      << kTargetPostErrors << ','
-      << kMaxPostFecTotalBits << ','
-      << kConfidenceLevel << ','
-      << stop_reason_to_string(point.stream_a.stop_reason) << ','
-      << (point.stream_a.post_ber_is_upper_bound ? 1 : 0) << ',';
-  if (std::isnan(point.stream_a.post_ber_upper_bound)) {
-    csv << ',';
-  } else {
-    csv << point.stream_a.post_ber_upper_bound << ',';
-  }
-  csv << stop_reason_to_string(point.stream_b.stop_reason) << ','
-      << (point.stream_b.post_ber_is_upper_bound ? 1 : 0) << ',';
-  if (std::isnan(point.stream_b.post_ber_upper_bound)) {
-    csv << ',';
-  } else {
-    csv << point.stream_b.post_ber_upper_bound << ',';
-  }
-  csv << point.elapsed_seconds << ','
-      << kBitgenSeedA << ','
-      << kChannelSeedA << ','
-      << kBitgenSeedB << ','
-      << kChannelSeedB << ','
-      << '"' << join_vec(kAlphaExplicit, '|', 6) << "\","
-      << '"' << join_vec(kBetaExplicit, '|', 6) << "\","
-      << '"' << join_int_vec(kSisoActiveList, '|') << "\","
-      << kChaseL << ','
-      << (kChaseNTestOverride < 0 ? (1 << kChaseL) : kChaseNTestOverride) << ','
-      << kChaseTopkKeep << ','
-      << kChaseGroupMinimaBits << ','
-      << kMuxGroupG << ','
-      << kMuxSchedulingMode << ','
-      << kMuxPriorityRule << ','
-      << (kMuxEnableReconfig ? 1 : 0) << ','
-      << (kHybridEnable ? 1 : 0) << ','
-      << '"' << join_int_vec(kHybridEnableList, '|') << "\","
-      << hybrid_classifier_mode_name(kHybridClassifierMode) << ','
-      << hybrid_siso_backfill_mode_name(kHybridSisoBackfillMode) << ','
-      << (kHybridNormalizeSoftOnly ? 1 : 0) << ','
-      << (kEnableEarlyStop ? 1 : 0) << ','
-      << '"' << join_int_vec(kEarlyStopEnableList, '|') << "\","
-      << kEarlyStopConditionMode << ','
-      << kEarlyStopActionMode << ','
-      << kEarlyStopBindGroupSize << ','
-      << (kEarlyStopCondV1RequireBch ? 1 : 0) << ','
-      << (kEarlyStopCondV1RequireOverall ? 1 : 0) << ','
-      << kEarlyStopV2LlrAbsThreshold << ','
-      << kEarlyStopV2MaxUnreliableBits << ','
-      << (kEarlyStopCondV2IncludeOverall ? 1 : 0) << '\n';
-}
-
+// ======== chunk runner：seed 派生 / 单 chunk 执行 ========
 std::uint32_t mix_u32(std::uint32_t x) {
   x ^= x >> 16;
   x *= 0x7feb352dU;
@@ -383,6 +277,135 @@ int derive_seed(int base, std::size_t chunk_index, std::uint32_t salt) {
   return positive == 0 ? 1 : positive;
 }
 
+newcode::two_stream_shared::Config build_chunk_config(float ebn0_db,
+                                                      std::size_t chunk_index) {
+  ofec_single::Config base_cfg{};
+  base_cfg.label = kLabel;
+  base_cfg.ebn0_db = ebn0_db;
+  base_cfg.chaseL_override = kChaseL;
+  base_cfg.chase_n_test_override = kChaseNTestOverride;
+  base_cfg.chase_topk_keep = kChaseTopkKeep;
+  base_cfg.chase_group_minima_bits = kChaseGroupMinimaBits;
+  base_cfg.normalize_extrinsic = kNormalizeExtrinsic;
+  base_cfg.bits_per_symbol = kBitsPerSymbol;
+  base_cfg.bitgen_seed = kBitgenSeedA;
+  base_cfg.channel_seed = kChannelSeedA;
+  base_cfg.enable_early_stop = kEnableEarlyStop;
+  base_cfg.early_stop_enable_list = kEarlyStopEnableList;
+  base_cfg.early_stop_condition_mode = kEarlyStopConditionMode;
+  base_cfg.early_stop_condition_mode_list = kEarlyStopConditionModeList;
+  base_cfg.early_stop_action_mode = kEarlyStopActionMode;
+  base_cfg.early_stop_action_mode_list = kEarlyStopActionModeList;
+  base_cfg.early_stop_bind_group_size = kEarlyStopBindGroupSize;
+  base_cfg.early_stop_bind_group_size_list = kEarlyStopBindGroupSizeList;
+  base_cfg.early_stop_cond_v1_require_bch = kEarlyStopCondV1RequireBch;
+  base_cfg.early_stop_cond_v1_require_overall = kEarlyStopCondV1RequireOverall;
+  base_cfg.early_stop_v2_llr_abs_threshold = kEarlyStopV2LlrAbsThreshold;
+  base_cfg.early_stop_v2_max_unreliable_bits = kEarlyStopV2MaxUnreliableBits;
+  base_cfg.early_stop_cond_v2_include_overall = kEarlyStopCondV2IncludeOverall;
+  base_cfg.alpha_explicit = kAlphaExplicit;
+  base_cfg.beta_explicit = kBetaExplicit;
+  base_cfg.early_stop_action_sign_beta_explicit = kEarlyStopActionBetaExplicit;
+  base_cfg.early_stop_action_residual_divisor =
+      kEarlyStopActionResidualDivisor;
+  base_cfg.early_stop_action_hard_llr_mag = kEarlyStopActionHardLlrMag;
+  base_cfg.siso_active_list = kSisoActiveList;
+  base_cfg.mux_group_g = kMuxGroupG;
+  base_cfg.mux_scheduling_mode = kMuxSchedulingMode;
+  base_cfg.mux_early_stop_priority_rule = kMuxPriorityRule;
+  base_cfg.mux_enable_reconfig = kMuxEnableReconfig;
+  base_cfg.mux_extra_bypass_edges = kMuxExtraBypassEdges;
+  base_cfg.hybrid_enable = kHybridEnable;
+  base_cfg.hybrid_enable_list = kHybridEnableList;
+  base_cfg.hybrid_hard_llr_mag = kHybridHardLlrMag;
+  base_cfg.hybrid_hard_llr_mag_list = kHybridHardLlrMagList;
+  base_cfg.hybrid_classifier_mode = kHybridClassifierMode;
+  base_cfg.hybrid_siso_backfill_mode = kHybridSisoBackfillMode;
+  base_cfg.hybrid_normalize_soft_only = kHybridNormalizeSoftOnly;
+  base_cfg.interleaver_name = kInterleaverName;
+  base_cfg.decoder_name = kDecoderName;
+  base_cfg.generate_random_bits = kGenerateRandomBits;
+  base_cfg.normalize_known_prefix_tail = kNormalizeKnownPrefixTail;
+  base_cfg.quant_clip_ratio = kQuantClipRatio;
+  base_cfg.llr_bits = kLlrBits;
+  base_cfg.debug_trace = newcode::Params::DebugTraceConfig{
+      .enable = kDecoderTraceEnable,
+      .log_read_mapping = kDecoderTraceLogRead,
+      .log_write_mapping = kDecoderTraceLogWrite,
+      .log_mismatch = kDecoderTraceLogMismatch,
+      .log_chase_detail = false,
+      .dump_chase_csv = false,
+      .row = kDecoderTraceRow,
+      .col = kDecoderTraceCol,
+      .chase_decoder_row = -1,
+      .chase_decoder_col = -1,
+      .chase_tile_index = -1,
+      .chase_invocation = -1,
+      .chase_csv_dir = {},
+      .chase_expected_bits = {},
+      .chase_candidate_s1 = {},
+      .chase_candidate_s3 = {},
+      .chase_candidate_good = {},
+      .chase_candidate_corrected_errors = {},
+      .targets = {},
+      .active_chase_entries = {},
+  };
+
+  std::ofstream null_file;
+  io::DualWriter log(null_file);
+  auto params = ofec_single::detail::build_params(base_cfg, log);
+  if (!params.has_value()) {
+    throw std::runtime_error(
+        "failed to build params for two-stream shared sweep chunk");
+  }
+  params->NUM_INFO_BITS = kChunkNumInfoBits;
+
+  newcode::PipelineConfig pipeline =
+      ofec_single::detail::build_pipeline_config(base_cfg);
+  pipeline.quiet = kQuietConsole;
+
+  const int bitgen_seed_a = derive_seed(kBitgenSeedA, chunk_index, 0x13579bdfU);
+  const int channel_seed_a =
+      derive_seed(kChannelSeedA, chunk_index, 0x2468ace0U);
+  const int bitgen_seed_b = derive_seed(kBitgenSeedB, chunk_index, 0x10293847U);
+  const int channel_seed_b =
+      derive_seed(kChannelSeedB, chunk_index, 0x56473829U);
+
+  return newcode::two_stream_shared::Config{
+      .params = *params,
+      .pipeline = pipeline,
+      .stream_a =
+          {
+              .label = std::string(kLabel) + "_A_chunk" +
+                       std::to_string(chunk_index),
+              .bitgen_seed = bitgen_seed_a,
+              .channel_seed = channel_seed_a,
+              .ebn0_db = ebn0_db,
+          },
+      .stream_b =
+          {
+              .label = std::string(kLabel) + "_B_chunk" +
+                       std::to_string(chunk_index),
+              .bitgen_seed = bitgen_seed_b,
+              .channel_seed = channel_seed_b,
+              .ebn0_db = ebn0_db,
+          },
+  };
+}
+
+ChunkResult run_chunk(float ebn0_db, std::size_t chunk_index) {
+  auto config = build_chunk_config(ebn0_db, chunk_index);
+  ChunkResult chunk;
+  chunk.chunk_index = chunk_index;
+  chunk.bitgen_seed_a = config.stream_a.bitgen_seed;
+  chunk.channel_seed_a = config.stream_a.channel_seed;
+  chunk.bitgen_seed_b = config.stream_b.bitgen_seed;
+  chunk.channel_seed_b = config.stream_b.channel_seed;
+  chunk.result = newcode::two_stream_shared::run_two_stream_shared(config);
+  return chunk;
+}
+
+// ======== 点内聚合 / 停止条件 ========
 double zero_error_upper_bound(std::size_t total_bits, double confidence_level) {
   if (total_bits == 0) {
     return std::numeric_limits<double>::infinity();
@@ -545,130 +568,7 @@ void finalize_point_if_ready(PointState* state,
   ++(*completed_count);
 }
 
-newcode::two_stream_shared::Config build_chunk_config(float ebn0_db,
-                                                      std::size_t chunk_index) {
-  ofec_single::Config base_cfg{};
-  base_cfg.label = kLabel;
-  base_cfg.ebn0_db = ebn0_db;
-  base_cfg.chaseL_override = kChaseL;
-  base_cfg.chase_n_test_override = kChaseNTestOverride;
-  base_cfg.chase_topk_keep = kChaseTopkKeep;
-  base_cfg.chase_group_minima_bits = kChaseGroupMinimaBits;
-  base_cfg.normalize_extrinsic = kNormalizeExtrinsic;
-  base_cfg.bits_per_symbol = kBitsPerSymbol;
-  base_cfg.bitgen_seed = kBitgenSeedA;
-  base_cfg.channel_seed = kChannelSeedA;
-  base_cfg.enable_early_stop = kEnableEarlyStop;
-  base_cfg.early_stop_enable_list = kEarlyStopEnableList;
-  base_cfg.early_stop_condition_mode = kEarlyStopConditionMode;
-  base_cfg.early_stop_condition_mode_list = kEarlyStopConditionModeList;
-  base_cfg.early_stop_action_mode = kEarlyStopActionMode;
-  base_cfg.early_stop_action_mode_list = kEarlyStopActionModeList;
-  base_cfg.early_stop_bind_group_size = kEarlyStopBindGroupSize;
-  base_cfg.early_stop_bind_group_size_list = kEarlyStopBindGroupSizeList;
-  base_cfg.early_stop_cond_v1_require_bch = kEarlyStopCondV1RequireBch;
-  base_cfg.early_stop_cond_v1_require_overall = kEarlyStopCondV1RequireOverall;
-  base_cfg.early_stop_v2_llr_abs_threshold = kEarlyStopV2LlrAbsThreshold;
-  base_cfg.early_stop_v2_max_unreliable_bits = kEarlyStopV2MaxUnreliableBits;
-  base_cfg.early_stop_cond_v2_include_overall = kEarlyStopCondV2IncludeOverall;
-  base_cfg.alpha_explicit = kAlphaExplicit;
-  base_cfg.beta_explicit = kBetaExplicit;
-  base_cfg.early_stop_action_sign_beta_explicit = kEarlyStopActionBetaExplicit;
-  base_cfg.early_stop_action_residual_divisor =
-      kEarlyStopActionResidualDivisor;
-  base_cfg.early_stop_action_hard_llr_mag = kEarlyStopActionHardLlrMag;
-  base_cfg.siso_active_list = kSisoActiveList;
-  base_cfg.mux_group_g = kMuxGroupG;
-  base_cfg.mux_scheduling_mode = kMuxSchedulingMode;
-  base_cfg.mux_early_stop_priority_rule = kMuxPriorityRule;
-  base_cfg.mux_enable_reconfig = kMuxEnableReconfig;
-  base_cfg.mux_extra_bypass_edges = kMuxExtraBypassEdges;
-  base_cfg.hybrid_enable = kHybridEnable;
-  base_cfg.hybrid_enable_list = kHybridEnableList;
-  base_cfg.hybrid_hard_llr_mag = kHybridHardLlrMag;
-  base_cfg.hybrid_hard_llr_mag_list = kHybridHardLlrMagList;
-  base_cfg.hybrid_classifier_mode = kHybridClassifierMode;
-  base_cfg.hybrid_siso_backfill_mode = kHybridSisoBackfillMode;
-  base_cfg.hybrid_normalize_soft_only = kHybridNormalizeSoftOnly;
-  base_cfg.interleaver_name = kInterleaverName;
-  base_cfg.decoder_name = kDecoderName;
-  base_cfg.generate_random_bits = kGenerateRandomBits;
-  base_cfg.normalize_known_prefix_tail = kNormalizeKnownPrefixTail;
-  base_cfg.quant_clip_ratio = kQuantClipRatio;
-  base_cfg.llr_bits = kLlrBits;
-  base_cfg.debug_trace = newcode::Params::DebugTraceConfig{
-      .enable = kDecoderTraceEnable,
-      .log_read_mapping = kDecoderTraceLogRead,
-      .log_write_mapping = kDecoderTraceLogWrite,
-      .log_mismatch = kDecoderTraceLogMismatch,
-      .log_chase_detail = false,
-      .dump_chase_csv = false,
-      .row = kDecoderTraceRow,
-      .col = kDecoderTraceCol,
-      .chase_decoder_row = -1,
-      .chase_decoder_col = -1,
-      .chase_tile_index = -1,
-      .chase_invocation = -1,
-      .chase_csv_dir = {},
-      .chase_expected_bits = {},
-      .chase_candidate_s1 = {},
-      .chase_candidate_s3 = {},
-      .chase_candidate_good = {},
-      .chase_candidate_corrected_errors = {},
-      .targets = {},
-      .active_chase_entries = {},
-  };
-
-  std::ofstream null_file;
-  io::DualWriter log(null_file);
-  auto params = ofec_single::detail::build_params(base_cfg, log);
-  if (!params.has_value()) {
-    throw std::runtime_error(
-        "failed to build params for two-stream shared sweep chunk");
-  }
-  params->NUM_INFO_BITS = kChunkNumInfoBits;
-
-  newcode::PipelineConfig pipeline =
-      ofec_single::detail::build_pipeline_config(base_cfg);
-  pipeline.quiet = kQuietConsole;
-
-  const int bitgen_seed_a = derive_seed(kBitgenSeedA, chunk_index, 0x13579bdfU);
-  const int channel_seed_a = derive_seed(kChannelSeedA, chunk_index, 0x2468ace0U);
-  const int bitgen_seed_b = derive_seed(kBitgenSeedB, chunk_index, 0x10293847U);
-  const int channel_seed_b = derive_seed(kChannelSeedB, chunk_index, 0x56473829U);
-
-  return newcode::two_stream_shared::Config{
-      .params = *params,
-      .pipeline = pipeline,
-      .stream_a =
-          {
-              .label = std::string(kLabel) + "_A_chunk" + std::to_string(chunk_index),
-              .bitgen_seed = bitgen_seed_a,
-              .channel_seed = channel_seed_a,
-              .ebn0_db = ebn0_db,
-          },
-      .stream_b =
-          {
-              .label = std::string(kLabel) + "_B_chunk" + std::to_string(chunk_index),
-              .bitgen_seed = bitgen_seed_b,
-              .channel_seed = channel_seed_b,
-              .ebn0_db = ebn0_db,
-          },
-  };
-}
-
-ChunkResult run_chunk(float ebn0_db, std::size_t chunk_index) {
-  auto config = build_chunk_config(ebn0_db, chunk_index);
-  ChunkResult chunk;
-  chunk.chunk_index = chunk_index;
-  chunk.bitgen_seed_a = config.stream_a.bitgen_seed;
-  chunk.channel_seed_a = config.stream_a.channel_seed;
-  chunk.bitgen_seed_b = config.stream_b.bitgen_seed;
-  chunk.channel_seed_b = config.stream_b.channel_seed;
-  chunk.result = newcode::two_stream_shared::run_two_stream_shared(config);
-  return chunk;
-}
-
+// ======== 全局 scheduler ========
 std::vector<AggregatedPointResult> run_low_ber_points_global(
     const std::vector<float>& ebn0_values,
     unsigned total_workers,
@@ -824,6 +724,142 @@ std::vector<AggregatedPointResult> run_low_ber_points_global(
   return results;
 }
 
+// ======== CSV writer ========
+void ensure_csv_header_two_stream_shared_sweep(const std::string& csv_path) {
+  std::ifstream fin(csv_path);
+  if (fin.good() && fin.peek() != std::ifstream::traits_type::eof()) {
+    return;
+  }
+
+  std::ofstream fout(csv_path, std::ios::out | std::ios::app);
+  fout << "timestamp,run_id,ebn0_db,"
+          "pre_ber_a,pre_errs_a,pre_total_a,pre_quant_ber_a,pre_quant_errs_a,pre_quant_total_a,post_ber_a,post_errs_a,post_total_a,"
+          "pre_ber_b,pre_errs_b,pre_total_b,pre_quant_ber_b,pre_quant_errs_b,pre_quant_total_b,post_ber_b,post_errs_b,post_total_b,"
+          "chunk_num_info_bits,chunks_completed,target_post_errors,max_post_fec_total_bits,confidence_level,"
+          "stop_reason_a,post_ber_is_upper_bound_a,post_ber_upper_bound_a,"
+          "stop_reason_b,post_ber_is_upper_bound_b,post_ber_upper_bound_b,"
+          "elapsed_seconds,"
+          "bitgen_seed_a_base,channel_seed_a_base,bitgen_seed_b_base,channel_seed_b_base,"
+          "alpha_list,beta_list,siso_active_list,"
+          "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
+          "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_enable_reconfig,"
+          "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_siso_backfill_mode,hybrid_normalize_soft_only,"
+          "early_stop_enable,early_stop_enable_list,early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
+          "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
+          "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
+}
+
+void write_csv_row_two_stream_shared_sweep(std::ostream& csv,
+                                           const std::string& timestamp,
+                                           const std::string& run_id,
+                                           const AggregatedPointResult& point) {
+  csv << timestamp << ','
+      << run_id << ','
+      << point.ebn0_db << ','
+      << point.stream_a.pre_fec.ber << ','
+      << point.stream_a.pre_fec.errors << ','
+      << point.stream_a.pre_fec.total << ',';
+  if (point.stream_a.has_pre_fec_quantized_hard) {
+    csv << point.stream_a.pre_fec_quantized_hard.ber << ','
+        << point.stream_a.pre_fec_quantized_hard.errors << ','
+        << point.stream_a.pre_fec_quantized_hard.total << ',';
+  } else {
+    csv << ",,,";
+  }
+  csv << point.stream_a.post_fec.ber << ','
+      << point.stream_a.post_fec.errors << ','
+      << point.stream_a.post_fec.total << ','
+      << point.stream_b.pre_fec.ber << ','
+      << point.stream_b.pre_fec.errors << ','
+      << point.stream_b.pre_fec.total << ',';
+  if (point.stream_b.has_pre_fec_quantized_hard) {
+    csv << point.stream_b.pre_fec_quantized_hard.ber << ','
+        << point.stream_b.pre_fec_quantized_hard.errors << ','
+        << point.stream_b.pre_fec_quantized_hard.total << ',';
+  } else {
+    csv << ",,,";
+  }
+  csv << point.stream_b.post_fec.ber << ','
+      << point.stream_b.post_fec.errors << ','
+      << point.stream_b.post_fec.total << ','
+      << kChunkNumInfoBits << ','
+      << point.chunks_completed << ','
+      << kTargetPostErrors << ','
+      << kMaxPostFecTotalBits << ','
+      << kConfidenceLevel << ','
+      << stop_reason_to_string(point.stream_a.stop_reason) << ','
+      << (point.stream_a.post_ber_is_upper_bound ? 1 : 0) << ',';
+  if (std::isnan(point.stream_a.post_ber_upper_bound)) {
+    csv << ',';
+  } else {
+    csv << point.stream_a.post_ber_upper_bound << ',';
+  }
+  csv << stop_reason_to_string(point.stream_b.stop_reason) << ','
+      << (point.stream_b.post_ber_is_upper_bound ? 1 : 0) << ',';
+  if (std::isnan(point.stream_b.post_ber_upper_bound)) {
+    csv << ',';
+  } else {
+    csv << point.stream_b.post_ber_upper_bound << ',';
+  }
+  csv << point.elapsed_seconds << ','
+      << kBitgenSeedA << ','
+      << kChannelSeedA << ','
+      << kBitgenSeedB << ','
+      << kChannelSeedB << ','
+      << '"' << join_vec(kAlphaExplicit, '|', 6) << "\","
+      << '"' << join_vec(kBetaExplicit, '|', 6) << "\","
+      << '"' << join_int_vec(kSisoActiveList, '|') << "\","
+      << kChaseL << ','
+      << (kChaseNTestOverride < 0 ? (1 << kChaseL) : kChaseNTestOverride)
+      << ','
+      << kChaseTopkKeep << ','
+      << kChaseGroupMinimaBits << ','
+      << kMuxGroupG << ','
+      << kMuxSchedulingMode << ','
+      << kMuxPriorityRule << ','
+      << (kMuxEnableReconfig ? 1 : 0) << ','
+      << (kHybridEnable ? 1 : 0) << ','
+      << '"' << join_int_vec(kHybridEnableList, '|') << "\","
+      << hybrid_classifier_mode_name(kHybridClassifierMode) << ','
+      << hybrid_siso_backfill_mode_name(kHybridSisoBackfillMode) << ','
+      << (kHybridNormalizeSoftOnly ? 1 : 0) << ','
+      << (kEnableEarlyStop ? 1 : 0) << ','
+      << '"' << join_int_vec(kEarlyStopEnableList, '|') << "\","
+      << kEarlyStopConditionMode << ','
+      << kEarlyStopActionMode << ','
+      << kEarlyStopBindGroupSize << ','
+      << (kEarlyStopCondV1RequireBch ? 1 : 0) << ','
+      << (kEarlyStopCondV1RequireOverall ? 1 : 0) << ','
+      << kEarlyStopV2LlrAbsThreshold << ','
+      << kEarlyStopV2MaxUnreliableBits << ','
+      << (kEarlyStopCondV2IncludeOverall ? 1 : 0) << '\n';
+}
+
+void write_results_csv_two_stream_shared_sweep(
+    std::ostream& csv,
+    const std::string& run_id,
+    const std::vector<AggregatedPointResult>& results) {
+  for (const auto& point : results) {
+    write_csv_row_two_stream_shared_sweep(csv, utils::now_stamp(), run_id,
+                                          point);
+  }
+}
+
+// ======== main 辅助函数 ========
+struct SweepOutputFiles {
+  std::filesystem::path data_dir = "data";
+  std::string run_id;
+  std::string log_path;
+  std::string csv_path;
+};
+
+struct WorkerLaunchConfig {
+  unsigned available_workers = 0;
+  unsigned total_workers = 0;
+  unsigned base_inflight_per_point = 0;
+  unsigned dynamic_inflight_cap = 0;
+};
+
 std::vector<float> build_ebn0_values() {
   ofec_sweep::SweepParameterConfig config;
   config.ebn0_start = kEbN0Start;
@@ -832,55 +868,63 @@ std::vector<float> build_ebn0_values() {
   return ofec_sweep::detail::build_ebn0_values(config);
 }
 
-}  // namespace
+SweepOutputFiles build_output_files() {
+  SweepOutputFiles files;
+  io::ensure_dir(files.data_dir);
+  files.run_id = utils::now_stamp();
+  files.log_path =
+      (files.data_dir / ("run_" + files.run_id + "_two_stream_shared_sweep.log"))
+          .string();
+  files.csv_path =
+      (files.data_dir /
+       ("ofec_two_stream_shared_sweep_results_" + files.run_id + ".csv"))
+          .string();
+  return files;
+}
 
-int main() {
-  const std::filesystem::path data_dir = "data";
-  io::ensure_dir(data_dir);
-  const std::string run_id = utils::now_stamp();
-  const std::string log_path =
-      (data_dir / ("run_" + run_id + "_two_stream_shared_sweep.log")).string();
-  ofec_sweep::detail::DualOut out(std::cout, log_path, !kQuietConsole);
-
-  const std::string csv_path =
-      (data_dir / ("ofec_two_stream_shared_sweep_results_" + run_id + ".csv")).string();
+std::ofstream open_csv_writer_two_stream_shared_sweep(
+    const std::string& csv_path) {
   ensure_csv_header_two_stream_shared_sweep(csv_path);
   std::ofstream csv(csv_path, std::ios::out | std::ios::app);
   csv.setf(std::ios::fixed);
   csv << std::setprecision(10);
+  return csv;
+}
 
-  const std::vector<float> ebn0_values = build_ebn0_values();
-  if (ebn0_values.empty()) {
-    std::cerr << "[ERROR] no Eb/N0 points generated for two-stream shared sweep\n";
-    return 1;
-  }
-
+WorkerLaunchConfig resolve_worker_launch_config() {
   ofec_sweep::SweepParameterConfig worker_cfg;
-  const unsigned available_workers =
+  WorkerLaunchConfig config;
+  config.available_workers =
       ofec_sweep::detail::resolve_worker_count(worker_cfg);
-  const unsigned total_workers =
+  config.total_workers =
       (kMaxTotalWorkers == 0)
-          ? available_workers
-          : std::max(1u, std::min(available_workers, kMaxTotalWorkers));
-  const unsigned base_inflight_per_point =
-      (kMaxInflightChunksPerPoint == 0)
-          ? total_workers
-          : std::max(1u, std::min(total_workers, kMaxInflightChunksPerPoint));
-  const unsigned dynamic_inflight_cap =
-      (kMaxDynamicInflightChunksPerPoint == 0)
-          ? total_workers
+          ? config.available_workers
           : std::max(1u,
-                     std::min(total_workers,
-                              kMaxDynamicInflightChunksPerPoint));
+                     std::min(config.available_workers, kMaxTotalWorkers));
+  config.base_inflight_per_point =
+      (kMaxInflightChunksPerPoint == 0)
+          ? config.total_workers
+          : std::max(1u,
+                     std::min(config.total_workers, kMaxInflightChunksPerPoint));
+  config.dynamic_inflight_cap =
+      (kMaxDynamicInflightChunksPerPoint == 0)
+          ? config.total_workers
+          : std::max(1u, std::min(config.total_workers,
+                                  kMaxDynamicInflightChunksPerPoint));
+  return config;
+}
 
+void log_sweep_plan(const std::vector<float>& ebn0_values,
+                    const WorkerLaunchConfig& workers,
+                    ofec_sweep::detail::DualOut& out) {
   out << "[INFO] total Eb/N0 points = " << ebn0_values.size() << "\n";
-  out << "[INFO] total workers = " << total_workers << " (available="
-      << available_workers << ")\n";
+  out << "[INFO] total workers = " << workers.total_workers << " (available="
+      << workers.available_workers << ")\n";
   out << "[INFO] base max inflight chunks per point = "
-      << base_inflight_per_point << "\n";
+      << workers.base_inflight_per_point << "\n";
   out << "[INFO] dynamic inflight per point = "
       << (kEnableDynamicInflightPerPoint ? "enabled" : "disabled")
-      << " (cap=" << dynamic_inflight_cap << ")\n";
+      << " (cap=" << workers.dynamic_inflight_cap << ")\n";
   out << "[INFO] chunk_num_info_bits = " << kChunkNumInfoBits << "\n";
   out << "[INFO] target_post_errors = " << kTargetPostErrors << "\n";
   out << "[INFO] max_post_fec_total_bits = " << kMaxPostFecTotalBits << "\n";
@@ -889,21 +933,39 @@ int main() {
         << std::scientific << kTargetBerUpperBound << std::defaultfloat
         << ", confidence=" << kConfidenceLevel << "\n";
   }
+}
 
-  auto results = run_low_ber_points_global(ebn0_values,
-                                           total_workers,
-                                           base_inflight_per_point,
-                                           dynamic_inflight_cap,
-                                           out);
-  std::sort(results.begin(),
-            results.end(),
+void sort_results_by_ebn0(std::vector<AggregatedPointResult>* results) {
+  std::sort(results->begin(), results->end(),
             [](const AggregatedPointResult& lhs,
                const AggregatedPointResult& rhs) {
               return lhs.ebn0_db < rhs.ebn0_db;
             });
-  for (const auto& point : results) {
-    write_csv_row_two_stream_shared_sweep(csv, utils::now_stamp(), run_id, point);
+}
+
+}  // namespace
+
+int main() {
+  const SweepOutputFiles files = build_output_files();
+  ofec_sweep::detail::DualOut out(std::cout, files.log_path, !kQuietConsole);
+  std::ofstream csv = open_csv_writer_two_stream_shared_sweep(files.csv_path);
+
+  const std::vector<float> ebn0_values = build_ebn0_values();
+  if (ebn0_values.empty()) {
+    std::cerr << "[ERROR] no Eb/N0 points generated for two-stream shared sweep\n";
+    return 1;
   }
+
+  const WorkerLaunchConfig workers = resolve_worker_launch_config();
+  log_sweep_plan(ebn0_values, workers, out);
+
+  auto results = run_low_ber_points_global(ebn0_values,
+                                           workers.total_workers,
+                                           workers.base_inflight_per_point,
+                                           workers.dynamic_inflight_cap,
+                                           out);
+  sort_results_by_ebn0(&results);
+  write_results_csv_two_stream_shared_sweep(csv, files.run_id, results);
   csv.flush();
   return 0;
 }
