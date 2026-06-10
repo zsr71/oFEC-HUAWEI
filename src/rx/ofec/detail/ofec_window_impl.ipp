@@ -167,6 +167,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
           .rows_need_siso_before_mux = tile_result.rows_need_siso_before_mux,
           .rows_unscheduled = tile_result.rows_unscheduled,
       });
+      counter.hybrid_class_counts.push_back(tile_result.hybrid_class_count);
     }
 
     for (size_t r = 0; r < tile_height_rows_actual; ++r) {

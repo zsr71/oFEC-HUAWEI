@@ -51,10 +51,17 @@ struct TileDispatchPlan {
 
   // 各类行数摘要，避免后面重复扫描 rows。
   std::size_t rows_early_stop = 0;
+  std::size_t rows_seen_by_hybrid = 0;
   std::size_t rows_hard_finish = 0;
   std::size_t rows_soft_candidate = 0;
   std::size_t rows_soft_scheduled = 0;
   std::size_t rows_soft_unscheduled = 0;
+  std::size_t deferred_candidate_count = 0;
+  std::size_t deferred_priority_0_count = 0;
+  std::size_t deferred_priority_1_count = 0;
+  std::size_t deferred_priority_2_count = 0;
+  std::size_t deferred_priority_3_count = 0;
+  std::size_t deferred_reclaimed_to_hard_finish_count = 0;
 };
 
 template <typename LLR>
@@ -105,6 +112,11 @@ inline bool hybrid_class_is_siso_backfill_candidate(
       return row_class == HybridRowClass::OneMain ||
              row_class == HybridRowClass::OneMainPlusParity ||
              row_class == HybridRowClass::TwoMain;
+    case newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority:
+      return row_class == HybridRowClass::ParityOnly ||
+             row_class == HybridRowClass::OneMain ||
+             row_class == HybridRowClass::OneMainPlusParity ||
+             row_class == HybridRowClass::TwoMain;
     case newcode::HybridSisoBackfillMode::Disabled:
     default:
       return false;
@@ -125,6 +137,17 @@ inline int hybrid_siso_backfill_reclaim_priority(
         return 1;
       }
       return row_class == HybridRowClass::TwoMain ? 2 : -1;
+    case newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority:
+      if (row_class == HybridRowClass::ParityOnly) {
+        return 0;
+      }
+      if (row_class == HybridRowClass::OneMain) {
+        return 1;
+      }
+      if (row_class == HybridRowClass::OneMainPlusParity) {
+        return 2;
+      }
+      return row_class == HybridRowClass::TwoMain ? 3 : -1;
     case newcode::HybridSisoBackfillMode::Disabled:
     default:
       return -1;
@@ -159,6 +182,7 @@ void run_hybrid_prepass(
   if (!p.HYBRID_ENABLE) {
     // 关闭 hybrid 时，plan 仍然统一走方案三框架，
     // 但此时不做任何前置分流，保持所有非 early-stop 行继续走 soft path。
+    plan->rows_seen_by_hybrid = 0;
     rebuild_soft_candidate_rows<LLR>(plan);
     return;
   }
@@ -177,7 +201,7 @@ void run_hybrid_prepass(
     HybridRowClass hard_class = HybridRowClass::None;
     std::array<float, newcode::Params::BCH_N> y2{};
   };
-  std::array<std::vector<DeferredHardFinishCandidate>, 3>
+  std::array<std::vector<DeferredHardFinishCandidate>, 4>
       deferred_candidates_by_priority;
   std::size_t deferred_candidates_total = 0;
   const std::size_t rows = prep.lin_matrix.rows();
@@ -191,6 +215,7 @@ void run_hybrid_prepass(
       // EarlyStopAction / HardFinish / Unscheduled 都已经确定走向，不应再次改写。
       continue;
     }
+    ++plan->rows_seen_by_hybrid;
 
     // 从 tile 级矩阵视图中拷出一整行，便于调用现有行级硬纠接口。
     std::array<CoreLLR, newcode::Params::BCH_N> lin_vec{};
@@ -244,6 +269,16 @@ void run_hybrid_prepass(
         deferred_candidates_by_priority[static_cast<std::size_t>(reclaim_priority)]
             .push_back(DeferredHardFinishCandidate{row, hard_class, y2});
         ++deferred_candidates_total;
+        ++plan->deferred_candidate_count;
+        if (reclaim_priority == 0) {
+          ++plan->deferred_priority_0_count;
+        } else if (reclaim_priority == 1) {
+          ++plan->deferred_priority_1_count;
+        } else if (reclaim_priority == 2) {
+          ++plan->deferred_priority_2_count;
+        } else if (reclaim_priority == 3) {
+          ++plan->deferred_priority_3_count;
+        }
       }
       continue;
     }
@@ -287,6 +322,7 @@ void run_hybrid_prepass(
         break;
       }
     }
+    plan->deferred_reclaimed_to_hard_finish_count = reclaimed;
   }
 
   // prepass 会把一部分 SoftDecode 行改成 HardFinish，

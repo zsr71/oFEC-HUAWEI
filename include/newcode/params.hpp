@@ -18,7 +18,8 @@ enum class HybridClassifierMode : uint8_t {
 enum class HybridSisoBackfillMode : uint8_t {
   Disabled = 0,
   TwoErrorOnly = 1,
-  OneAndTwoErrorPriority = 2
+  OneAndTwoErrorPriority = 2,
+  ParityOneAndTwoErrorPriority = 3
 };
 
 struct Params {
@@ -34,7 +35,7 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     =  128 * 132 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     =  256 * 132 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 56456;                 // 随机种子
   int    CHANNEL_SEED      = BITGEN_SEED + 656;    // 信道噪声随机种子
   bool   BITGEN_RANDOM_BITS = true;             // true=随机比特，false=全 0

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -59,6 +60,9 @@ struct TwoStreamDecodeArtifacts {
   StreamDecodeArtifacts stream_a;
   StreamDecodeArtifacts stream_b;
   SharedCoreAggregateStats shared_core_stats;
+  std::vector<SharedTileSample> tile_samples;
+  std::vector<SharedHybridClassCount> hybrid_class_counts;
+  std::vector<SharedRowMapEntry> row_map;
 };
 
 template <typename LLR>
@@ -66,6 +70,9 @@ struct SharedLlrDecodeArtifacts {
   matrix::Matrix<LLR> out_a;
   matrix::Matrix<LLR> out_b;
   SharedCoreAggregateStats shared_core_stats;
+  std::vector<SharedTileSample> tile_samples;
+  std::vector<SharedHybridClassCount> hybrid_class_counts;
+  std::vector<SharedRowMapEntry> row_map;
 };
 
 template <typename LLR>
@@ -87,10 +94,14 @@ template <typename LLR>
 struct SharedTileResult {
   matrix::Matrix<LLR> tile_out_a;
   matrix::Matrix<LLR> tile_out_b;
+  SharedTileSample tile_sample;
+  SharedHybridClassCount hybrid_class_count;
+  std::vector<SharedRowMapEntry> row_map;
   std::size_t rows_early_stop = 0;
   std::size_t rows_total = 0;
   std::size_t rows_hard_finish = 0;
   std::size_t rows_need_siso_before_mux = 0;
+  std::size_t rows_soft_scheduled = 0;
   std::size_t rows_unscheduled = 0;
   std::size_t produced_rows = 0;
   std::size_t failed_rows = 0;
@@ -99,6 +110,77 @@ struct SharedTileResult {
   std::size_t failed_rows_a = 0;
   std::size_t failed_rows_b = 0;
 };
+
+SharedHybridClass to_shared_hybrid_class(detail::HybridRowClass row_class) {
+  switch (row_class) {
+    case detail::HybridRowClass::None:
+      return SharedHybridClass::None;
+    case detail::HybridRowClass::BchHardDecoded:
+      return SharedHybridClass::BchHardDecoded;
+    case detail::HybridRowClass::Clean:
+      return SharedHybridClass::Clean;
+    case detail::HybridRowClass::ParityOnly:
+      return SharedHybridClass::ParityOnly;
+    case detail::HybridRowClass::OneMain:
+      return SharedHybridClass::OneMain;
+    case detail::HybridRowClass::OneMainPlusParity:
+      return SharedHybridClass::OneMainPlusParity;
+    case detail::HybridRowClass::TwoMain:
+      return SharedHybridClass::TwoMain;
+    case detail::HybridRowClass::Suspicious:
+      return SharedHybridClass::Suspicious;
+    case detail::HybridRowClass::HardFail:
+      return SharedHybridClass::HardFail;
+  }
+  return SharedHybridClass::None;
+}
+
+SharedRowFinalTag to_shared_row_final_tag(detail::RowDispatchTag tag) {
+  switch (tag) {
+    case detail::RowDispatchTag::SoftDecode:
+      return SharedRowFinalTag::SoftDecode;
+    case detail::RowDispatchTag::EarlyStopAction:
+      return SharedRowFinalTag::EarlyStopAction;
+    case detail::RowDispatchTag::HardFinish:
+      return SharedRowFinalTag::HardFinish;
+    case detail::RowDispatchTag::Unscheduled:
+      return SharedRowFinalTag::Unscheduled;
+  }
+  return SharedRowFinalTag::SoftDecode;
+}
+
+void increment_hybrid_class_count(SharedHybridClass row_class,
+                                  SharedHybridClassCount* count) {
+  switch (row_class) {
+    case SharedHybridClass::None:
+      ++count->class_none_count;
+      break;
+    case SharedHybridClass::BchHardDecoded:
+      ++count->class_bch_hard_decoded_count;
+      break;
+    case SharedHybridClass::Clean:
+      ++count->class_clean_count;
+      break;
+    case SharedHybridClass::ParityOnly:
+      ++count->class_parity_only_count;
+      break;
+    case SharedHybridClass::OneMain:
+      ++count->class_one_main_count;
+      break;
+    case SharedHybridClass::OneMainPlusParity:
+      ++count->class_one_main_plus_parity_count;
+      break;
+    case SharedHybridClass::TwoMain:
+      ++count->class_two_main_count;
+      break;
+    case SharedHybridClass::Suspicious:
+      ++count->class_suspicious_count;
+      break;
+    case SharedHybridClass::HardFail:
+      ++count->class_hard_fail_count;
+      break;
+  }
+}
 
 LlrMode pick_llr_mode(const Params& params) {
   if (params.LLR_BITS == 16) {
@@ -432,6 +514,8 @@ SharedTileResult<LLR> run_shared_tile(
     const matrix::Matrix<LLR>& ch_tile_b,
     const Params& tile_params,
     std::size_t tile_top_row,
+    std::size_t invocation,
+    std::size_t tile_index,
     int siso_active_for_tile,
     bool capture_last_tile_history,
     bool normalize_extrinsic,
@@ -487,6 +571,7 @@ SharedTileResult<LLR> run_shared_tile(
   result.rows_total = early_stop_stats.rows_total;
   result.rows_hard_finish = dispatch_plan.rows_hard_finish;
   result.rows_need_siso_before_mux = rows_need_siso_before_mux;
+  result.rows_soft_scheduled = dispatch_plan.rows_soft_scheduled;
   result.rows_unscheduled = dispatch_plan.rows_soft_unscheduled;
 
   for (std::size_t row = 0; row < decoder_res.produced_rows.size(); ++row) {
@@ -534,6 +619,79 @@ SharedTileResult<LLR> run_shared_tile(
     }
   }
 
+  result.tile_sample = SharedTileSample{
+      .invocation = invocation,
+      .tile_index = tile_index,
+      .stream_rows_a = prep_a.lin_matrix.rows(),
+      .stream_rows_b = prep_b.lin_matrix.rows(),
+      .rows_total = result.rows_total,
+      .rows_early_stop = result.rows_early_stop,
+      .rows_not_early_stop = result.rows_total - result.rows_early_stop,
+      .rows_hard_finish = result.rows_hard_finish,
+      .rows_need_siso_before_mux = result.rows_need_siso_before_mux,
+      .rows_soft_scheduled = result.rows_soft_scheduled,
+      .rows_unscheduled = result.rows_unscheduled,
+      .produced_rows = result.produced_rows,
+      .failed_rows = result.failed_rows,
+      .produced_rows_a = result.produced_rows_a,
+      .produced_rows_b = result.produced_rows_b,
+      .failed_rows_a = result.failed_rows_a,
+      .failed_rows_b = result.failed_rows_b,
+  };
+
+  result.hybrid_class_count.invocation = invocation;
+  result.hybrid_class_count.tile_index = tile_index;
+  result.hybrid_class_count.rows_seen_by_hybrid =
+      dispatch_plan.rows_seen_by_hybrid;
+  result.hybrid_class_count.deferred_candidate_count =
+      dispatch_plan.deferred_candidate_count;
+  result.hybrid_class_count.deferred_priority_0_count =
+      dispatch_plan.deferred_priority_0_count;
+  result.hybrid_class_count.deferred_priority_1_count =
+      dispatch_plan.deferred_priority_1_count;
+  result.hybrid_class_count.deferred_priority_2_count =
+      dispatch_plan.deferred_priority_2_count;
+  result.hybrid_class_count.deferred_priority_3_count =
+      dispatch_plan.deferred_priority_3_count;
+  result.hybrid_class_count.deferred_reclaimed_to_hard_finish_count =
+      dispatch_plan.deferred_reclaimed_to_hard_finish_count;
+  for (std::size_t row = 0; row < dispatch_plan.hybrid_classes.size(); ++row) {
+    if (row < dispatch_plan.rows.size() &&
+        dispatch_plan.rows[row].early_stop_hit) {
+      continue;
+    }
+    increment_hybrid_class_count(
+        to_shared_hybrid_class(dispatch_plan.hybrid_classes[row]),
+        &result.hybrid_class_count);
+  }
+
+  result.row_map.reserve(dispatch_plan.rows.size());
+  std::vector<std::size_t> merged_row_to_stream_id(dispatch_plan.rows.size(), 0);
+  std::vector<std::size_t> merged_row_to_local_row(dispatch_plan.rows.size(), 0);
+  for (const auto& slice : shared_prep.slices) {
+    for (std::size_t local_row = 0; local_row < slice.merged_rows.size(); ++local_row) {
+      const std::size_t merged_row = slice.merged_rows[local_row];
+      merged_row_to_stream_id[merged_row] = slice.stream_id;
+      merged_row_to_local_row[merged_row] = local_row;
+    }
+  }
+  for (std::size_t merged_row = 0; merged_row < dispatch_plan.rows.size(); ++merged_row) {
+    const auto& entry = dispatch_plan.rows[merged_row];
+    result.row_map.push_back(SharedRowMapEntry{
+        .invocation = invocation,
+        .tile_index = tile_index,
+        .merged_row = merged_row,
+        .stream_id = merged_row_to_stream_id[merged_row],
+        .source_local_row = merged_row_to_local_row[merged_row],
+        .source_global_row = shared_prep.merged.row_global_lookup[merged_row],
+        .early_stop_hit = entry.early_stop_hit,
+        .hybrid_class = to_shared_hybrid_class(entry.hybrid_class),
+        .final_tag = to_shared_row_final_tag(entry.tag),
+        .scheduled_for_soft = entry.scheduled_for_soft,
+        .produced_row = decoder_res.produced_rows[merged_row],
+    });
+  }
+
   return result;
 }
 
@@ -566,6 +724,9 @@ SharedLlrDecodeArtifacts<LLR> decode_two_stream_shared_llr(
         .out_a = clone_matrix(llr_a),
         .out_b = clone_matrix(llr_b),
         .shared_core_stats = make_shared_core_aggregate_stats(2),
+        .tile_samples = {},
+        .hybrid_class_counts = {},
+        .row_map = {},
     };
   }
 
@@ -577,6 +738,9 @@ SharedLlrDecodeArtifacts<LLR> decode_two_stream_shared_llr(
   matrix::Matrix<float> last_history_b(rows, cols);
   SharedCoreAggregateStats shared_core_stats =
       make_shared_core_aggregate_stats(2);
+  std::vector<SharedTileSample> tile_samples;
+  std::vector<SharedHybridClassCount> hybrid_class_counts;
+  std::vector<SharedRowMapEntry> row_map;
 
   const std::size_t tile_height_rows = params.tile_height_rows();
   const std::size_t tile_stride_rows = params.tile_stride_rows();
@@ -605,6 +769,7 @@ SharedLlrDecodeArtifacts<LLR> decode_two_stream_shared_llr(
 
   std::size_t win_start = params.initial_win_start_rows();
   const std::size_t last_ws = rows - win_height_rows;
+  std::size_t shared_tile_invocation = 0;
   while (win_start <= last_ws) {
     const std::size_t win_end = win_start + win_height_rows - 1;
     for (std::size_t tile_index = 0; tile_index < tiles_per_window;
@@ -653,9 +818,11 @@ SharedLlrDecodeArtifacts<LLR> decode_two_stream_shared_llr(
 
       auto tile_result = run_shared_tile<LLR>(
           tile_in_a, tile_in_b, ch_tile_a, ch_tile_b, tile_params, tile_top_row,
+          shared_tile_invocation, tile_index,
           siso_active_for_tile, capture_last_tile_history,
           pipeline.normalize_extrinsic, tx_llr_ref_a, tx_llr_ref_b,
           &last_history_a, &last_history_b, core_fn);
+      ++shared_tile_invocation;
 
       overwrite_tile_matrix(tile_result.tile_out_a, tile_top_row, &work_a);
       overwrite_tile_matrix(tile_result.tile_out_b, tile_top_row, &work_b);
@@ -672,6 +839,13 @@ SharedLlrDecodeArtifacts<LLR> decode_two_stream_shared_llr(
       shared_core_stats.produced_rows_per_stream[1] += tile_result.produced_rows_b;
       shared_core_stats.failed_rows_per_stream[0] += tile_result.failed_rows_a;
       shared_core_stats.failed_rows_per_stream[1] += tile_result.failed_rows_b;
+      tile_samples.push_back(std::move(tile_result.tile_sample));
+      hybrid_class_counts.push_back(
+          std::move(tile_result.hybrid_class_count));
+      row_map.insert(
+          row_map.end(),
+          std::make_move_iterator(tile_result.row_map.begin()),
+          std::make_move_iterator(tile_result.row_map.end()));
     }
     win_start += pop_push_rows;
   }
@@ -691,6 +865,9 @@ SharedLlrDecodeArtifacts<LLR> decode_two_stream_shared_llr(
       .out_a = std::move(out_a),
       .out_b = std::move(out_b),
       .shared_core_stats = std::move(shared_core_stats),
+      .tile_samples = std::move(tile_samples),
+      .hybrid_class_counts = std::move(hybrid_class_counts),
+      .row_map = std::move(row_map),
   };
 }
 
@@ -756,6 +933,9 @@ TwoStreamDecodeArtifacts decode_two_stream_quantized(
                   collect_qfloat_quantization_stats<NBITS>(quantized_b, quant_clip),
           },
       .shared_core_stats = std::move(decoded_pair.shared_core_stats),
+      .tile_samples = std::move(decoded_pair.tile_samples),
+      .hybrid_class_counts = std::move(decoded_pair.hybrid_class_counts),
+      .row_map = std::move(decoded_pair.row_map),
   };
 }
 
@@ -783,6 +963,9 @@ TwoStreamDecodeArtifacts decode_two_stream(const FrontendArtifacts& stream_a,
                   .quantization_stats = StreamQuantizationStats{},
               },
           .shared_core_stats = std::move(decoded_pair.shared_core_stats),
+          .tile_samples = std::move(decoded_pair.tile_samples),
+          .hybrid_class_counts = std::move(decoded_pair.hybrid_class_counts),
+          .row_map = std::move(decoded_pair.row_map),
       };
     }
     case LlrFormat::Quantized:
@@ -942,6 +1125,10 @@ Result run_two_stream_shared(const Config& config) {
   result.observability.stream_b_quantization =
       decoded_pair.stream_b.quantization_stats;
   result.observability.shared_core = std::move(decoded_pair.shared_core_stats);
+  result.observability.tile_samples = std::move(decoded_pair.tile_samples);
+  result.observability.hybrid_class_counts =
+      std::move(decoded_pair.hybrid_class_counts);
+  result.observability.row_map = std::move(decoded_pair.row_map);
   return result;
 }
 

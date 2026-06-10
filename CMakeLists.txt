@@ -226,6 +226,15 @@ add_executable(ofec_two_stream_shared_sweep
 target_include_directories(ofec_two_stream_shared_sweep PRIVATE src/ofec_sweep)
 target_link_libraries(ofec_two_stream_shared_sweep PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
 
+add_executable(ofec_two_stream_ber_window_probe
+  apps/ofec_two_stream_ber_window_probe.cpp
+  src/ofec_single/ofec_single_dual_writer.cpp
+  src/ofec_single/ofec_single_params.cpp
+  src/two_stream_shared/shared_bch_hard_decode64.cpp
+  src/two_stream_shared/two_stream_shared_runner.cpp
+)
+target_link_libraries(ofec_two_stream_ber_window_probe PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
+
 add_executable(tpc_single
   apps/TPC_single.cpp
   src/tpc/tpc_decoder.cpp

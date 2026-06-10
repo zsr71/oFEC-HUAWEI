@@ -117,7 +117,7 @@ static const std::vector<float> kHybridHardLlrMagList = {}; // 按 tile 覆盖 h
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
     newcode::HybridClassifierMode::FriendS1S3WithS0Classifier; // hybrid 分类器模式：当前使用 FriendS1S3WithS0Classifier，与单点入口保持一致
 static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
-    newcode::HybridSisoBackfillMode::OneAndTwoErrorPriority; // hybrid SISO 回填模式：优先把一错/两错相关行回填到 soft 预算竞争中
+    newcode::HybridSisoBackfillMode::OneAndTwoErrorPriority; // hybrid SISO 回填模式：Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;  // true=只归一化 soft rows；false=保持当前单点入口兼容口径
 
 // Debug 参数
@@ -234,6 +234,8 @@ const char* hybrid_siso_backfill_mode_name(newcode::HybridSisoBackfillMode mode)
       return "two_error_only";
     case newcode::HybridSisoBackfillMode::OneAndTwoErrorPriority:
       return "one_and_two_error_priority";
+    case newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority:
+      return "parity_one_and_two_error_priority";
   }
   return "unknown";
 }

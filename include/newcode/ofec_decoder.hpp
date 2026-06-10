@@ -5,8 +5,30 @@
 #include "newcode/common/matrix/matrix.hpp"
 #include "newcode/params.hpp"
 #include "newcode/common/qfloat/qfloat.hpp"
+#include "newcode/ofec/hybrid/hybrid_classifier.hpp"
 
 namespace newcode {
+
+struct HybridClassCount {
+  std::size_t invocation = 0;
+  std::size_t tile_index = 0;
+  std::size_t rows_seen_by_hybrid = 0;
+  std::size_t class_none_count = 0;
+  std::size_t class_bch_hard_decoded_count = 0;
+  std::size_t class_clean_count = 0;
+  std::size_t class_parity_only_count = 0;
+  std::size_t class_one_main_count = 0;
+  std::size_t class_one_main_plus_parity_count = 0;
+  std::size_t class_two_main_count = 0;
+  std::size_t class_suspicious_count = 0;
+  std::size_t class_hard_fail_count = 0;
+  std::size_t deferred_candidate_count = 0;
+  std::size_t deferred_priority_0_count = 0;
+  std::size_t deferred_priority_1_count = 0;
+  std::size_t deferred_priority_2_count = 0;
+  std::size_t deferred_priority_3_count = 0;
+  std::size_t deferred_reclaimed_to_hard_finish_count = 0;
+};
 
 struct TileEarlyStopSample {
   std::size_t invocation = 0;
@@ -27,6 +49,7 @@ struct TileEarlyStopCounter {
   std::size_t row_need_siso_before_mux = 0;
   std::size_t row_unscheduled = 0;
   std::vector<TileEarlyStopSample> samples;
+  std::vector<HybridClassCount> hybrid_class_counts;
 };
 
 template <typename LLR>
@@ -38,6 +61,7 @@ struct TileProcessResult {
   std::size_t rows_hard_finish = 0;
   std::size_t rows_need_siso_before_mux = 0;
   std::size_t rows_unscheduled = 0;
+  HybridClassCount hybrid_class_count{};
 };
 
 // 顶层解码（不同 Chase 变体分别导出）

@@ -50,6 +50,39 @@ using CoreFn = chase::DecoderCoreResult<LLR> (*)(const matrix::Matrix<LLR>&,
 namespace newcode {
 namespace detail {
 
+inline void increment_hybrid_class_count(HybridRowClass row_class,
+                                         HybridClassCount* count) {
+  switch (row_class) {
+    case HybridRowClass::None:
+      ++count->class_none_count;
+      return;
+    case HybridRowClass::BchHardDecoded:
+      ++count->class_bch_hard_decoded_count;
+      return;
+    case HybridRowClass::Clean:
+      ++count->class_clean_count;
+      return;
+    case HybridRowClass::ParityOnly:
+      ++count->class_parity_only_count;
+      return;
+    case HybridRowClass::OneMain:
+      ++count->class_one_main_count;
+      return;
+    case HybridRowClass::OneMainPlusParity:
+      ++count->class_one_main_plus_parity_count;
+      return;
+    case HybridRowClass::TwoMain:
+      ++count->class_two_main_count;
+      return;
+    case HybridRowClass::Suspicious:
+      ++count->class_suspicious_count;
+      return;
+    case HybridRowClass::HardFail:
+      ++count->class_hard_fail_count;
+      return;
+  }
+}
+
 template <typename LLR>
 TileProcessResult<LLR> run_legacy_soft_tile_process(
     const matrix::Matrix<LLR>& tile_in,
@@ -331,6 +364,7 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
   std::size_t rows_need_siso_before_mux = 0;
   std::size_t rows_hard_finish = 0;
   std::size_t rows_unscheduled = 0;
+  HybridClassCount hybrid_class_count{};
   const bool verify_hybrid_disabled =
       !use_hard_decode &&
       p.HYBRID_VERIFY_DISABLED_MATCH_LEGACY;
@@ -417,6 +451,31 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
         prep, early_stop_stats, siso_active_for_tile, p);
     rows_need_siso_before_mux = count_soft_candidates_before_mux(dispatch_plan);
     rows_hard_finish = dispatch_plan.rows_hard_finish;
+    hybrid_class_count.invocation = static_cast<std::size_t>(
+        std::max(0, p.debug_trace.chase_invocation));
+    hybrid_class_count.tile_index = static_cast<std::size_t>(
+        std::max(0, p.debug_trace.chase_tile_index));
+    hybrid_class_count.rows_seen_by_hybrid = dispatch_plan.rows_seen_by_hybrid;
+    hybrid_class_count.deferred_candidate_count =
+        dispatch_plan.deferred_candidate_count;
+    hybrid_class_count.deferred_priority_0_count =
+        dispatch_plan.deferred_priority_0_count;
+    hybrid_class_count.deferred_priority_1_count =
+        dispatch_plan.deferred_priority_1_count;
+    hybrid_class_count.deferred_priority_2_count =
+        dispatch_plan.deferred_priority_2_count;
+    hybrid_class_count.deferred_priority_3_count =
+        dispatch_plan.deferred_priority_3_count;
+    hybrid_class_count.deferred_reclaimed_to_hard_finish_count =
+        dispatch_plan.deferred_reclaimed_to_hard_finish_count;
+    for (std::size_t row = 0; row < dispatch_plan.hybrid_classes.size(); ++row) {
+      if (row < dispatch_plan.rows.size() &&
+          dispatch_plan.rows[row].early_stop_hit) {
+        continue;
+      }
+      increment_hybrid_class_count(dispatch_plan.hybrid_classes[row],
+                                   &hybrid_class_count);
+    }
     run_mux_on_soft_candidates(&dispatch_plan,
                                siso_active_for_tile,
                                p,
@@ -444,7 +503,8 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
       early_stop_stats.rows_total,
       rows_hard_finish,
       rows_need_siso_before_mux,
-      rows_unscheduled};
+      rows_unscheduled,
+      std::move(hybrid_class_count)};
 
   if (verify_hybrid_disabled) {
     // 调试校验模式下，同一块 tile 再跑一遍旧 soft 路径做逐项比对。

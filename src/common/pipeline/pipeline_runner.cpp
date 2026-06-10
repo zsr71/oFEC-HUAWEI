@@ -96,6 +96,23 @@ std::vector<TileEarlyStopSample> collect_tile_early_stop_samples(
   return samples;
 }
 
+std::vector<HybridClassCount> collect_hybrid_class_counts(
+    const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::size_t total_counts = 0;
+  for (const auto& counter : counters) {
+    total_counts += counter.hybrid_class_counts.size();
+  }
+  std::vector<HybridClassCount> counts;
+  counts.reserve(total_counts);
+  for (const auto& counter : counters) {
+    counts.insert(counts.end(),
+                  counter.hybrid_class_counts.begin(),
+                  counter.hybrid_class_counts.end());
+  }
+  return counts;
+}
+
 std::vector<std::size_t> collect_need_siso_before_mux_counts(
     const std::vector<TileEarlyStopCounter>& counters)
 {
@@ -410,6 +427,8 @@ PipelineResult run_pipeline(const Params& params,
   result.tile_row_early_stop_pct = compute_row_early_stop_percentages(decode_result.tile_stats);
   result.tile_early_stop_samples =
       collect_tile_early_stop_samples(decode_result.tile_stats);
+  result.hybrid_class_counts =
+      collect_hybrid_class_counts(decode_result.tile_stats);
   result.tile_hard_finish_count =
       collect_hard_finish_counts(decode_result.tile_stats);
   result.tile_hard_finish_pct =

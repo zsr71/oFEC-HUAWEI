@@ -29,9 +29,9 @@ static constexpr unsigned kMaxParallelEbN0 = 0;  // Eb/N0 并行度上限；0=�
 static constexpr unsigned kMaxParallelSeeds = 0; // 每个 Eb/N0 内部的 seed 并行度上限；0=自动使用硬件并发
 
 // 测试点与 seed
-static const std::vector<float> kEbN0List = {3.05f}; // 需要测试的 Eb/N0 列表
-static constexpr int kBitgenSeedBase = 20260529;         // 基础比特种子；实际每个 seed 在此基础上递增
-static constexpr int kChannelSeedBase = 5292026;         // 基础信道种子；实际每个 seed 在此基础上递增
+static const std::vector<float> kEbN0List = {3.065f}; // 需要测试的 Eb/N0 列表
+static constexpr int kBitgenSeedBase = 20260601;         // 基础比特种子；实际每个 seed 在此基础上递增
+static constexpr int kChannelSeedBase = 6012026;         // 基础信道种子；实际每个 seed 在此基础上递增
 static constexpr int kSeedCount = 1;                    // 每个 Eb/N0 点重复运行的 seed 数量
 
 // 发射端参数
@@ -42,7 +42,7 @@ static constexpr unsigned    kBitsPerSymbol      = 1;    // 每个调制符号�
 
 // 早停参数
 static constexpr bool        kEnableEarlyStop              = true;   // 早停总开关
-static const std::vector<int> kEarlyStopEnableList         = {0,0,0,0,1,1}; // 按 tile 覆盖早停总开关：0=关，非 0=开
+static const std::vector<int> kEarlyStopEnableList         = {1,1,1,1,1,1}; // 按 tile 覆盖早停总开关：0=关，非 0=开
 static constexpr int         kEarlyStopConditionMode       = 1;      // 早停条件模式：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionModeList  = {};     // 按 tile 覆盖条件模式；空表示沿用全局值
 static constexpr int         kEarlyStopActionMode          = 1;      // 早停动作模式：1~6
@@ -80,20 +80,21 @@ static const std::vector<float> kBetaExplicit = {
 static const std::vector<float> kEarlyStopActionBetaExplicit = {
     99.857143f, 99.179301f, 99.253626f, 99.119585f, 99.434408f, 99.000000f // 每个 tile 的 early-stop 专用 beta 显式列表
 };
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 16, 4}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                             // MUX 分组粒度，1 表示全局池化
 static constexpr int  kMuxSchedulingMode  = 0;                             // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                             // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
 static constexpr bool kMuxEnableReconfig  = false;                         // true 表示启用重配置版 MUX 调度
 static constexpr int  kMuxBypassScheme    = 1;                             // 旁路边集合方案编号：1=scheme1，2=scheme2
+
 static constexpr bool kHybridEnable       = true;                         // true=方案三软硬混合前置分流开关
-static const std::vector<int> kHybridEnableList = {0,0,0,0,1,1};                      // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
+static const std::vector<int> kHybridEnableList = {0,0,0,1,1,1};                      // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
 static constexpr float kHybridHardLlrMag = 99.0f;                        // hybrid hard-finish 默认输出 |LLR| 幅度
 static const std::vector<float> kHybridHardLlrMagList = {};              // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度；空=沿用 kHybridHardLlrMag
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
-    newcode::HybridClassifierMode::FriendS1S3Classifier;                       // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
+    newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;                       // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
-    newcode::HybridSisoBackfillMode::TwoErrorOnly;                                 // Disabled / TwoErrorOnly / OneAndTwoErrorPriority
+    newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority;                                 // Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;                    // true=只归一化 soft rows，false=保持当前兼容行为
 
 // ==================================
@@ -160,6 +161,31 @@ struct TileEarlyStopSampleRow {
   std::size_t rows_unscheduled = 0;
 };
 
+struct HybridClassCountRow {
+  float ebn0_db = 0.0f;
+  int seed_index = 0;
+  int bitgen_seed = 0;
+  int channel_seed = 0;
+  std::size_t invocation = 0;
+  std::size_t tile_index = 0;
+  std::size_t rows_seen_by_hybrid = 0;
+  std::size_t class_none_count = 0;
+  std::size_t class_bch_hard_decoded_count = 0;
+  std::size_t class_clean_count = 0;
+  std::size_t class_parity_only_count = 0;
+  std::size_t class_one_main_count = 0;
+  std::size_t class_one_main_plus_parity_count = 0;
+  std::size_t class_two_main_count = 0;
+  std::size_t class_suspicious_count = 0;
+  std::size_t class_hard_fail_count = 0;
+  std::size_t deferred_candidate_count = 0;
+  std::size_t deferred_priority_0_count = 0;
+  std::size_t deferred_priority_1_count = 0;
+  std::size_t deferred_priority_2_count = 0;
+  std::size_t deferred_priority_3_count = 0;
+  std::size_t deferred_reclaimed_to_hard_finish_count = 0;
+};
+
 // 某个 Eb/N0 点的完整结果。
 // 包含：
 // - 聚合后的 per-window 统计
@@ -176,6 +202,7 @@ struct EbN0RunResult {
   std::vector<RawWindowRow> raw_rows;
   std::vector<RawWindowRow> raw_tile_rows;
   std::vector<TileEarlyStopSampleRow> tile_early_stop_rows;
+  std::vector<HybridClassCountRow> hybrid_class_count_rows;
 };
 
 // 一个 Eb/N0 下的任务组。
@@ -323,6 +350,19 @@ void write_tile_early_stop_samples_header(std::ofstream& out) {
   out << "ebn0_db,seed_index,bitgen_seed,channel_seed,invocation,tile_index,"
          "rows_total,rows_passed,rows_hard_finish,rows_need_siso_before_mux,"
          "rows_unscheduled\n";
+  out.flush();
+}
+
+void write_hybrid_class_counts_header(std::ofstream& out) {
+  out << "ebn0_db,seed_index,bitgen_seed,channel_seed,invocation,tile_index,"
+         "rows_seen_by_hybrid,class_none_count,class_bch_hard_decoded_count,"
+         "class_clean_count,class_parity_only_count,class_one_main_count,"
+         "class_one_main_plus_parity_count,class_two_main_count,"
+         "class_suspicious_count,class_hard_fail_count,"
+         "deferred_candidate_count,deferred_priority_0_count,"
+         "deferred_priority_1_count,deferred_priority_2_count,"
+         "deferred_priority_3_count,"
+         "deferred_reclaimed_to_hard_finish_count\n";
   out.flush();
 }
 
@@ -571,6 +611,34 @@ EbN0RunResult run_ebn0_probe(EbN0TaskGroup task_group,
           .rows_unscheduled = sample.rows_unscheduled,
       });
     }
+
+    for (const auto& count : result.hybrid_class_counts) {
+      out.hybrid_class_count_rows.push_back(HybridClassCountRow{
+          .ebn0_db = task_group.ebn0_db,
+          .seed_index = seed_result.seed_index,
+          .bitgen_seed = seed_result.bitgen_seed,
+          .channel_seed = seed_result.channel_seed,
+          .invocation = count.invocation,
+          .tile_index = count.tile_index,
+          .rows_seen_by_hybrid = count.rows_seen_by_hybrid,
+          .class_none_count = count.class_none_count,
+          .class_bch_hard_decoded_count = count.class_bch_hard_decoded_count,
+          .class_clean_count = count.class_clean_count,
+          .class_parity_only_count = count.class_parity_only_count,
+          .class_one_main_count = count.class_one_main_count,
+          .class_one_main_plus_parity_count = count.class_one_main_plus_parity_count,
+          .class_two_main_count = count.class_two_main_count,
+          .class_suspicious_count = count.class_suspicious_count,
+          .class_hard_fail_count = count.class_hard_fail_count,
+          .deferred_candidate_count = count.deferred_candidate_count,
+          .deferred_priority_0_count = count.deferred_priority_0_count,
+          .deferred_priority_1_count = count.deferred_priority_1_count,
+          .deferred_priority_2_count = count.deferred_priority_2_count,
+          .deferred_priority_3_count = count.deferred_priority_3_count,
+          .deferred_reclaimed_to_hard_finish_count =
+              count.deferred_reclaimed_to_hard_finish_count,
+      });
+    }
   }
   return out;
 }
@@ -591,6 +659,7 @@ int main() {
   std::ofstream raw_csv(output_dir / "per_seed_per_window.csv");
   std::ofstream raw_tile_csv(output_dir / "per_seed_per_tile.csv");
   std::ofstream tile_early_stop_samples_csv(output_dir / "per_seed_tile_early_stop_samples.csv");
+  std::ofstream hybrid_class_counts_csv(output_dir / "per_invocation_hybrid_class_counts.csv");
   std::ofstream aggregated_csv(output_dir / "aggregated_window_ber.csv");
   std::ofstream aggregated_tile_csv(output_dir / "aggregated_tile_ber.csv");
   std::ofstream log_file(output_dir / "probe.log");
@@ -599,6 +668,7 @@ int main() {
   write_raw_header(raw_csv);
   write_raw_tile_header(raw_tile_csv);
   write_tile_early_stop_samples_header(tile_early_stop_samples_csv);
+  write_hybrid_class_counts_header(hybrid_class_counts_csv);
   write_aggregated_header(aggregated_csv);
   write_aggregated_tile_header(aggregated_tile_csv);
 
@@ -723,6 +793,33 @@ int main() {
                                   << sample.rows_hard_finish << ','
                                   << sample.rows_need_siso_before_mux << ','
                                   << sample.rows_unscheduled << '\n';
+    }
+
+    for (const auto& count : ebn0_result.hybrid_class_count_rows) {
+      hybrid_class_counts_csv << std::fixed << std::setprecision(6)
+                              << count.ebn0_db << ','
+                              << count.seed_index << ','
+                              << count.bitgen_seed << ','
+                              << count.channel_seed << ','
+                              << count.invocation << ','
+                              << count.tile_index << ','
+                              << count.rows_seen_by_hybrid << ','
+                              << count.class_none_count << ','
+                              << count.class_bch_hard_decoded_count << ','
+                              << count.class_clean_count << ','
+                              << count.class_parity_only_count << ','
+                              << count.class_one_main_count << ','
+                              << count.class_one_main_plus_parity_count << ','
+                              << count.class_two_main_count << ','
+                              << count.class_suspicious_count << ','
+                              << count.class_hard_fail_count << ','
+                              << count.deferred_candidate_count << ','
+                              << count.deferred_priority_0_count << ','
+                              << count.deferred_priority_1_count << ','
+                              << count.deferred_priority_2_count << ','
+                              << count.deferred_priority_3_count << ','
+                              << count.deferred_reclaimed_to_hard_finish_count
+                              << '\n';
     }
 
     for (const auto& entry : ebn0_result.aggregated) {

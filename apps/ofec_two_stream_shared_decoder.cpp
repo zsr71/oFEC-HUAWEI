@@ -83,7 +83,7 @@ static const std::vector<float> kHybridHardLlrMagList = {}; // 按 tile 覆盖 h
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
     newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;  // hybrid 分类器模式：LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
-    newcode::HybridSisoBackfillMode::OneAndTwoErrorPriority;        // hybrid SISO 回填模式：Disabled / TwoErrorOnly / OneAndTwoErrorPriority
+    newcode::HybridSisoBackfillMode::OneAndTwoErrorPriority;        // hybrid SISO 回填模式：Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false; // true=只归一化 soft rows，false=对所有 produced rows 保持兼容行为
 
 }  // namespace
@@ -136,6 +136,28 @@ void print_shared_core_stats(
     std::cout << "[OBS] shared core stream B: produced=" << produced_b
               << ", failed=" << failed_b << "\n";
   }
+}
+
+void print_shared_debug_summary(
+    const newcode::two_stream_shared::Observability& observability) {
+  std::size_t total_rows_early_stop = 0;
+  std::size_t total_rows_hard_finish = 0;
+  std::size_t total_rows_unscheduled = 0;
+  for (const auto& sample : observability.tile_samples) {
+    total_rows_early_stop += sample.rows_early_stop;
+    total_rows_hard_finish += sample.rows_hard_finish;
+    total_rows_unscheduled += sample.rows_unscheduled;
+  }
+
+  std::cout << "[OBS] shared debug: tile_samples="
+            << observability.tile_samples.size()
+            << ", hybrid_count_rows="
+            << observability.hybrid_class_counts.size()
+            << ", row_map_rows=" << observability.row_map.size() << "\n";
+  std::cout << "[OBS] shared debug totals: rows_early_stop="
+            << total_rows_early_stop
+            << ", rows_hard_finish=" << total_rows_hard_finish
+            << ", rows_unscheduled=" << total_rows_unscheduled << "\n";
 }
 
 int main() {
@@ -228,6 +250,7 @@ int main() {
   print_quant_stats("stream A", result.observability.stream_a_quantization);
   print_quant_stats("stream B", result.observability.stream_b_quantization);
   print_shared_core_stats(result.observability.shared_core);
+  print_shared_debug_summary(result.observability);
 
   std::cout << "[SUMMARY] Stream A post-FEC BER=" << result.stream_a.post_fec.ber
             << " (" << result.stream_a.post_fec.errors << "/"
