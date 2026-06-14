@@ -71,6 +71,9 @@ static constexpr int  kMuxSchedulingMode  = 0;                     // MUX 调度
 static constexpr int  kMuxPriorityRule    = 0;                     // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
 static constexpr bool kMuxEnableReconfig  = false;                 // true 表示启用重配置版 MUX 调度
 static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边集合方案编号：1=scheme1，2=scheme2
+
+
+
 static constexpr bool kHybridEnable       = true;                 // true=方案三软硬混合前置分流开关
 static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 0, 1}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
 static constexpr float kHybridHardLlrMag = 0.0f;                // hybrid hard-finish 默认输出 |LLR| 幅度

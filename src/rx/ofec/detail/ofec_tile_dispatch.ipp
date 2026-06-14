@@ -428,8 +428,9 @@ void run_mux_on_soft_candidates(TileDispatchPlan<CoreLLR>* plan,
       mux_candidate_state.end(),
       static_cast<uint8_t>(newcode::mux::StateTag::NeedSiso)));
 
-  // 只有 soft 候选数超过本 tile 的 SISO 预算时，才真正触发裁剪。
-  if (need_count > 0 && siso_active_for_tile < need_count) {
+  // 满配 tile 保持原行为；受限 tile 始终交给 MUX 做分组资源分配。
+  if (need_count > 0 &&
+      siso_active_for_tile < static_cast<int>(plan->rows.size())) {
     // MUX 有两层可选策略：
     // - MUX_SCHEDULING_MODE==0: 按常规预算分配
     // - MUX_SCHEDULING_MODE==1: 先按 early-stop 结果做优先级调度，再分配预算

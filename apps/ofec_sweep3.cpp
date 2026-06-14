@@ -32,9 +32,9 @@ static constexpr bool kGenerateRandomBits = true;           // true=发送随机
 static constexpr int kBitgenSeed = 20260319;                // 基础比特种子；每个 chunk 会在此基础上派生
 
 // 信道参数：噪声强度 / 信道随机性
-static constexpr float kEbN0Start = 3.00f;   // 扫描起始 Eb/N0（dB）
-static constexpr float kEbN0End = 3.20f;     // 扫描结束 Eb/N0（dB）
-static constexpr int kEbN0Points = 20;        // Eb/N0 采样点数；含首尾端点
+static constexpr float kEbN0Start = 3.05f;   // 扫描起始 Eb/N0（dB）
+static constexpr float kEbN0End = 3.15f;     // 扫描结束 Eb/N0（dB）
+static constexpr int kEbN0Points = 16;        // Eb/N0 采样点数；含首尾端点
 static constexpr int kChannelSeed = 3192026; // 基础信道种子；每个 chunk 会在此基础上派生
 
 // 量化参数：只影响 LLR 量化口径
@@ -42,15 +42,16 @@ static constexpr std::size_t kLlrBits = 6;      // LLR 位宽：16=浮点，2~15
 static constexpr float kQuantClipRatio = 0.5f;  // 动态 clip 比例，0 表示禁用自适应 clip
 
 // 低 BER 聚合参数：每点多 chunk 聚合，直到达到停止条件
-static constexpr std::size_t kTilesPerWindow = 6;               // 本 app 使用的 TILES_PER_WIN；需与显式 alpha/beta 列表长度一致
+static constexpr std::size_t kTilesPerWindow = 4;               // 本 app 使用的 TILES_PER_WIN；需与显式 alpha/beta 列表长度一致
 static constexpr std::size_t kChunkNumInfoBits = 8 * 132 * 16 * 111; // 每个 Monte Carlo chunk 的输入信息比特数
-static constexpr std::size_t kTargetPostErrors = 50;            // 单个 Eb/N0 点累计到这么多 post-FEC 错误后即可停止
+static constexpr std::size_t kTargetPostErrors = 1000;            // 单个 Eb/N0 点累计到这么多 post-FEC 错误后即可停止
 static constexpr std::size_t kMaxPostFecTotalBits = 2e8;        // 单个 Eb/N0 点允许累计比较的最大 post-FEC 比特数
 static constexpr unsigned kMaxTotalWorkers = 0;                 // 全局同时运行 chunk 数上限；0=自动使用 NTHREADS/机器可用 worker
 static constexpr unsigned kMaxInflightChunksPerPoint = 16;      // 单个 Eb/N0 点的基础挂起 chunk 上限；0=不额外限制
 static constexpr bool kEnableDynamicInflightPerPoint = true;    // true=剩余 Eb/N0 点变少时动态提高单点挂起上限
 static constexpr unsigned kMaxDynamicInflightChunksPerPoint = 0; // 动态单点挂起上限封顶；0=不封顶，最多到全局 worker
-static constexpr bool kEnableZeroErrorUpperBound = true;        // true=零错时使用上置信界提前停止
+static constexpr double kProgressReportIntervalSeconds = 15.0;   // 进度快照输出周期；<=0 表示关闭周期性汇总
+static constexpr bool kEnableZeroErrorUpperBound = false;        // true=零错时使用上置信界提前停止
 static constexpr double kTargetBerUpperBound = 1e-8;            // 零错上界目标：若上界已低于此值则提前停止
 static constexpr double kConfidenceLevel = 0.95;                // 零错上界使用的置信水平，例如 0.95 表示 95%
 
@@ -66,7 +67,7 @@ static constexpr int kChaseTopkKeep = 8;                            // top-k/pru
 static const std::vector<int> kChaseTopkKeepCandidates = {};        // top-k 保留数扫描候选
 static constexpr int kChaseGroupMinimaBits = 4;                     // group-minima decoder 的分组 bit 数
 static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4}; // group-minima 分组 bit 数扫描候选
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 32, 32};   // 每个 tile 的 SISO 预算
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 16};   // 每个 tile 的 SISO 预算
 static constexpr int kMuxGroupG = 1;                                // MUX 分组粒度；1=全局池化
 static constexpr int kMuxSchedulingMode = 0;                        // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static const std::vector<int> kMuxSchedulingModeCandidates = {};    // MUX 调度模式扫描候选
@@ -85,13 +86,13 @@ static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
 static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只归一化 soft rows，false=保持兼容行为
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
     {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
-     {0.428571,0.447738,0.482782,0.528162,0.581902,0.642857},               // 每个 tile 的 alpha 显式列表
-     {2.857143,6.179301,12.253626,20.119585,29.434408,40.000000},            // 每个 tile 的普通 beta 显式列表
-     {99,99,99,99,99,99}},                                                        // 每个 tile 的 early-stop 专用 beta 显式列表；空表示后续按默认规则回退
+     {0.342857,0.387439,0.435806,0.485714},               // 每个 tile 的 alpha 显式列表
+     {8.571428,10.037715,16.865997,31.428572},            // 每个 tile 的普通 beta 显式列表
+     {99,99,99,99}},                                                        // 每个 tile 的 early-stop 专用 beta 显式列表；空表示后续按默认规则回退
 };
 
 // 早停参数：总开关 -> 条件 -> 条件细参 -> 动作 -> 动作细参
-static constexpr bool kEnableEarlyStop = false;                      // 早停总开关
+static constexpr bool kEnableEarlyStop = true;                      // 早停总开关
 static const std::vector<int> kEarlyStopEnableList = {};            // 按 tile 覆盖早停开关；空表示全部沿用总开关
 static constexpr int kEarlyStopConditionMode = 1;                   // 早停条件模式：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionCandidates = {};   // 早停条件模式扫描候选
@@ -242,6 +243,13 @@ std::string format_duration(std::chrono::duration<double> duration) {
     oss << minutes << ':' << std::setw(2) << seconds;
   }
   return oss.str();
+}
+
+std::string format_eta_seconds(double seconds) {
+  if (!std::isfinite(seconds) || seconds < 0.0) {
+    return "--:--";
+  }
+  return format_duration(std::chrono::duration<double>(seconds));
 }
 
 void ensure_csv_header_sweep3(const std::string& csv_path) {
@@ -478,37 +486,7 @@ ChunkResult run_chunk(const ofec_sweep::detail::SweepScenario& scenario,
   return chunk;
 }
 
-void log_point_progress(const PointState& state,
-                        bool force,
-                        ofec_sweep::detail::DualOut& log) {
-  const auto& point = state.point;
-  if (!force && point.chunks_completed > 0 && point.chunks_completed % 5 != 0 &&
-      point.chunks_completed > 3) {
-    return;
-  }
-
-  std::ostringstream oss;
-  oss << "[POINT] " << point.scenario.name
-      << " chunks=" << point.chunks_completed
-      << " inflight=" << state.inflight_chunks
-      << " post=" << point.post_fec.errors << "/" << point.post_fec.total;
-  if (point.post_fec.total > 0) {
-    oss << " ber=" << std::scientific << point.post_fec.ber << std::defaultfloat;
-  }
-  if (point.post_fec.errors == 0 && point.post_fec.total > 0) {
-    oss << " ub≈" << std::scientific << point.post_ber_upper_bound
-        << std::defaultfloat;
-  }
-  if (state.started) {
-    const auto elapsed =
-        std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                      state.start_time);
-    oss << " elapsed=" << format_duration(elapsed);
-  }
-  log << oss.str() << "\n";
-}
-
-bool mark_stop_if_needed(PointState& state, ofec_sweep::detail::DualOut& log) {
+bool mark_stop_if_needed(PointState& state, ofec_sweep::detail::DualOut&) {
   if (state.launch_stopped) {
     return false;
   }
@@ -520,14 +498,11 @@ bool mark_stop_if_needed(PointState& state, ofec_sweep::detail::DualOut& log) {
   }
 
   state.launch_stopped = true;
-  log_point_progress(state, true, log);
-  log << "[INFO] stop reason for " << state.point.scenario.name << ": "
-      << stop_reason_to_string(state.point.stop_reason) << "\n";
   return true;
 }
 
 void finalize_point_if_ready(PointState& state,
-                             ofec_sweep::detail::DualOut& log,
+                             ofec_sweep::detail::DualOut&,
                              std::size_t& completed_count) {
   if (state.completed || !state.launch_stopped || state.inflight_chunks != 0) {
     return;
@@ -546,22 +521,116 @@ void finalize_point_if_ready(PointState& state,
             .count();
   }
 
-  log << "[SUMMARY] " << state.point.scenario.name
-      << " Post-FEC BER=" << state.point.post_fec.ber
-      << " (errs=" << state.point.post_fec.errors << "/"
-      << state.point.post_fec.total << ")";
-  if (state.point.post_fec.errors == 0 &&
-      !std::isnan(state.point.post_ber_upper_bound)) {
-    log << " upper_bound<=" << state.point.post_ber_upper_bound;
-  }
-  log << " | chunks=" << state.point.chunks_completed
-      << " | stop=" << stop_reason_to_string(state.point.stop_reason)
-      << " | elapsed=" << format_duration(
-             std::chrono::duration<double>(state.point.elapsed_seconds))
-      << "\n";
-
   state.completed = true;
   ++completed_count;
+}
+
+double point_progress_fraction(const PointState& state) {
+  if (state.completed) {
+    return 1.0;
+  }
+
+  double progress = 0.0;
+  if (kTargetPostErrors > 0) {
+    progress = std::max(
+        progress,
+        static_cast<double>(state.point.post_fec.errors) /
+            static_cast<double>(kTargetPostErrors));
+  }
+  if (kMaxPostFecTotalBits > 0) {
+    progress = std::max(
+        progress,
+        static_cast<double>(state.point.post_fec.total) /
+            static_cast<double>(kMaxPostFecTotalBits));
+  }
+  if (kEnableZeroErrorUpperBound && state.point.post_fec.errors == 0) {
+    const double bits_needed_for_zero_error_target =
+        -std::log(1.0 - std::clamp(kConfidenceLevel, 1e-12, 1.0 - 1e-12)) /
+        kTargetBerUpperBound;
+    if (bits_needed_for_zero_error_target > 0.0 &&
+        std::isfinite(bits_needed_for_zero_error_target)) {
+      progress = std::max(
+          progress,
+          static_cast<double>(state.point.post_fec.total) /
+              bits_needed_for_zero_error_target);
+    }
+  }
+
+  return std::clamp(progress, 0.0, 0.999);
+}
+
+double point_elapsed_seconds(const PointState& state,
+                             std::chrono::steady_clock::time_point now) {
+  if (!state.started) {
+    return 0.0;
+  }
+  return std::chrono::duration<double>(now - state.start_time).count();
+}
+
+double point_eta_seconds(const PointState& state,
+                         std::chrono::steady_clock::time_point now) {
+  if (state.completed) {
+    return 0.0;
+  }
+  const double progress = point_progress_fraction(state);
+  if (progress <= 0.0) {
+    return std::numeric_limits<double>::infinity();
+  }
+  const double elapsed = point_elapsed_seconds(state, now);
+  return elapsed * (1.0 / progress - 1.0);
+}
+
+void log_progress_snapshot(const std::vector<PointState>& states,
+                           std::size_t completed_count,
+                           std::size_t active_chunk_count,
+                           unsigned total_workers,
+                           std::chrono::steady_clock::time_point start_time,
+                           ofec_sweep::detail::DualOut& log) {
+  const auto now = std::chrono::steady_clock::now();
+  const double total_elapsed_seconds =
+      std::chrono::duration<double>(now - start_time).count();
+
+  double overall_progress_sum = 0.0;
+  for (const auto& state : states) {
+    overall_progress_sum += point_progress_fraction(state);
+  }
+  const double overall_progress =
+      states.empty() ? 1.0 : overall_progress_sum / static_cast<double>(states.size());
+  const double overall_eta =
+      overall_progress > 0.0
+          ? total_elapsed_seconds * (1.0 / overall_progress - 1.0)
+          : std::numeric_limits<double>::infinity();
+
+  log << "\n[PROGRESS] completed=" << completed_count << "/" << states.size()
+      << " active_chunks=" << active_chunk_count << "/" << total_workers
+      << " overall≈" << std::fixed << std::setprecision(1)
+      << (overall_progress * 100.0) << "%"
+      << " elapsed=" << format_duration(std::chrono::duration<double>(total_elapsed_seconds))
+      << " eta≈" << format_eta_seconds(overall_eta) << std::defaultfloat << "\n";
+
+  for (const auto& state : states) {
+    const char* status = "PENDING";
+    if (state.completed) {
+      status = "DONE";
+    } else if (state.launch_stopped) {
+      status = "DRAIN";
+    } else if (state.started) {
+      status = "RUN";
+    }
+
+    log << "  [" << status << "]"
+        << " Eb/N0=" << std::fixed << std::setprecision(3)
+        << state.point.scenario.ebn0_db;
+
+    if (state.completed) {
+      log << " eta=00:00";
+    } else if (state.started) {
+      log << " eta≈" << format_eta_seconds(point_eta_seconds(state, now));
+    } else {
+      log << " eta=--:--";
+    }
+    log << "\n";
+  }
 }
 
 std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
@@ -584,6 +653,9 @@ std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
   std::size_t completed_count = 0;
   std::size_t next_launch_point = 0;
   unsigned last_logged_effective_limit = 0;
+  const auto scheduler_start_time = std::chrono::steady_clock::now();
+  auto next_progress_report_time =
+      scheduler_start_time + std::chrono::duration<double>(kProgressReportIntervalSeconds);
 
   auto count_launchable_points = [&]() {
     std::size_t count = 0;
@@ -624,7 +696,6 @@ std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
     if (!state.started) {
       state.started = true;
       state.start_time = std::chrono::steady_clock::now();
-      log << "\n[RUN] " << state.point.scenario.name << "\n";
     }
 
     const std::size_t chunk_index = state.next_chunk_index++;
@@ -644,10 +715,6 @@ std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
       const unsigned current_limit = effective_inflight_limit();
       if (current_limit != last_logged_effective_limit) {
         last_logged_effective_limit = current_limit;
-        log << "[INFO] effective max inflight chunks per point = "
-            << current_limit
-            << " (launchable_points=" << count_launchable_points()
-            << ")\n";
       }
 
       bool launched_this_round = false;
@@ -675,6 +742,19 @@ std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
   fill_workers();
 
   while (completed_count < states.size()) {
+    if (kProgressReportIntervalSeconds > 0.0 &&
+        std::chrono::steady_clock::now() >= next_progress_report_time) {
+      log_progress_snapshot(states,
+                            completed_count,
+                            active.size(),
+                            total_workers,
+                            scheduler_start_time,
+                            log);
+      next_progress_report_time =
+          std::chrono::steady_clock::now() +
+          std::chrono::duration<double>(kProgressReportIntervalSeconds);
+    }
+
     bool consumed = false;
     for (auto it = active.begin(); it != active.end(); ++it) {
       if (it->future.wait_for(std::chrono::milliseconds(0)) !=
@@ -692,7 +772,6 @@ std::vector<AggregatedPointResult> run_low_ber_scenarios_global(
       }
       accumulate_chunk(state.point, chunk);
       update_upper_bound_fields(state.point);
-      log_point_progress(state, false, log);
       mark_stop_if_needed(state, log);
       finalize_point_if_ready(state, log, completed_count);
       fill_workers();
@@ -766,7 +845,7 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.generate_random_bits = kGenerateRandomBits;
   config.normalize_known_prefix_tail = kNormalizeKnownPrefixTail;
   config.quant_clip_ratio = kQuantClipRatio;
-  config.quiet_pipeline = kQuietConsole;
+  config.quiet_pipeline = true;
   config.quiet_logs = kQuietConsole;
 
   config.enable_early_stop = kEnableEarlyStop;
@@ -943,23 +1022,6 @@ int main() {
           : std::max(1u,
                      std::min(total_workers,
                               kMaxDynamicInflightChunksPerPoint));
-
-  out << "[INFO] total scenarios = " << scenarios.size() << "\n";
-  out << "[INFO] total workers = " << total_workers << " (available="
-      << available_workers << ")\n";
-  out << "[INFO] base max inflight chunks per point = "
-      << base_inflight_per_point << "\n";
-  out << "[INFO] dynamic inflight per point = "
-      << (kEnableDynamicInflightPerPoint ? "enabled" : "disabled")
-      << " (cap=" << dynamic_inflight_cap << ")\n";
-  out << "[INFO] chunk_num_info_bits = " << kChunkNumInfoBits << "\n";
-  out << "[INFO] target_post_errors = " << kTargetPostErrors << "\n";
-  out << "[INFO] max_post_fec_total_bits = " << kMaxPostFecTotalBits << "\n";
-  if (kEnableZeroErrorUpperBound) {
-    out << "[INFO] zero-error upper-bound stop enabled, target="
-        << std::scientific << kTargetBerUpperBound << std::defaultfloat
-        << ", confidence=" << kConfidenceLevel << "\n";
-  }
 
   auto results = run_low_ber_scenarios_global(scenarios,
                                               config,
