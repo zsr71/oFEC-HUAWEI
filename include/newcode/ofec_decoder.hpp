@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 #include "newcode/common/matrix/matrix.hpp"
 #include "newcode/params.hpp"
@@ -40,6 +41,15 @@ struct TileEarlyStopSample {
   std::size_t rows_unscheduled = 0;
 };
 
+struct TileEarlyStopGroupBindDebugSample {
+  std::size_t invocation = 0;
+  std::size_t tile_index = 0;
+  int condition_mode = 0;
+  int bind_group_size = 1;
+  std::string raw_early_stop_flags;
+  std::string bound_early_stop_flags;
+};
+
 struct TileEarlyStopCounter {
   std::size_t triggered = 0;
   std::size_t total = 0;
@@ -49,6 +59,7 @@ struct TileEarlyStopCounter {
   std::size_t row_need_siso_before_mux = 0;
   std::size_t row_unscheduled = 0;
   std::vector<TileEarlyStopSample> samples;
+  std::vector<TileEarlyStopGroupBindDebugSample> group_bind_debug_samples;
   std::vector<HybridClassCount> hybrid_class_counts;
 };
 
@@ -62,6 +73,8 @@ struct TileProcessResult {
   std::size_t rows_need_siso_before_mux = 0;
   std::size_t rows_unscheduled = 0;
   HybridClassCount hybrid_class_count{};
+  bool has_group_bind_debug_sample = false;
+  TileEarlyStopGroupBindDebugSample group_bind_debug_sample{};
 };
 
 // 顶层解码（不同 Chase 变体分别导出）

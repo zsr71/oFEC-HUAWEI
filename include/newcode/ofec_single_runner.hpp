@@ -73,6 +73,8 @@ struct Config {
   std::string work_llr_output_path;
   bool dump_tile_early_stop_samples = false;
   std::string tile_early_stop_samples_output_path;
+  bool dump_tile_early_stop_group_bind_debug_samples = false;
+  std::string tile_early_stop_group_bind_debug_samples_output_path;
   newcode::Params::DebugTraceConfig debug_trace;
 };
 

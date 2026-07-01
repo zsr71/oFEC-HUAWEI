@@ -167,6 +167,12 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
           .rows_need_siso_before_mux = tile_result.rows_need_siso_before_mux,
           .rows_unscheduled = tile_result.rows_unscheduled,
       });
+      if (tile_result.has_group_bind_debug_sample) {
+        auto group_bind_sample = tile_result.group_bind_debug_sample;
+        group_bind_sample.invocation = counter.total;
+        group_bind_sample.tile_index = t;
+        counter.group_bind_debug_samples.push_back(std::move(group_bind_sample));
+      }
       counter.hybrid_class_counts.push_back(tile_result.hybrid_class_count);
     }
 

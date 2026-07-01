@@ -65,7 +65,7 @@ static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chas
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
   99.857143,99.179301,99.253626,99.119585,99.434408,99.000000
 };
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,16,4}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,32}; // 每个 tile 允许参与 SISO 的行数预算
 static constexpr int  kMuxGroupG          = 1;                     // MUX 分组粒度，1 表示全局池化
 static constexpr int  kMuxSchedulingMode  = 0;                     // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                     // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
@@ -74,8 +74,8 @@ static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边�
 
 
 
-static constexpr bool kHybridEnable       = true;                 // true=方案三软硬混合前置分流开关
-static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 0, 1}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
+static constexpr bool kHybridEnable       = false;                 // true=方案三软硬混合前置分流开关
+static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 0, 0}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
 static constexpr float kHybridHardLlrMag = 0.0f;                // hybrid hard-finish 默认输出 |LLR| 幅度
 static const std::vector<float> kHybridHardLlrMagList = {0,0,0,0,0,99};      // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度；空=沿用 kHybridHardLlrMag
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
@@ -92,6 +92,9 @@ static constexpr const char* kWorkLlrPath      = "data/llr/work_llr.txt";      /
 static constexpr bool        kDumpTileEarlyStopSamples = true;                 // 是否导出每次进入各个 tile 后的 early-stop 命中码字数样本
 static constexpr const char* kTileEarlyStopSamplesPath =
     "data/early_stop_hist/ofec_single_tile_early_stop_samples.csv";             // early-stop 样本 CSV 路径
+static constexpr bool        kDumpTileEarlyStopGroupBindDebugSamples = true;   // 是否导出 group-bind 前后的 early-stop bitstring
+static constexpr const char* kTileEarlyStopGroupBindDebugSamplesPath =
+    "data/early_stop_debug/ofec_single_group_bind_debug.csv";                  // group-bind debug CSV 路径
 
 namespace {
 constexpr long BitIndexToRow(long bit_index) { return bit_index / 111 + 352; } // 把 info bit 编号映射回矩阵行号
@@ -201,6 +204,10 @@ int main() {
     .work_llr_output_path = kWorkLlrPath,
     .dump_tile_early_stop_samples = kDumpTileEarlyStopSamples,
     .tile_early_stop_samples_output_path = kTileEarlyStopSamplesPath,
+    .dump_tile_early_stop_group_bind_debug_samples =
+        kDumpTileEarlyStopGroupBindDebugSamples,
+    .tile_early_stop_group_bind_debug_samples_output_path =
+        kTileEarlyStopGroupBindDebugSamplesPath,
     .debug_trace = newcode::Params::DebugTraceConfig{
       .enable = kDecoderTraceEnable,
       .log_read_mapping = kDecoderTraceLogRead,

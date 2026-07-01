@@ -83,6 +83,16 @@ inline void increment_hybrid_class_count(HybridRowClass row_class,
   }
 }
 
+inline std::string early_stop_flags_to_bitstring(
+    const std::vector<bool>& flags) {
+  std::string bits;
+  bits.reserve(flags.size());
+  for (bool flag : flags) {
+    bits.push_back(flag ? '1' : '0');
+  }
+  return bits;
+}
+
 template <typename LLR>
 TileProcessResult<LLR> run_legacy_soft_tile_process(
     const matrix::Matrix<LLR>& tile_in,
@@ -343,22 +353,28 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
                                                rows_to_decode,
                                                tx_llr_ref);
 
+  TileEarlyStopResult raw_early_stop_stats;
   TileEarlyStopResult early_stop_stats;
+  const bool group_bind_enabled =
+      p.ENABLE_EARLY_STOP &&
+      p.EARLY_STOP_CONDITION_MODE == 1 &&
+      p.EARLY_STOP_BIND_GROUP_SIZE > 1;
   if (p.ENABLE_EARLY_STOP) {
     // 先根据输入统计结果判断哪些 decoder row 已经满足 early-stop 条件。
-    early_stop_stats = detect_tile_early_stop(prep.lin_matrix, p);
+    raw_early_stop_stats = detect_tile_early_stop(prep.lin_matrix, p);
+    early_stop_stats = raw_early_stop_stats;
     // 条件1可额外按固定 group 绑定：只有整组 row 都通过时，这组才整体 early-stop。
-    if (p.EARLY_STOP_CONDITION_MODE == 1 &&
-        p.EARLY_STOP_BIND_GROUP_SIZE > 1) {
+    if (group_bind_enabled) {
       early_stop_stats = apply_group_bound_early_stop(
-          early_stop_stats, p.EARLY_STOP_BIND_GROUP_SIZE);
+          raw_early_stop_stats, p.EARLY_STOP_BIND_GROUP_SIZE);
     }
   } else {
-    early_stop_stats.row_passed_flags.assign(rows_to_decode, false);
-    early_stop_stats.row_details.assign(rows_to_decode, TileEarlyStopRowDetail{});
-    early_stop_stats.rows_passed = 0;
-    early_stop_stats.rows_total = rows_to_decode;
-    early_stop_stats.all_rows_passed = false;
+    raw_early_stop_stats.row_passed_flags.assign(rows_to_decode, false);
+    raw_early_stop_stats.row_details.assign(rows_to_decode, TileEarlyStopRowDetail{});
+    raw_early_stop_stats.rows_passed = 0;
+    raw_early_stop_stats.rows_total = rows_to_decode;
+    raw_early_stop_stats.all_rows_passed = false;
+    early_stop_stats = raw_early_stop_stats;
   }
   bool early_stop_triggered = early_stop_stats.all_rows_passed;
   std::size_t rows_need_siso_before_mux = 0;
@@ -505,6 +521,17 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
       rows_need_siso_before_mux,
       rows_unscheduled,
       std::move(hybrid_class_count)};
+  if (group_bind_enabled) {
+    tile_result.has_group_bind_debug_sample = true;
+    tile_result.group_bind_debug_sample.condition_mode =
+        p.EARLY_STOP_CONDITION_MODE;
+    tile_result.group_bind_debug_sample.bind_group_size =
+        p.EARLY_STOP_BIND_GROUP_SIZE;
+    tile_result.group_bind_debug_sample.raw_early_stop_flags =
+        early_stop_flags_to_bitstring(raw_early_stop_stats.row_passed_flags);
+    tile_result.group_bind_debug_sample.bound_early_stop_flags =
+        early_stop_flags_to_bitstring(early_stop_stats.row_passed_flags);
+  }
 
   if (verify_hybrid_disabled) {
     // 调试校验模式下，同一块 tile 再跑一遍旧 soft 路径做逐项比对。
