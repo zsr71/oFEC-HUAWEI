@@ -66,7 +66,7 @@ struct Params {
   std::vector<int> EARLY_STOP_ENABLE_LIST;  // 按 tile 覆盖 early-stop 开关：0=关，非 0=开；空表示沿用 ENABLE_EARLY_STOP
   int EARLY_STOP_CONDITION_MODE = 1;  // 1=detect_tile_early_stop_v1, 2=detect_tile_early_stop_v2
   std::vector<int> EARLY_STOP_CONDITION_MODE_LIST;  // 按 tile 覆盖 early-stop 条件模式；空表示沿用 EARLY_STOP_CONDITION_MODE
-  int EARLY_STOP_ACTION_MODE = 1;     // 1=sign beta, 2=residual only, 3=hard-decode sign LLR, 4=sign beta pre-div alpha, 5=residual pre-div alpha plus sign beta, 6=sign beta without BCH hard-decode
+  int EARLY_STOP_ACTION_MODE = 1;     // 1=sign beta, 2=residual only, 3=hard-decode sign LLR, 4=sign beta pre-div alpha, 5=residual pre-div alpha plus sign beta, 6=direct sign beta, 7=direct sign beta pre-div alpha, 8=(direct sign beta - channel) pre-div alpha
   std::vector<int> EARLY_STOP_ACTION_MODE_LIST;  // 按 tile 覆盖 early-stop 动作模式；空表示沿用 EARLY_STOP_ACTION_MODE
   int EARLY_STOP_BIND_GROUP_SIZE = 1; // 条件1专用：按多少个 row 绑定 early-stop；1=逐 row（旧逻辑），4=每 4 个都通过才整体 early-stop
   std::vector<int> EARLY_STOP_BIND_GROUP_SIZE_LIST;  // 按 tile 覆盖条件1的绑定组大小；空表示沿用 EARLY_STOP_BIND_GROUP_SIZE

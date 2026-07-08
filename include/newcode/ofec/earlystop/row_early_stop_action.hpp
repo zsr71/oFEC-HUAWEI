@@ -13,6 +13,8 @@ namespace newcode {
  * 4. residual + sign * beta，但在动作内预除 alpha 抵消公共缩放
  * 5. residual 预除 alpha 后再加 sign * beta
  * 6. 仅按 sign(lin) 输出 ±early-stop beta，不做 BCH 硬解
+ * 7. 仅按 sign(lin) 输出 ±early-stop beta，并预除 alpha
+ * 8. 将 ±early-stop beta 视作目标 posterior，减 channel 后预除 alpha
  */
 template <typename LLR>
 bool apply_row_early_stop_action(const LLR* lin256,

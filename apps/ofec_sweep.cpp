@@ -65,7 +65,7 @@ static const std::vector<int> kEarlyStopEnableList          = {};         // 按
 static constexpr int         kEarlyStopConditionMode        = 1;          // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionModeList   = {};         // 按 tile 覆盖早停条件模式；空表示所有 tile 沿用 kEarlyStopConditionMode
 static const std::vector<int> kEarlyStopConditionCandidates = {};    // 早停条件候选列表
-static constexpr int         kEarlyStopActionMode           = 1;          // 早停命中后的动作编号：1=sign beta，2=residual only，3=硬解成功后直接输出 ±hard_mag，4=sign beta 后预除 alpha，5=residual 预除 alpha 后再加 sign beta，6=直接输出 ±early-stop beta
+static constexpr int         kEarlyStopActionMode           = 1;          // 早停动作编号：1=sign beta，2=residual only，3=硬解输出 ±hard_mag，4=mode1 预除 alpha，5=residual 预除 alpha 后加 sign beta，6=直接 ±beta，7=直接 ±beta 预除 alpha，8=(直接 ±beta-channel) 预除 alpha
 static const std::vector<int> kEarlyStopActionModeList      = {};         // 按 tile 覆盖早停动作模式；空表示所有 tile 沿用 kEarlyStopActionMode
 static constexpr int         kEarlyStopBindGroupSize        = 1;          // 条件1专用的组绑定大小：1=逐 row；4=每 4 个 row 都通过才整体 early-stop
 static const std::vector<int> kEarlyStopBindGroupSizeList   = {};         // 按 tile 覆盖条件1绑定组大小；空表示所有 tile 沿用 kEarlyStopBindGroupSize

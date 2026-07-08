@@ -67,8 +67,8 @@ static constexpr int kChaseTopkKeep = 8;                            // top-k/pru
 static const std::vector<int> kChaseTopkKeepCandidates = {};        // top-k 保留数扫描候选
 static constexpr int kChaseGroupMinimaBits = 4;                     // group-minima decoder 的分组 bit 数
 static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4}; // group-minima 分组 bit 数扫描候选
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 16};   // 每个 tile 的 SISO 预算
-static constexpr int kMuxGroupG = 1;                                // MUX 分组粒度；1=全局池化
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 8};   // 每个 tile 的 SISO 预算
+static constexpr int kMuxGroupG = 8;                                // MUX 分组粒度；1=全局池化
 static constexpr int kMuxSchedulingMode = 0;                        // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static const std::vector<int> kMuxSchedulingModeCandidates = {};    // MUX 调度模式扫描候选
 static constexpr int kMuxPriorityRule = 0;                          // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
@@ -96,7 +96,7 @@ static constexpr bool kEnableEarlyStop = true;                      // 早停总
 static const std::vector<int> kEarlyStopEnableList = {};            // 按 tile 覆盖早停开关；空表示全部沿用总开关
 static constexpr int kEarlyStopConditionMode = 1;                   // 早停条件模式：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionCandidates = {};   // 早停条件模式扫描候选
-static constexpr int kEarlyStopActionMode = 1;                      // 早停动作模式：1~6
+static constexpr int kEarlyStopActionMode = 1;                      // 早停动作模式：1~8
 static constexpr int kEarlyStopBindGroupSize = 1;                   // 条件1的组绑定大小；1=逐 row，4=四个绑定
 static const std::vector<int> kEarlyStopActionCandidates = {};      // 早停动作模式扫描候选
 static constexpr bool kEarlyStopCondV1RequireBch = true;            // 条件1是否要求 BCH syndrome 全 0

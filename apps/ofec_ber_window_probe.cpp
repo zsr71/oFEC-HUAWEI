@@ -45,7 +45,7 @@ static constexpr bool        kEnableEarlyStop              = true;   // 早停�
 static const std::vector<int> kEarlyStopEnableList         = {1,1,1,1,1,1}; // 按 tile 覆盖早停总开关：0=关，非 0=开
 static constexpr int         kEarlyStopConditionMode       = 1;      // 早停条件模式：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionModeList  = {};     // 按 tile 覆盖条件模式；空表示沿用全局值
-static constexpr int         kEarlyStopActionMode          = 1;      // 早停动作模式：1~6
+static constexpr int         kEarlyStopActionMode          = 1;      // 早停动作模式：1~8
 static const std::vector<int> kEarlyStopActionModeList     = {};     // 按 tile 覆盖动作模式；空表示沿用全局值
 static constexpr int         kEarlyStopBindGroupSize       = 1;      // 条件1的绑定组大小：1=逐 row，4=四个绑定
 static const std::vector<int> kEarlyStopBindGroupSizeList  = {};     // 按 tile 覆盖绑定组大小；空表示沿用全局值

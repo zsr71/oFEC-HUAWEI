@@ -437,7 +437,7 @@ int run_sweep(const SweepParameterConfig& config) {
   };
   auto validate_action_mode = [](int mode) -> bool {
     return mode == 1 || mode == 2 || mode == 3 || mode == 4 || mode == 5 ||
-           mode == 6;
+           mode == 6 || mode == 7 || mode == 8;
   };
   auto validate_mux_scheduling_mode = [](int mode) -> bool {
     return mode == 0 || mode == 1;
@@ -452,7 +452,7 @@ int run_sweep(const SweepParameterConfig& config) {
     return 1;
   }
   if (!validate_action_mode(resolved.early_stop_action_mode)) {
-    std::cerr << "[ERROR] early_stop_action_mode must be 1, 2, 3, 4, 5 or 6\n";
+    std::cerr << "[ERROR] early_stop_action_mode must be 1, 2, 3, 4, 5, 6, 7 or 8\n";
     return 1;
   }
   if (resolved.early_stop_bind_group_size < 1) {

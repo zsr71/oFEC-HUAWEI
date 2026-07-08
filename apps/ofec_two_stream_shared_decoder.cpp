@@ -47,7 +47,7 @@ static constexpr bool kEnableEarlyStop = true;       // true=启用 early-stop�
 static const std::vector<int> kEarlyStopEnableList = {1, 1, 1, 1, 1, 1}; // 按 tile 覆盖 early-stop 总开关：0=关，非 0=开；空表示全部沿用 kEnableEarlyStop
 static constexpr int kEarlyStopConditionMode = 1;     // early-stop 条件模式：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionModeList = {}; // 按 tile 覆盖条件模式；空表示全部沿用 kEarlyStopConditionMode
-static constexpr int kEarlyStopActionMode = 6;        // 命中 early-stop 后的动作模式：1=sign beta，2=residual only，3=hard-decode sign LLR，4=sign beta pre-div alpha，5=residual pre-div alpha plus sign beta，6=sign beta without BCH hard-decode
+static constexpr int kEarlyStopActionMode = 6;        // 命中 early-stop 后的动作模式：1~8；7=直接 ±beta 预除 alpha，8=(直接 ±beta-channel) 预除 alpha
 static const std::vector<int> kEarlyStopActionModeList = {}; // 按 tile 覆盖动作模式；空表示全部沿用 kEarlyStopActionMode
 static constexpr int kEarlyStopBindGroupSize = 1;     // 条件1专用：多少个 row 绑定为一组；1=逐 row，4=整组都通过才 early-stop
 static const std::vector<int> kEarlyStopBindGroupSizeList = {}; // 按 tile 覆盖绑定组大小；空表示全部沿用 kEarlyStopBindGroupSize

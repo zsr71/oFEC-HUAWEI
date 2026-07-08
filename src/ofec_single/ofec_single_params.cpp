@@ -51,8 +51,10 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       cfg.early_stop_action_mode != 3 &&
       cfg.early_stop_action_mode != 4 &&
       cfg.early_stop_action_mode != 5 &&
-      cfg.early_stop_action_mode != 6) {
-    log << "[ERROR] early_stop_action_mode 目前必须是 1、2、3、4、5 或 6\n";
+      cfg.early_stop_action_mode != 6 &&
+      cfg.early_stop_action_mode != 7 &&
+      cfg.early_stop_action_mode != 8) {
+    log << "[ERROR] early_stop_action_mode 目前必须是 1、2、3、4、5、6、7 或 8\n";
     return std::nullopt;
   }
   if (cfg.early_stop_v2_llr_abs_threshold < 0.0f) {
@@ -71,8 +73,9 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   }
   for (int mode : cfg.early_stop_action_mode_list) {
     if (mode != 1 && mode != 2 && mode != 3 &&
-        mode != 4 && mode != 5 && mode != 6) {
-      log << "[ERROR] early_stop_action_mode_list 的元素必须是 1、2、3、4、5 或 6\n";
+        mode != 4 && mode != 5 && mode != 6 &&
+        mode != 7 && mode != 8) {
+      log << "[ERROR] early_stop_action_mode_list 的元素必须是 1、2、3、4、5、6、7 或 8\n";
       return std::nullopt;
     }
   }
