@@ -305,6 +305,7 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
                                          const newcode::Params& p,
                                          size_t tile_top_row_global,
                                          int siso_active_for_tile,
+                                         int hiho_active_for_tile,
                                          bool use_hard_decode,
                                          bool normalize_extrinsic,
                                          const matrix::Matrix<float>* tx_llr_ref,
@@ -318,6 +319,7 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
   // - p: 当前 tile 生效的参数。
   // - tile_top_row_global: tile 顶部在整帧中的全局行号。
   // - siso_active_for_tile: 当前 tile 可用的 SISO budget。
+  // - hiho_active_for_tile: 当前 tile 可用的 HIHO hard decoder budget。
   // - use_hard_decode: 是否走硬判回退。
   // - normalize_extrinsic: 是否对外信息归一化。
   // - tx_llr_ref: 可选参考矩阵，仅调试用。
@@ -464,7 +466,11 @@ TileProcessResult<LLR> process_tile_impl(const matrix::Matrix<LLR>& tile_in,
     // 2. 只让 soft candidate 参加 MUX
     // 3. 按计划执行并合并结果
     auto dispatch_plan = build_tile_dispatch_plan(
-        prep, early_stop_stats, siso_active_for_tile, p);
+        prep,
+        early_stop_stats,
+        siso_active_for_tile,
+        hiho_active_for_tile,
+        p);
     rows_need_siso_before_mux = count_soft_candidates_before_mux(dispatch_plan);
     rows_hard_finish = dispatch_plan.rows_hard_finish;
     hybrid_class_count.invocation = static_cast<std::size_t>(

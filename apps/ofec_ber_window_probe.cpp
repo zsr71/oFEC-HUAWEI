@@ -81,6 +81,7 @@ static const std::vector<float> kEarlyStopActionBetaExplicit = {
     99.857143f, 99.179301f, 99.253626f, 99.119585f, 99.434408f, 99.000000f // 每个 tile 的 early-stop 专用 beta 显式列表
 };
 static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 允许参与 SISO 的行数预算
+static const std::vector<int> kHiHoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 允许参与 HIHO 硬解码的行数预算
 static constexpr int  kMuxGroupG          = 1;                             // MUX 分组粒度，1 表示全局池化
 static constexpr int  kMuxSchedulingMode  = 0;                             // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                             // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
@@ -448,6 +449,7 @@ ofec_single::Config make_base_config() {
       .early_stop_action_residual_divisor = kEarlyStopActionResidualDivisor,
       .early_stop_action_hard_llr_mag = kEarlyStopActionHardLlrMag,
       .siso_active_list = kSisoActiveList,
+      .hiho_active_list = kHiHoActiveList,
       .mux_group_g = kMuxGroupG,
       .mux_scheduling_mode = kMuxSchedulingMode,
       .mux_early_stop_priority_rule = kMuxPriorityRule,

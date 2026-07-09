@@ -36,6 +36,7 @@ static constexpr std::size_t kLlrBits                 = 6;
 static constexpr float       kQuantClipRatio          = 0.5f;
 static constexpr int         kEarlyStopBindGroupSize  = 1;
 const std::vector<int> kSisoActiveList                = {32,32,32,32};
+const std::vector<int> kHiHoActiveList                = {32,32,32,32};
 
 const std::vector<float> kAlphaLowGrid   = utils::linspace(0.00f, 1.50f, 7);
 const std::vector<float> kAlphaHighGrid  = utils::linspace(0.00f, 1.50f, 7);
@@ -129,6 +130,7 @@ ofec_sweep::SweepParameterConfig build_base_config() {
   config.base_params.beta_list.assign(kTilesPerWindow, 0.6f);
   config.base_params.HARD_TILE_LIST.assign(kTilesPerWindow, 0);
   config.base_params.SISO_ACTIVE_LIST = kSisoActiveList;
+  config.base_params.HIHO_ACTIVE_LIST = kHiHoActiveList;
   config.base_params.BITGEN_RANDOM_BITS = kGenerateRandomBits;
   config.base_params.NORMALIZE_KNOWN_PREFIX_TAIL = kNormalizeKnownPrefixTail;
   config.base_params.LLR_CLIP_RATIO = kQuantClipRatio;
@@ -144,6 +146,7 @@ ofec_sweep::SweepParameterConfig build_base_config() {
   config.normalize_known_prefix_tail = kNormalizeKnownPrefixTail;
   config.quant_clip_ratio = kQuantClipRatio;
   config.siso_active_list = kSisoActiveList;
+  config.hiho_active_list = kHiHoActiveList;
   config.enable_early_stop = false;
   config.early_stop_bind_group_size = kEarlyStopBindGroupSize;
   config.mux_scheduling_mode = 0;

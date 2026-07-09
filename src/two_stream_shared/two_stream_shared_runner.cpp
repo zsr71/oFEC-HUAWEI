@@ -19,6 +19,7 @@
 #include "newcode/common/matrix/info_extract.hpp"
 #include "newcode/common/qfloat/qfloat.hpp"
 #include "newcode/llr_known_prefix.hpp"
+#include "newcode/ofec/mux/mux_config_validate.hpp"
 #include "newcode/ofec/mux/mux_siso_budget.hpp"
 #include "newcode/ofec/common/lin_matrix_adapters.hpp"
 #include "newcode/ofec/earlystop/tile_early_stop_group_bind.hpp"
@@ -517,6 +518,7 @@ SharedTileResult<LLR> run_shared_tile(
     std::size_t invocation,
     std::size_t tile_index,
     int siso_active_for_tile,
+    int hiho_active_for_tile,
     bool capture_last_tile_history,
     bool normalize_extrinsic,
     const matrix::Matrix<float>* tx_llr_ref_a,
@@ -556,7 +558,11 @@ SharedTileResult<LLR> run_shared_tile(
   }
 
   auto dispatch_plan = detail::build_tile_dispatch_plan(
-      shared_prep.merged, early_stop_stats, siso_active_for_tile, tile_params);
+      shared_prep.merged,
+      early_stop_stats,
+      siso_active_for_tile,
+      hiho_active_for_tile,
+      tile_params);
   const std::size_t rows_need_siso_before_mux =
       detail::count_soft_candidates_before_mux(dispatch_plan);
   detail::run_mux_on_soft_candidates(
@@ -688,6 +694,7 @@ SharedTileResult<LLR> run_shared_tile(
         .hybrid_class = to_shared_hybrid_class(entry.hybrid_class),
         .final_tag = to_shared_row_final_tag(entry.tag),
         .scheduled_for_soft = entry.scheduled_for_soft,
+        .scheduled_for_hard = entry.scheduled_for_hard,
         .produced_row = decoder_res.produced_rows[merged_row],
     });
   }
@@ -717,6 +724,16 @@ SharedLlrDecodeArtifacts<LLR> decode_two_stream_shared_llr(
   if (cols != expected_cols) {
     throw std::invalid_argument(
         "decode_two_stream_shared_llr: input llr_mat cols != N");
+  }
+  const auto siso_ok =
+      mux::validate_siso_active_list(params.SISO_ACTIVE_LIST, params.TILES_PER_WIN);
+  if (!siso_ok.ok) {
+    throw std::invalid_argument("decode_two_stream_shared_llr: " + siso_ok.error);
+  }
+  const auto hiho_ok =
+      mux::validate_hiho_active_list(params.HIHO_ACTIVE_LIST, params.TILES_PER_WIN);
+  if (!hiho_ok.ok) {
+    throw std::invalid_argument("decode_two_stream_shared_llr: " + hiho_ok.error);
   }
 
   if (rows < params.win_height_rows()) {
@@ -812,6 +829,8 @@ SharedLlrDecodeArtifacts<LLR> decode_two_stream_shared_llr(
           build_tile_params(params, tile_index, &chase_invocation_counter);
       const int siso_active_for_tile =
           mux::pick_siso_active_for_tile(params.SISO_ACTIVE_LIST, tile_index);
+      const int hiho_active_for_tile =
+          mux::pick_hiho_active_for_tile(params.HIHO_ACTIVE_LIST, tile_index);
       const bool capture_last_tile_history =
           last_soft_tile_idx >= 0 &&
           static_cast<int>(tile_index) == last_soft_tile_idx;
@@ -819,7 +838,8 @@ SharedLlrDecodeArtifacts<LLR> decode_two_stream_shared_llr(
       auto tile_result = run_shared_tile<LLR>(
           tile_in_a, tile_in_b, ch_tile_a, ch_tile_b, tile_params, tile_top_row,
           shared_tile_invocation, tile_index,
-          siso_active_for_tile, capture_last_tile_history,
+          siso_active_for_tile, hiho_active_for_tile,
+          capture_last_tile_history,
           pipeline.normalize_extrinsic, tx_llr_ref_a, tx_llr_ref_b,
           &last_history_a, &last_history_b, core_fn);
       ++shared_tile_invocation;

@@ -131,6 +131,8 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             static_cast<int>(++chase_invocation_counter);
         const int siso_active_for_tile =
             newcode::mux::pick_siso_active_for_tile(p.SISO_ACTIVE_LIST, t);
+        const int hiho_active_for_tile =
+            newcode::mux::pick_hiho_active_for_tile(p.HIHO_ACTIVE_LIST, t);
 
         const bool capture_history =
             last_tile_history_accum &&
@@ -139,6 +141,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
     TileProcessResult<LLR> tile_result = process_tile_impl<LLR>(tile_in, ch_tile, tile_params,
                                                                 /*tile_top_row_global=*/tile_top_row,
                                                                 siso_active_for_tile,
+                                                                hiho_active_for_tile,
                                                                 /*use_hard_decode=*/use_hard,
                                                                 /*normalize_extrinsic=*/normalize_extrinsic,
                                                                 tx_llr_ref,

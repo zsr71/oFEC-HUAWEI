@@ -363,6 +363,133 @@ void materialize_hard_finish_rows(
 }
 
 template <typename LLR>
+void materialize_classified_clean_rows(
+    const TilePrepared<LLR>& prep,
+    const TileDispatchPlan<typename TilePrepared<LLR>::CoreLLR>& plan,
+    chase::DecoderCoreResult<typename LinMatrixAdapter<LLR>::core_type>* result) {
+  using CoreLLR = typename TilePrepared<LLR>::CoreLLR;
+  const std::size_t cols = prep.lin_matrix.cols();
+  for (std::size_t row = 0; row < plan.rows.size(); ++row) {
+    if (plan.rows[row].tag != RowDispatchTag::HardFinish ||
+        plan.rows[row].hybrid_class != HybridRowClass::Clean ||
+        plan.rows[row].scheduled_for_hard ||
+        (row < plan.hard_finish_valid.size() && plan.hard_finish_valid[row])) {
+      continue;
+    }
+    std::array<CoreLLR, newcode::Params::BCH_N> lin_vec{};
+    std::array<CoreLLR, newcode::Params::BCH_N> lch_vec{};
+    std::array<float, newcode::Params::BCH_N> y2{};
+    load_row_vectors(prep, row, &lin_vec, &lch_vec);
+    const bool produced = newcode::apply_row_early_stop_action(
+        lin_vec.data(), lch_vec.data(), y2.data(), prep.params_for_core);
+    if (!produced) {
+      continue;
+    }
+    result->produced_rows[row] = true;
+    for (std::size_t col = 0; col < cols; ++col) {
+      result->lout[row][col] = y2[col];
+    }
+  }
+}
+
+inline void throw_hard_executor_failure(std::size_t row,
+                                        const char* reason) {
+  std::ostringstream oss;
+  oss << "hybrid hard executor failed at row " << row << ": " << reason;
+  throw std::runtime_error(oss.str());
+}
+
+template <typename CoreLLR>
+void execute_hybrid_hard_class(
+    HybridRowClass hard_class,
+    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
+    const newcode::Params& p,
+    std::array<float, newcode::Params::BCH_N>* y2) {
+  auto cw = hard_decision_bits_256(lin_vec);
+
+  switch (hard_class) {
+    case HybridRowClass::ParityOnly:
+      cw[newcode::Params::BCH_OVERALL_IDX] ^= 1u;
+      break;
+    case HybridRowClass::OneMain:
+    case HybridRowClass::OneMainPlusParity: {
+      const auto syndromes = bch::bch_255_239_syndromes_1_4_cw_255(cw.data());
+      const int pos = hybrid_fast_gf_log(syndromes[0]);
+      if (pos < 0 || pos >= static_cast<int>(newcode::Params::BCH_OVERALL_IDX)) {
+        throw std::runtime_error("invalid one-main error position");
+      }
+      cw[static_cast<std::size_t>(pos)] ^= 1u;
+      if (hard_class == HybridRowClass::OneMainPlusParity) {
+        cw[newcode::Params::BCH_OVERALL_IDX] ^= 1u;
+      }
+      break;
+    }
+    case HybridRowClass::TwoMain: {
+      std::array<uint8_t, newcode::Params::BCH_N - 1> decoded{};
+      int corrected_errors = 0;
+      if (!bch::bch_255_239_decode_hiho_cw_255(cw.data(),
+                                               decoded.data(),
+                                               &corrected_errors)) {
+        throw std::runtime_error("BCH t=2 decode failed");
+      }
+      if (corrected_errors != 2) {
+        throw std::runtime_error("BCH t=2 decode did not correct exactly two errors");
+      }
+      for (std::size_t i = 0; i < decoded.size(); ++i) {
+        cw[i] = decoded[i];
+      }
+      recompute_overall_parity(&cw);
+      break;
+    }
+    default:
+      throw std::runtime_error("unsupported hard class");
+  }
+
+  if (!hard_word_valid_256(cw)) {
+    throw std::runtime_error("corrected hard word is not a valid BCH+overall codeword");
+  }
+  materialize_hard_finish_lout(cw, lin_vec, p, y2);
+}
+
+template <typename LLR>
+void materialize_scheduled_hard_rows(
+    const TilePrepared<LLR>& prep,
+    const TileDispatchPlan<typename TilePrepared<LLR>::CoreLLR>& plan,
+    chase::DecoderCoreResult<typename LinMatrixAdapter<LLR>::core_type>* result) {
+  using CoreLLR = typename TilePrepared<LLR>::CoreLLR;
+  const std::size_t cols = prep.lin_matrix.cols();
+  for (int row_value : plan.hard_scheduled_rows) {
+    if (row_value < 0) {
+      continue;
+    }
+    const auto row = static_cast<std::size_t>(row_value);
+    if (row >= plan.rows.size() ||
+        plan.rows[row].tag != RowDispatchTag::HardFinish ||
+        !plan.rows[row].scheduled_for_hard) {
+      continue;
+    }
+
+    std::array<CoreLLR, newcode::Params::BCH_N> lin_vec{};
+    std::array<CoreLLR, newcode::Params::BCH_N> lch_vec{};
+    std::array<float, newcode::Params::BCH_N> y2{};
+    load_row_vectors(prep, row, &lin_vec, &lch_vec);
+    (void)lch_vec;
+    try {
+      execute_hybrid_hard_class(plan.rows[row].hybrid_class,
+                                lin_vec,
+                                prep.params_for_core,
+                                &y2);
+    } catch (const std::exception& ex) {
+      throw_hard_executor_failure(row, ex.what());
+    }
+    result->produced_rows[row] = true;
+    for (std::size_t col = 0; col < cols; ++col) {
+      result->lout[row][col] = y2[col];
+    }
+  }
+}
+
+template <typename LLR>
 std::vector<uint8_t> build_soft_only_mux_state(
     const TileDispatchPlan<typename TilePrepared<LLR>::CoreLLR>& plan) {
   // 不再把 soft 行压缩成 compact batch。
@@ -434,9 +561,12 @@ decode_tile_with_plan(
 
   // 先把不需要 Chase 的两类行落到完整结果里：
   // - EarlyStopAction
-  // - HardFinish
+  // - classified Clean（复用 early-stop action）
+  // - HardFinish（cached 或 hard executor）
   materialize_early_stop_rows(prep, plan, &merged_result);
+  materialize_classified_clean_rows(prep, plan, &merged_result);
   materialize_hard_finish_rows<LLR>(plan, &merged_result);
+  materialize_scheduled_hard_rows(prep, plan, &merged_result);
 
   if (!plan.soft_scheduled_rows.empty()) {
     // 保留完整 tile 行域，把是否跑 Chase 交给 soft-only mux_state 控制。

@@ -47,6 +47,7 @@ struct Config {
   float early_stop_action_residual_divisor = 1.0f;
   float early_stop_action_hard_llr_mag = 1.0f;
   std::vector<int> siso_active_list;
+  std::vector<int> hiho_active_list;
   int mux_group_g = 1;
   int mux_scheduling_mode = 0;
   int mux_early_stop_priority_rule = 0;

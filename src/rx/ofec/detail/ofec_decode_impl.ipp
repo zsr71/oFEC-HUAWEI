@@ -47,6 +47,11 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   if (!mux_ok.ok) {
     throw std::invalid_argument("ofec_decode_llr: " + mux_ok.error);
   }
+  const auto hiho_ok =
+      newcode::mux::validate_hiho_active_list(p.HIHO_ACTIVE_LIST, p.TILES_PER_WIN);
+  if (!hiho_ok.ok) {
+    throw std::invalid_argument("ofec_decode_llr: " + hiho_ok.error);
+  }
   if (!p.HYBRID_ENABLE_LIST.empty() &&
       p.HYBRID_ENABLE_LIST.size() != p.TILES_PER_WIN) {
     throw std::invalid_argument(

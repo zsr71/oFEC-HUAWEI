@@ -193,6 +193,9 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   if (!cfg.siso_active_list.empty()) {
   params.SISO_ACTIVE_LIST = cfg.siso_active_list;
   }
+  if (!cfg.hiho_active_list.empty()) {
+    params.HIHO_ACTIVE_LIST = cfg.hiho_active_list;
+  }
   params.MUX_GROUP_G = cfg.mux_group_g;
   params.MUX_SCHEDULING_MODE = cfg.mux_scheduling_mode;
   params.MUX_EARLY_STOP_PRIORITY_RULE = cfg.mux_early_stop_priority_rule;
@@ -231,6 +234,12 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       newcode::mux::validate_siso_active_list(params.SISO_ACTIVE_LIST, tiles);
   if (!mux_ok.ok) {
     log << "[ERROR] " << mux_ok.error << "\n";
+    return std::nullopt;
+  }
+  const auto hiho_ok =
+      newcode::mux::validate_hiho_active_list(params.HIHO_ACTIVE_LIST, tiles);
+  if (!hiho_ok.ok) {
+    log << "[ERROR] " << hiho_ok.error << "\n";
     return std::nullopt;
   }
   const std::size_t rows_to_decode =

@@ -68,6 +68,7 @@ static const std::vector<int> kChaseTopkKeepCandidates = {};        // top-k 保
 static constexpr int kChaseGroupMinimaBits = 4;                     // group-minima decoder 的分组 bit 数
 static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4}; // group-minima 分组 bit 数扫描候选
 static const std::vector<int> kSisoActiveList = {32, 32, 32, 8};   // 每个 tile 的 SISO 预算
+static const std::vector<int> kHiHoActiveList = {32, 32, 32, 32};  // 每个 tile 的 HIHO 硬解码预算
 static constexpr int kMuxGroupG = 8;                                // MUX 分组粒度；1=全局池化
 static constexpr int kMuxSchedulingMode = 0;                        // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static const std::vector<int> kMuxSchedulingModeCandidates = {};    // MUX 调度模式扫描候选
@@ -813,6 +814,7 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.LLR_CLIP_RATIO = kQuantClipRatio;
   config.base_params.LLR_BITS = kLlrBits;
   config.base_params.SISO_ACTIVE_LIST = kSisoActiveList;
+  config.base_params.HIHO_ACTIVE_LIST = kHiHoActiveList;
   config.base_params.HYBRID_ENABLE = kHybridEnable;
   config.base_params.HYBRID_ENABLE_LIST = kHybridEnableList;
   config.base_params.HYBRID_HARD_LLR_MAG = kHybridHardLlrMag;
@@ -885,6 +887,7 @@ ofec_sweep::SweepParameterConfig build_config() {
       kEarlyStopV2MaxUnreliableBitsCandidates;
 
   config.siso_active_list = kSisoActiveList;
+  config.hiho_active_list = kHiHoActiveList;
   config.mux_group_g = kMuxGroupG;
   config.mux_scheduling_mode = kMuxSchedulingMode;
   config.mux_scheduling_mode_candidates = kMuxSchedulingModeCandidates;

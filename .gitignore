@@ -43,6 +43,12 @@ ENV/
 
 # Generated figures
 *.png
+*.svg
+*.pptx
+generated_ppt/
+
+# Local tool dependencies
+tools/ppt/
 
 # IDE
 .vscode/

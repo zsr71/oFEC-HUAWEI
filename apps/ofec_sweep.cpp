@@ -45,6 +45,7 @@ static constexpr int         kChaseGroupMinimaBits          = 4;          // cha
 static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4};       // chase_group_minima 分组位数扫描候选，空表示沿用固定值
 
 static const std::vector<int> kSisoActiveList               = {32, 32, 32, 32}; // 每个 tile 的 SISO 行数预算
+static const std::vector<int> kHiHoActiveList               = {32, 32, 32, 32}; // 每个 tile 的 HIHO 硬解码行数预算
 static constexpr int         kMuxGroupG                     = 1;          // MUX 分组粒度，1 表示全局池化
 static constexpr int         kMuxSchedulingMode             = 0;          // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static const std::vector<int> kMuxSchedulingModeCandidates  = {};         // MUX 调度模式扫描候选，空表示沿用固定值
@@ -168,6 +169,7 @@ int main() {
 
   // MUX / 调度配置
   config.siso_active_list = kSisoActiveList;
+  config.hiho_active_list = kHiHoActiveList;
   config.mux_group_g = kMuxGroupG;
   config.mux_scheduling_mode = kMuxSchedulingMode;
   config.mux_scheduling_mode_candidates = kMuxSchedulingModeCandidates;
@@ -225,6 +227,7 @@ int main() {
   config.base_params.LLR_CLIP_RATIO = kQuantClipRatio;
   config.base_params.LLR_BITS = kLlrBits;
   config.base_params.SISO_ACTIVE_LIST = kSisoActiveList;
+  config.base_params.HIHO_ACTIVE_LIST = kHiHoActiveList;
 
   return ofec_sweep::run_sweep(config);
 }

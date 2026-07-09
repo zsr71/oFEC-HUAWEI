@@ -19,8 +19,11 @@ TileProcessResult<LLR> process_tile_plain(const matrix::Matrix<LLR>& tile_in,
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   const int siso_active_for_tile =
       newcode::mux::pick_siso_active_for_tile(p.SISO_ACTIVE_LIST, 0);
+  const int hiho_active_for_tile =
+      newcode::mux::pick_hiho_active_for_tile(p.HIHO_ACTIVE_LIST, 0);
   return detail::process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
                                    siso_active_for_tile,
+                                   hiho_active_for_tile,
                                    use_hard_decode, normalize_extrinsic,
                                    tx_llr_ref,
                                    &chase::Decoder_Core_plain<CoreLLR>,
@@ -40,8 +43,11 @@ TileProcessResult<LLR> process_tile_ebchPF(const matrix::Matrix<LLR>& tile_in,
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   const int siso_active_for_tile =
       newcode::mux::pick_siso_active_for_tile(p.SISO_ACTIVE_LIST, 0);
+  const int hiho_active_for_tile =
+      newcode::mux::pick_hiho_active_for_tile(p.HIHO_ACTIVE_LIST, 0);
   return detail::process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
                                    siso_active_for_tile,
+                                   hiho_active_for_tile,
                                    use_hard_decode, normalize_extrinsic,
                                    tx_llr_ref,
                                    &chase::Decoder_Core_ebchPF<CoreLLR>,
@@ -61,8 +67,11 @@ TileProcessResult<LLR> process_tile_topk_pruned(const matrix::Matrix<LLR>& tile_
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   const int siso_active_for_tile =
       newcode::mux::pick_siso_active_for_tile(p.SISO_ACTIVE_LIST, 0);
+  const int hiho_active_for_tile =
+      newcode::mux::pick_hiho_active_for_tile(p.HIHO_ACTIVE_LIST, 0);
   return detail::process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
                                    siso_active_for_tile,
+                                   hiho_active_for_tile,
                                    use_hard_decode, normalize_extrinsic,
                                    tx_llr_ref,
                                    &chase::Decoder_Core_topk_pruned<CoreLLR>,
@@ -82,8 +91,11 @@ TileProcessResult<LLR> process_tile_global_pair(const matrix::Matrix<LLR>& tile_
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   const int siso_active_for_tile =
       newcode::mux::pick_siso_active_for_tile(p.SISO_ACTIVE_LIST, 0);
+  const int hiho_active_for_tile =
+      newcode::mux::pick_hiho_active_for_tile(p.HIHO_ACTIVE_LIST, 0);
   return detail::process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
                                    siso_active_for_tile,
+                                   hiho_active_for_tile,
                                    use_hard_decode, normalize_extrinsic,
                                    tx_llr_ref,
                                    &chase::Decoder_Core_global_pair<CoreLLR>,
@@ -103,8 +115,11 @@ TileProcessResult<LLR> process_tile_group_minima(const matrix::Matrix<LLR>& tile
   using CoreLLR = typename LinMatrixAdapter<LLR>::core_type;
   const int siso_active_for_tile =
       newcode::mux::pick_siso_active_for_tile(p.SISO_ACTIVE_LIST, 0);
+  const int hiho_active_for_tile =
+      newcode::mux::pick_hiho_active_for_tile(p.HIHO_ACTIVE_LIST, 0);
   return detail::process_tile_impl(tile_in, ch_tile, p, tile_top_row_global,
                                    siso_active_for_tile,
+                                   hiho_active_for_tile,
                                    use_hard_decode, normalize_extrinsic,
                                    tx_llr_ref,
                                    &chase::Decoder_Core_group_minima<CoreLLR>,

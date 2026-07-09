@@ -66,6 +66,7 @@ static const std::vector<float> kAlphaExplicit = {
 static const std::vector<float> kBetaExplicit = {
     2.857143f, 6.179301f, 12.253626f, 20.119585f, 29.434408f, 40.0f}; // 每个 tile 的 Chase/fallback beta 显式列表
 static const std::vector<int> kSisoActiveList = {64, 64, 64, 32, 16, 8}; // 每个 tile 在 shared 64-row 域里可参与 SISO 的预算
+static const std::vector<int> kHiHoActiveList = {64, 64, 64, 64, 64, 64}; // 每个 tile 在 shared 64-row 域里可参与 HIHO 硬解码的预算
 
 // MUX 调度参数
 static constexpr int kMuxGroupG = 1;                  // MUX 分组数：1=全局池化，>1=按组平均切预算
@@ -192,6 +193,7 @@ int main() {
       kEarlyStopActionResidualDivisor;
   base_cfg.early_stop_action_hard_llr_mag = kEarlyStopActionHardLlrMag;
   base_cfg.siso_active_list = kSisoActiveList;
+  base_cfg.hiho_active_list = kHiHoActiveList;
   base_cfg.mux_group_g = kMuxGroupG;
   base_cfg.mux_scheduling_mode = kMuxSchedulingMode;
   base_cfg.mux_early_stop_priority_rule = kMuxPriorityRule;

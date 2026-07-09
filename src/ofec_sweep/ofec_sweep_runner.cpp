@@ -389,6 +389,9 @@ int run_sweep(const SweepParameterConfig& config) {
   if (!resolved.siso_active_list.empty()) {
     resolved.base_params.SISO_ACTIVE_LIST = resolved.siso_active_list;
   }
+  if (!resolved.hiho_active_list.empty()) {
+    resolved.base_params.HIHO_ACTIVE_LIST = resolved.hiho_active_list;
+  }
   resolved.base_params.ENABLE_EARLY_STOP = resolved.enable_early_stop;
   resolved.base_params.EARLY_STOP_ENABLE_LIST = resolved.early_stop_enable_list;
   resolved.base_params.EARLY_STOP_CONDITION_MODE =
@@ -581,6 +584,13 @@ int run_sweep(const SweepParameterConfig& config) {
       resolved.base_params.TILES_PER_WIN);
   if (!mux_ok.ok) {
     std::cerr << "[ERROR] " << mux_ok.error << "\n";
+    return 1;
+  }
+  const auto hiho_ok = newcode::mux::validate_hiho_active_list(
+      resolved.base_params.HIHO_ACTIVE_LIST,
+      resolved.base_params.TILES_PER_WIN);
+  if (!hiho_ok.ok) {
+    std::cerr << "[ERROR] " << hiho_ok.error << "\n";
     return 1;
   }
   if (!resolved.base_params.EARLY_STOP_ENABLE_LIST.empty() &&

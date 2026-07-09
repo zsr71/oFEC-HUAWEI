@@ -155,7 +155,11 @@ void log_run_overview(const Config& cfg,
       << params.MUX_GROUP_G << "/"
       << params.MUX_SCHEDULING_MODE << "/"
       << params.MUX_EARLY_STOP_PRIORITY_RULE
-      << ", reconfig = " << (params.MUX_ENABLE_RECONFIG ? "ON" : "OFF") << "\n";
+      << ", reconfig = " << (params.MUX_ENABLE_RECONFIG ? "ON" : "OFF")
+      << ", siso_active_list = "
+      << format_compact_int_list(params.SISO_ACTIVE_LIST)
+      << ", hiho_active_list = "
+      << format_compact_int_list(params.HIHO_ACTIVE_LIST) << "\n";
   log << "[INFO] Hybrid prepass = "
       << (params.HYBRID_ENABLE ? "ON" : "OFF")
       << ", per-tile enable list = "

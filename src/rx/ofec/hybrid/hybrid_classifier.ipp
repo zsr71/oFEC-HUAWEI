@@ -393,6 +393,108 @@ bool run_friend_fast_classifier_with_s0_hard_finish(
 }
 
 template <typename CoreLLR>
+bool run_repo_fast_classifier_classify_only(
+    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
+    HybridRowClass* out_class) {
+  auto cw = hard_decision_bits_256(lin_vec);
+  const uint8_t s0 = overall_parity_syndrome_256(cw);
+  const auto syndromes = bch::bch_255_239_syndromes_1_4_cw_255(cw.data());
+  const uint8_t s1 = syndromes[0];
+  const uint8_t s3 = syndromes[2];
+  const uint8_t s1_cubed = hybrid_fast_gf_cube(s1);
+
+  if (s0 == 0u && s1 == 0u && s3 == 0u) {
+    *out_class = HybridRowClass::Clean;
+    return true;
+  }
+  if (s0 == 1u && s1 == 0u && s3 == 0u) {
+    *out_class = HybridRowClass::ParityOnly;
+    return true;
+  }
+  if (s1 != 0u && s3 == s1_cubed) {
+    const int pos = hybrid_fast_gf_log(s1);
+    if (pos < 0 || pos >= static_cast<int>(newcode::Params::BCH_OVERALL_IDX)) {
+      *out_class = HybridRowClass::HardFail;
+      return false;
+    }
+    *out_class = (s0 == 0u) ? HybridRowClass::OneMainPlusParity
+                            : HybridRowClass::OneMain;
+    return true;
+  }
+  if (s0 == 0u && s1 != 0u && s3 != s1_cubed) {
+    *out_class = HybridRowClass::TwoMain;
+    return true;
+  }
+
+  *out_class = HybridRowClass::HardFail;
+  return false;
+}
+
+template <typename CoreLLR>
+bool run_friend_fast_classifier_classify_only(
+    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
+    HybridRowClass* out_class) {
+  auto cw = hard_decision_bits_256(lin_vec);
+  const uint8_t s0 = overall_parity_syndrome_256(cw);
+  const auto syndromes = bch::bch_255_239_syndromes_1_4_cw_255(cw.data());
+  const uint8_t s1 = syndromes[0];
+  const uint8_t s3 = syndromes[2];
+
+  if (s1 == 0u) {
+    if (s3 != 0u) {
+      *out_class = HybridRowClass::HardFail;
+      return false;
+    }
+    *out_class = (s0 == 1u) ? HybridRowClass::ParityOnly
+                            : HybridRowClass::Clean;
+    return true;
+  }
+
+  const uint8_t s1_sq = hybrid_fast_gf_mul(s1, s1);
+  const uint8_t s1_cubed = hybrid_fast_gf_mul(s1_sq, s1);
+  if (s3 == s1_cubed) {
+    const int pos = hybrid_fast_gf_log(s1);
+    if (pos < 0 || pos >= static_cast<int>(newcode::Params::BCH_OVERALL_IDX)) {
+      *out_class = HybridRowClass::HardFail;
+      return false;
+    }
+    *out_class = (s0 == 0u) ? HybridRowClass::OneMainPlusParity
+                            : HybridRowClass::OneMain;
+    return true;
+  }
+
+  const uint8_t numerator = static_cast<uint8_t>(s1_cubed ^ s3);
+  const uint8_t mu = hybrid_fast_gf_div(numerator, s1_cubed);
+  const uint8_t tr = hybrid_fast_trace_to_gf2(mu);
+  if (tr != 0u) {
+    *out_class = HybridRowClass::HardFail;
+    return false;
+  }
+
+  *out_class = HybridRowClass::TwoMain;
+  return true;
+}
+
+template <typename CoreLLR>
+bool run_friend_fast_classifier_with_s0_classify_only(
+    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
+    HybridRowClass* out_class) {
+  if (!run_friend_fast_classifier_classify_only(lin_vec, out_class)) {
+    return false;
+  }
+  if (*out_class != HybridRowClass::TwoMain) {
+    return true;
+  }
+
+  const auto cw = hard_decision_bits_256(lin_vec);
+  if (overall_parity_syndrome_256(cw) != 0u) {
+    *out_class = HybridRowClass::HardFail;
+    return false;
+  }
+  return true;
+}
+
+template <typename CoreLLR>
 bool run_selected_hybrid_classifier_hard_finish(
     const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
     std::array<float, newcode::Params::BCH_N>* y2,
@@ -409,6 +511,26 @@ bool run_selected_hybrid_classifier_hard_finish(
     case newcode::HybridClassifierMode::FriendS1S3WithS0Classifier:
       return run_friend_fast_classifier_with_s0_hard_finish(
           lin_vec, y2, p, out_class);
+    case newcode::HybridClassifierMode::LegacyHardDecode:
+    default:
+      *out_class = HybridRowClass::HardFail;
+      return false;
+  }
+}
+
+template <typename CoreLLR>
+bool run_selected_hybrid_classifier_classify_only(
+    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
+    const newcode::Params& p,
+    HybridRowClass* out_class) {
+  switch (effective_hybrid_classifier_mode(p)) {
+    case newcode::HybridClassifierMode::RepoFastClassifier:
+      return run_repo_fast_classifier_classify_only(lin_vec, out_class);
+    case newcode::HybridClassifierMode::FriendS1S3Classifier:
+      return run_friend_fast_classifier_classify_only(lin_vec, out_class);
+    case newcode::HybridClassifierMode::FriendS1S3WithS0Classifier:
+      return run_friend_fast_classifier_with_s0_classify_only(
+          lin_vec, out_class);
     case newcode::HybridClassifierMode::LegacyHardDecode:
     default:
       *out_class = HybridRowClass::HardFail;

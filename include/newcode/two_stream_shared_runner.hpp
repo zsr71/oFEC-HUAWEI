@@ -111,6 +111,7 @@ struct SharedRowMapEntry {
   SharedHybridClass hybrid_class = SharedHybridClass::None;
   SharedRowFinalTag final_tag = SharedRowFinalTag::SoftDecode;
   bool scheduled_for_soft = false;
+  bool scheduled_for_hard = false;
   bool produced_row = false;
 };
 

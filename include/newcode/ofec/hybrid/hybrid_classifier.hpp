@@ -85,6 +85,12 @@ bool run_selected_hybrid_classifier_hard_finish(
     const newcode::Params& p,
     HybridRowClass* out_class);
 
+template <typename CoreLLR>
+bool run_selected_hybrid_classifier_classify_only(
+    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
+    const newcode::Params& p,
+    HybridRowClass* out_class);
+
 } // namespace detail
 } // namespace newcode
 

@@ -60,6 +60,7 @@ struct SweepParameterConfig {
   std::vector<float> early_stop_v2_llr_abs_threshold_candidates;
   std::vector<int> early_stop_v2_max_unreliable_bits_candidates;
   std::vector<int> siso_active_list;
+  std::vector<int> hiho_active_list;
   int mux_group_g = 1;
   int mux_scheduling_mode = 0;
   std::vector<int> mux_scheduling_mode_candidates;

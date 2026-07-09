@@ -73,6 +73,13 @@ int pick_siso_active_for_tile(const std::vector<int>& list, std::size_t t) {
   return list[t];
 }
 
+int pick_hiho_active_for_tile(const std::vector<int>& list, std::size_t t) {
+  if (t >= list.size()) {
+    throw std::out_of_range("pick_hiho_active_for_tile: tile index out of range");
+  }
+  return list[t];
+}
+
 void apply_siso_budget_g1(std::vector<uint8_t>& state,
                           int siso_active_for_tile) {
   if (siso_active_for_tile < 0) {
