@@ -29,13 +29,13 @@ namespace {
 static constexpr const char* kInterleaverName = "identity"; // 交织器名称，identity 表示不交织
 static constexpr unsigned kBitsPerSymbol = 1;               // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 static constexpr bool kGenerateRandomBits = true;           // true=发送随机信息比特，false=发送全 0 比特
-static constexpr int kBitgenSeed = 20260319;                // 基础比特种子；每个 chunk 会在此基础上派生
+static constexpr int kBitgenSeed = 618911;                // 基础比特种子；每个 chunk 会在此基础上派生
 
 // 信道参数：噪声强度 / 信道随机性
 static constexpr float kEbN0Start = 3.05f;   // 扫描起始 Eb/N0（dB）
-static constexpr float kEbN0End = 3.15f;     // 扫描结束 Eb/N0（dB）
-static constexpr int kEbN0Points = 16;        // Eb/N0 采样点数；含首尾端点
-static constexpr int kChannelSeed = 3192026; // 基础信道种子；每个 chunk 会在此基础上派生
+static constexpr float kEbN0End = 3.13f;     // 扫描结束 Eb/N0（dB）
+static constexpr int kEbN0Points = 9;        // Eb/N0 采样点数；含首尾端点
+static constexpr int kChannelSeed = 1701; // 基础信道种子；每个 chunk 会在此基础上派生
 
 // 量化参数：只影响 LLR 量化口径
 static constexpr std::size_t kLlrBits = 6;      // LLR 位宽：16=浮点，2~15=qfloat
@@ -43,9 +43,9 @@ static constexpr float kQuantClipRatio = 0.5f;  // 动态 clip 比例，0 表示
 
 // 低 BER 聚合参数：每点多 chunk 聚合，直到达到停止条件
 static constexpr std::size_t kTilesPerWindow = 6;               // 本 app 使用的 TILES_PER_WIN；需与显式 alpha/beta 列表长度一致
-static constexpr std::size_t kChunkNumInfoBits = 8 * 132 * 16 * 111; // 每个 Monte Carlo chunk 的输入信息比特数
-static constexpr std::size_t kTargetPostErrors = 1000;            // 单个 Eb/N0 点累计到这么多 post-FEC 错误后即可停止
-static constexpr std::size_t kMaxPostFecTotalBits = 2e8;        // 单个 Eb/N0 点允许累计比较的最大 post-FEC 比特数
+static constexpr std::size_t kChunkNumInfoBits = 16 * 132 * 16 * 111; // 每个 Monte Carlo chunk 的输入信息比特数
+static constexpr std::size_t kTargetPostErrors = 5000;            // 单个 Eb/N0 点累计到这么多 post-FEC 错误后即可停止
+static constexpr std::size_t kMaxPostFecTotalBits = 50e8;        // 单个 Eb/N0 点允许累计比较的最大 post-FEC 比特数
 static constexpr unsigned kMaxTotalWorkers = 0;                 // 全局同时运行 chunk 数上限；0=自动使用 NTHREADS/机器可用 worker
 static constexpr unsigned kMaxInflightChunksPerPoint = 16;      // 单个 Eb/N0 点的基础挂起 chunk 上限；0=不额外限制
 static constexpr bool kEnableDynamicInflightPerPoint = true;    // true=剩余 Eb/N0 点变少时动态提高单点挂起上限
@@ -67,8 +67,8 @@ static constexpr int kChaseTopkKeep = 8;                            // top-k/pru
 static const std::vector<int> kChaseTopkKeepCandidates = {};        // top-k 保留数扫描候选
 static constexpr int kChaseGroupMinimaBits = 4;                     // group-minima decoder 的分组 bit 数
 static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4}; // group-minima 分组 bit 数扫描候选
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 的 SISO 预算；共享模式下后两项不参与独立 MUX
-static const std::vector<int> kHiHoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 的 HIHO 预算；共享模式下后两项不参与独立 MUX
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 8, 4}; // 每个 tile 的 SISO 预算；共享模式下后两项不参与独立 MUX
+static const std::vector<int> kHiHoActiveList = {32, 32, 32, 32, 8, 4}; // 每个 tile 的 HIHO 预算；共享模式下后两项不参与独立 MUX
 static constexpr int kMuxGroupG = 1;                                // MUX 分组粒度；1=全局池化
 static constexpr int kMuxSchedulingMode = 0;                        // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static const std::vector<int> kMuxSchedulingModeCandidates = {};    // MUX 调度模式扫描候选
@@ -78,8 +78,8 @@ static constexpr bool kMuxEnableReconfig = false;                   // 是否启
 static constexpr int kMuxBypassScheme = 1;                          // 旁路边方案编号：仅在 reconfig 打开时真正参与调度
 static constexpr bool kHybridEnable = true;                         // true=启用方案三软硬混合前置分流
 static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 1, 1}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
-static constexpr float kHybridHardLlrMag = 0.0f;                    // hybrid hard-finish 默认输出 |LLR| 幅度
-static const std::vector<float> kHybridHardLlrMagList = {0, 0, 0, 0, 99, 99}; // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度
+static constexpr float kHybridHardLlrMag = 99.0f;                    // hybrid hard-finish 默认输出 |LLR| 幅度
+static const std::vector<float> kHybridHardLlrMagList = {}; // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
     newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;      // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
