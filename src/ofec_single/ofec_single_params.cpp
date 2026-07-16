@@ -210,6 +210,18 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.HYBRID_USE_FAST_CLASSIFIER =
       cfg.hybrid_classifier_mode != newcode::HybridClassifierMode::LegacyHardDecode;
   params.HYBRID_NORMALIZE_SOFT_ONLY = cfg.hybrid_normalize_soft_only;
+  params.LEVEL56_SHARED_ENABLE = cfg.level56_shared_enable;
+  params.LEVEL56_SHARED_HISO_ACTIVE = cfg.level56_shared_hiso_active;
+  params.LEVEL56_SHARED_SISO_ACTIVE = cfg.level56_shared_siso_active;
+  params.LEVEL56_PRIORITY_MODE = cfg.level56_priority_mode;
+  params.LEVEL56_FAIR_ALTERNATE_START = cfg.level56_fair_alternate_start;
+  if (params.LEVEL56_SHARED_HISO_ACTIVE < 0 ||
+      params.LEVEL56_SHARED_HISO_ACTIVE > 64 ||
+      params.LEVEL56_SHARED_SISO_ACTIVE < 0 ||
+      params.LEVEL56_SHARED_SISO_ACTIVE > 64) {
+    log << "[ERROR] LEVEL56 shared HISO/SISO 容量必须在 [0,64]\n";
+    return std::nullopt;
+  }
   if (!params.HYBRID_ENABLE_LIST.empty() &&
       params.HYBRID_ENABLE_LIST.size() != tiles) {
     log << "[ERROR] hybrid_enable_list 长度必须等于 TILES_PER_WIN\n";
@@ -230,14 +242,22 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       return std::nullopt;
     }
   }
-  const auto mux_ok =
-      newcode::mux::validate_siso_active_list(params.SISO_ACTIVE_LIST, tiles);
+  const std::size_t mux_tile_count =
+      params.LEVEL56_SHARED_ENABLE ? 4u : tiles;
+  const auto mux_ok = params.LEVEL56_SHARED_ENABLE
+      ? newcode::mux::validate_siso_active_prefix(params.SISO_ACTIVE_LIST,
+                                                  mux_tile_count)
+      : newcode::mux::validate_siso_active_list(params.SISO_ACTIVE_LIST,
+                                                mux_tile_count);
   if (!mux_ok.ok) {
     log << "[ERROR] " << mux_ok.error << "\n";
     return std::nullopt;
   }
-  const auto hiho_ok =
-      newcode::mux::validate_hiho_active_list(params.HIHO_ACTIVE_LIST, tiles);
+  const auto hiho_ok = params.LEVEL56_SHARED_ENABLE
+      ? newcode::mux::validate_hiho_active_prefix(params.HIHO_ACTIVE_LIST,
+                                                  mux_tile_count)
+      : newcode::mux::validate_hiho_active_list(params.HIHO_ACTIVE_LIST,
+                                                mux_tile_count);
   if (!hiho_ok.ok) {
     log << "[ERROR] " << hiho_ok.error << "\n";
     return std::nullopt;
@@ -261,7 +281,7 @@ std::optional<newcode::Params> build_params(const Config& cfg,
     return std::nullopt;
   }
   if (params.MUX_ENABLE_RECONFIG) {
-    for (std::size_t tile_idx = 0; tile_idx < params.SISO_ACTIVE_LIST.size(); ++tile_idx) {
+    for (std::size_t tile_idx = 0; tile_idx < mux_tile_count; ++tile_idx) {
       const auto reconfig_ok = newcode::mux::validate_mux_reconfig_runtime(
           params.MUX_GROUP_G, params.SISO_ACTIVE_LIST[tile_idx], rows_to_decode);
       if (!reconfig_ok.ok) {

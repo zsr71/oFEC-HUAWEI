@@ -22,6 +22,12 @@ enum class HybridSisoBackfillMode : uint8_t {
   ParityOneAndTwoErrorPriority = 3
 };
 
+enum class Level56PriorityMode : uint8_t {
+  Fair = 0,
+  Level5First = 1,
+  Level6First = 2
+};
+
 struct Params {
   // ===== 编码结构常量（与 oFEC 布局一致） =====
   static constexpr size_t NUM_SUBBLOCK_COLS     = 8;   // 每行包含的子块数量
@@ -35,7 +41,7 @@ struct Params {
   static constexpr size_t BCH_OVERALL_IDX = BCH_N - 1;         // overall parity 索引（255）
 
   // ===== 运行/仿真参数 =====
-  size_t NUM_INFO_BITS     =  256 * 132 * 16 * 111; // 信息比特总数
+  size_t NUM_INFO_BITS     =  128 * 132 * 16 * 111; // 信息比特总数
   int    BITGEN_SEED       = 56456;                 // 随机种子
   int    CHANNEL_SEED      = BITGEN_SEED + 656;    // 信道噪声随机种子
   bool   BITGEN_RANDOM_BITS = true;             // true=随机比特，false=全 0
@@ -120,6 +126,13 @@ struct Params {
   bool HYBRID_NORMALIZE_SOFT_ONLY = false;                        // true 时仅对 soft-decode 行做 extrinsic normalize；false 保持兼容行为
   bool HYBRID_VERIFY_DISABLED_MATCH_LEGACY = false;               // 调试校验：当 HYBRID_ENABLE=false 时，额外跑旧 soft 路径并逐项比对结果
 
+  // 第五/六级共享 HISO/SISO 资源。关闭时保持现有逐 tile 解码路径。
+  bool LEVEL56_SHARED_ENABLE = false;
+  int LEVEL56_SHARED_HISO_ACTIVE = 32;
+  int LEVEL56_SHARED_SISO_ACTIVE = 32;
+  Level56PriorityMode LEVEL56_PRIORITY_MODE = Level56PriorityMode::Fair;
+  bool LEVEL56_FAIR_ALTERNATE_START = true;
+
   struct DebugTraceConfig {
     bool enable = false;
     bool log_read_mapping = false;
@@ -203,6 +216,10 @@ struct Params {
            (CHASE_TOPK_KEEP >= 1) &&
            (CHASE_GROUP_MINIMA_BITS >= 0) &&
            (EARLY_STOP_BIND_GROUP_SIZE >= 1) &&
+           (LEVEL56_SHARED_HISO_ACTIVE >= 0) &&
+           (LEVEL56_SHARED_HISO_ACTIVE <= 64) &&
+           (LEVEL56_SHARED_SISO_ACTIVE >= 0) &&
+           (LEVEL56_SHARED_SISO_ACTIVE <= 64) &&
            (CHASE_SBR == 1 || CHASE_SBR == 2);
   }
 };

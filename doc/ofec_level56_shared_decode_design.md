@@ -20,12 +20,12 @@
 第五/六级共享模式遵循以下原则：
 
 1. 合并时不交错排序。共享数组固定先放第五级 32 个 code，再放第六级 32 个 code。
-2. early-stop 对 64 个 code 分别判断，但每个 code 使用所属级别的参数。
+2. early-stop 对 64 个 code 分别判断；第五/六级除 alpha、beta 外的解码参数保持一致，因此两级使用同一套 early-stop 参数。
 3. 当 `EARLY_STOP_BIND_GROUP_SIZE=4` 时，group binding 只允许发生在同一级内部。
 4. hybrid 阶段只分类，不翻 bit、不执行 BCH hard decode、不生成最终 hard 输出。
 5. 跨第五/六级的资源竞争、优先级和最终路径选择全部放在统一优先级处理阶段。
 6. HISO MUX 和 SISO MUX 只负责物理或逻辑路由，不负责优先级仲裁。
-7. HISO/SISO 解码后，第五级和第六级分别使用各自的 alpha、beta、early-stop action 和地址映射完成写回。
+7. SISO 执行时按来源使用各自的 beta；解码后，第五级和第六级分别使用各自的 alpha 和地址映射完成写回。
 
 ## 3. 64-code 合并顺序
 
@@ -63,7 +63,7 @@ struct Level56SharedCodeEntry {
 };
 ```
 
-`source_level` 和 `source_local_row` 在整个流程中不能丢失，因为后续需要据此选择对应参数并恢复第五/六级写回映射。
+`source_level` 和 `source_local_row` 在整个流程中不能丢失，因为后续需要据此选择对应的 alpha、beta 并恢复第五/六级写回映射。
 
 ## 4. 总体流程
 
@@ -122,8 +122,8 @@ struct Level56SharedCodeEntry {
 
 - 两级的 `tile_top_row_global` 不同；
 - 两级的历史信息读取地址不同；
-- 两级可能使用不同的 alpha、beta 和 early-stop 参数；
-- 两级的 trace、row lookup 和写回映射不同。
+- 两级使用不同的 alpha、beta；
+- 两级使用相同的 trace 配置，但各自生成的 trace 行映射、row lookup 和写回映射不同。
 
 准备阶段产生：
 
@@ -134,6 +134,19 @@ Level6Prepared: 32 x 256 Lin/Lch + Level6 row lookup
 
 然后只在 shared 调度视图中把两组 prepared rows 合并为 64 行。原始的两个 `TilePrepared` 继续保留，供最终分级执行和写回使用。
 
+第五/六级共享模式要求两级除 alpha、beta 外的解码参数完全一致，包括：
+
+```text
+early-stop enable / condition / action
+early-stop bind group size
+hybrid enable
+classifier 参数
+hard LLR magnitude
+trace context
+```
+
+因此共享流程使用一套公共解码参数，并单独保留 Level 5 和 Level 6 各自的 alpha、beta。共享模式初始化时应检查上述公共参数一致；不一致时拒绝进入共享流程。
+
 第一版共享模式建议限制：
 
 ```text
@@ -141,17 +154,18 @@ TILES_PER_WIN == 6
 CHASE_SBR == 2
 TILE_OVERLAP_BR == 0
 Level 5 和 Level 6 都是 soft/hybrid tile
+Level 5 和 Level 6 都启用 early-stop
 ```
 
-这些限制可以避免第六级输入依赖第五级即时写回、hard-tile history input 或 overlap 语义，从而先验证共享资源本身对 BER 的影响。
+由当前地址映射可知，第六级输入不依赖第五级的即时写回，因此第五级和第六级可以在任一级写回之前分别准备输入。共享模式要求 early-stop 开启，以保证 clean 行在 hybrid classify-only 之前已经完成处理。上述限制用于排除 hard-tile history input 和 overlap 等第一版暂不支持的额外语义，从而先验证共享资源本身对 BER 的影响。
 
 ## 6. 第二步：64 个 code 做 early-stop
 
-64 行分别执行现有 early-stop 条件：
+64 行分别使用两级一致的公共参数执行现有 early-stop 条件：
 
 ```text
-Level 5 code 使用 Level 5 的 early-stop 参数
-Level 6 code 使用 Level 6 的 early-stop 参数
+Level 5 code 使用公共 early-stop 参数
+Level 6 code 使用相同的公共 early-stop 参数
 ```
 
 输出分成：
@@ -168,7 +182,7 @@ early-stop 命中的 code：
 - 不进入 HISO MUX；
 - 不进入 SISO MUX；
 - 不占用 HISO/SISO 核；
-- 在执行结果合并阶段，使用所属级别的 early-stop action 生成输出。
+- 在执行结果合并阶段，使用公共 early-stop action 生成输出。
 
 ### 6.1 `EARLY_STOP_BIND_GROUP_SIZE=4`
 
@@ -198,13 +212,12 @@ L5[30], L5[31], L6[0], L6[1]
 
 ```text
 Lin[256]
-所属级别的 classifier 参数
+第五/六级共享的 classifier 参数
 ```
 
 分类阶段输出：
 
 ```text
-Clean
 ParityOnly
 OneMain
 OneMainPlusParity
@@ -212,6 +225,8 @@ TwoMain
 Suspicious
 HardFail
 ```
+
+共享 hybrid classify-only 阶段不存在可达的 `Clean` 分类。满足 clean 条件的行已经在前面的 early-stop 阶段处理，不再进入 hybrid 分类。因此调度器不为 `Clean` 建立资源资格或 `FinalAction`；如果实际分类结果中出现 `Clean`，说明 early-stop 与 classifier 的判断口径不一致，第一版直接报错定位，不进入免费完成路径。
 
 分类阶段禁止执行：
 
@@ -231,7 +246,6 @@ HardFail
 ```cpp
 enum class ResourceEligibility {
   None,
-  FreeFinish,
   HisoOnly,
   SisoOnly,
   HisoOrSiso,
@@ -239,7 +253,6 @@ enum class ResourceEligibility {
 
 enum class FinalAction {
   EarlyStopAction,
-  FreeFinish,
   HisoDecode,
   SisoDecode,
   Unscheduled,
@@ -251,7 +264,6 @@ enum class FinalAction {
 | 输入状态或分类        | 资源资格       | 说明                             |
 | --------------------- | -------------- | -------------------------------- |
 | early-stop 命中       | `None`       | 最终为`EarlyStopAction`        |
-| `Clean`             | `FreeFinish` | 不占 HISO/SISO，使用免费完成路径 |
 | `ParityOnly`        | `HisoOrSiso` | 可被回收到 HISO，也可保留给 SISO |
 | `OneMain`           | `HisoOrSiso` | 可被回收到 HISO，也可保留给 SISO |
 | `OneMainPlusParity` | `HisoOrSiso` | 可被回收到 HISO，也可保留给 SISO |
@@ -293,6 +305,14 @@ ParityOnly
 ```
 
 `SisoOnly` code 必须保留在 SISO 候选集合中，不能为了填满 HISO 而错误地送入 HISO。
+
+在分类优先级和跨级策略都相同的情况下，同一级内部固定按 `source_local_row` 从小到大排序。完整的稳定排序口径为：
+
+```text
+classification priority
+  -> Level56PriorityMode 决定的跨级合并顺序
+  -> source_local_row ascending
+```
 
 ### 9.2 三种跨级优先级策略
 
@@ -379,11 +399,20 @@ hiso_scheduled_count = min(need_hiso_reclaim,
                            H)
 ```
 
+该公式明确采用 SISO 优先策略：HISO 只处理超过 SISO 容量的 `HisoOrSiso` 候选，不为了提高 HISO 利用率而主动从未溢出的 soft pool 中取 code。因此，当 `S >= soft_total` 时：
+
+```text
+need_hiso_reclaim = 0
+hiso_scheduled_count = 0
+```
+
+例如 `Shared HISO=64, Shared SISO=64` 且 shared batch 只有 64 行时，HISO 可以保持空闲。这是当前策略的预期行为，不属于资源利用异常。
+
 然后：
 
 1. 选中的 `HisoOrSiso` code 标记为 `HisoDecode`；
 2. 未被选中的 `HisoOrSiso` code 保留在 soft pool；
-3. soft pool 再按统一优先级选择最多 S 个，标记为 `SisoDecode`；
+3. soft pool 保留当前分类优先级和跨级优先级，选择最多 S 个标记为 `SisoDecode`；
 4. 剩余 code 标记为 `Unscheduled`。
 
 如果未来加入 `HisoOnly`，它们应先进入 HISO 有序候选，再根据 HISO 容量决定 `HisoDecode` 或 `Unscheduled`。
@@ -451,14 +480,16 @@ MUX 不做：
 
 ### 10.2 路由失败的处理
 
-当物理拓扑导致某个已选请求无法连接到空闲核时，建议采用以下边界：
+路由失败保持与当前 `run_mux_on_soft_candidates()` 一致的单次调度语义：
 
-1. MUX 返回 `unroutable_requests`；
-2. 优先级处理模块根据原有有序候选做补位；
-3. MUX 再尝试路由；
-4. 无候选可补或达到固定尝试次数后，才标记为 `Unscheduled`。
+1. 优先级处理先完成候选排序和预算裁剪；
+2. MUX 对保留下来的请求执行一次 code-to-core 路由；
+3. 成功获得 core mapping 的请求进入对应解码核；
+4. MUX 返回 code-to-core mapping 和未匹配请求；
+5. MUX 结果应用阶段把未获得 core mapping 的请求直接标记为 `Unscheduled`；
+6. 本次 shared invocation 内不执行候选补位和重复路由。
 
-也就是说，MUX可以报告路由可行性，但最终“换谁上、谁未调度”的决定仍属于优先级处理模块。
+第一版使用 `MUX_GROUP_G=1` 全局池化时，预期所有预算内请求都能够完成路由。如果仍出现路由失败，应记录为 MUX 异常并按上述规则在结果应用阶段将对应行标记为 `Unscheduled`，不在 MUX 内改变优先级或选择替代候选。
 
 ### 10.3 与当前代码的区别
 
@@ -505,11 +536,11 @@ TwoMain             -> 执行 BCH t=2 hard decode
 
 ### 11.2 SISO 执行
 
-`SisoDecode` code 进入 Chase SISO。资源上两级共享一组核，但每个 code 必须使用所属级别的参数：
+`SisoDecode` code 进入 Chase SISO。资源上两级共享一组核，除 beta 外使用相同的公共解码参数；每个 code 按来源选择 beta：
 
 ```text
-Level 5 code 使用 beta[4] 及 Level 5 Params
-Level 6 code 使用 beta[5] 及 Level 6 Params
+Level 5 code 使用 beta[4]
+Level 6 code 使用 beta[5]
 ```
 
 由于当前一次 Chase batch 只携带一套 `params_for_core`，第一版软件仿真可以：
@@ -545,27 +576,30 @@ Level 6 result: 32 x 256
 
 | `FinalAction`     | 执行结果                                      |
 | ------------------- | --------------------------------------------- |
-| `EarlyStopAction` | 使用所属级别的 early-stop action              |
-| `FreeFinish`      | 使用 clean/free materialize                   |
+| `EarlyStopAction` | 使用公共 early-stop action                    |
 | `HisoDecode`      | 使用 HISO executor 输出                       |
 | `SisoDecode`      | 使用 Chase SISO 输出                          |
 | `Unscheduled`     | `produced=false`，不产生新的 extrinsic 写回 |
 
+`Unscheduled` 继续依赖当前 `produced=false` 的既有传播语义，不额外引入清零、复制或历史值更新动作。现有后处理和写回逻辑根据 `produced=false` 跳过该行。
+
 随后两级必须分别执行：
 
 ```text
-Level 5:
-  normalize（若启用）
-  alpha[4]
-  Level 5 writeback mapping
+SISO 执行：
+  Level 5 code 使用 beta[4]
+  Level 6 code 使用 beta[5]
 
-Level 6:
-  normalize（若启用）
-  alpha[5]
-  Level 6 writeback mapping
+按来源级别拆分后：
+  Level 5: 只对 Level 5 的 SisoDecode 行 normalize（若启用）
+           -> 对 Level 5 produced 行应用 alpha[4]
+           -> Level 5 writeback mapping
+  Level 6: 只对 Level 6 的 SisoDecode 行 normalize（若启用）
+           -> 对 Level 6 produced 行应用 alpha[5]
+           -> Level 6 writeback mapping
 ```
 
-禁止把 64 行放在一起统一 normalization，也禁止使用同一个 alpha/beta 处理两级。
+normalization 的统计和缩放集合严格限定为所属级别的 `SisoDecode` 且 `produced=true` 的行。`EarlyStopAction` 和 `HisoDecode` 行不参与 normalization。禁止把两级的 SISO 行放在一起计算公共 normalization scale，也禁止使用同一个 alpha 处理两级。beta 在 SISO 执行时已经按来源级别选择，不在拆分后的后处理阶段再次应用。
 
 第一版保持现有写回先后顺序：
 
@@ -580,7 +614,6 @@ Level 6:
 
 ```text
 early_stop_count
-+ free_finish_count
 + hiso_scheduled_count
 + siso_scheduled_count
 + unscheduled_count
@@ -634,8 +667,6 @@ fair_start_level
 
 level5_early_stop
 level6_early_stop
-level5_free_finish
-level6_free_finish
 
 level5_hiso_candidates
 level6_hiso_candidates
@@ -657,6 +688,8 @@ shared_siso_used
 hiso_mux_unroutable
 siso_mux_unroutable
 ```
+
+第一版串行实现中的 `shared_invocation` 在一次完整 decode 内全局递增，不按 window 重新计数。未来切换为并行执行后，`shared_invocation` 不再作为必需观测字段，可以不记录；row 来源和调度结果继续通过 window、level、local row 等稳定字段标识。
 
 row 级调试数据还应记录：
 
@@ -680,14 +713,17 @@ produced_row
 
 建议按以下顺序验证：
 
-1. `Shared HISO=64, Shared SISO=64`，确认共享模式没有因参数、拆分或写回改变基线结果。
+1. `Shared HISO=64, Shared SISO=64`，确认共享模式没有因参数、拆分或写回改变基线结果；按 SISO 优先策略，此配置下预期 `need_hiso_reclaim=0`，HISO 可以不被使用。
 2. 固定满配资源，对比 `Fair`、`Level5First`、`Level6First`，理论上三者应得到相同结果。
 3. 缩小 SISO 容量，保持 HISO 满配，观察 soft resource sharing。
-4. 缩小 HISO 容量，保持 SISO 满配，观察 hard resource sharing。
+4. 固定一个能够触发 `need_hiso_reclaim>0` 的受限 SISO 容量，再缩小 HISO 容量，观察 hard resource sharing。
 5. 同时限制 HISO/SISO，比较三种跨级策略的 post-FEC BER。
 6. 检查每个 invocation 的资源守恒和 64 行状态守恒。
 7. 检查 `EARLY_STOP_BIND_GROUP_SIZE=4` 时不存在跨级 group。
-8. 检查 MUX 只改变 core mapping，不改变优先级处理输出的 code 集合；若出现拓扑路由失败，应通过显式补位流程返回优先级模块处理。
+8. 检查 MUX 只执行一次 core mapping，不改变请求优先级；未获得 mapping 的请求应直接成为 `Unscheduled`，不得在本次 invocation 内补位或重试。
+9. 检查 Level 5 和 Level 6 除 alpha、beta 外的公共解码参数完全一致。
+10. 检查未 early-stop 行的 hybrid 分类结果中 `Clean` 数量始终为 0。
+11. 检查同一分类、同一级内的请求严格按 `source_local_row` 从小到大排列。
 
 ## 17. 最终流程定义
 
@@ -698,7 +734,7 @@ Level 5 的 32 code + Level 6 的 32 code
   -> 按 [L5 0..31][L6 0..31] 合并，不交错
   -> 64 行分别做 early-stop
   -> bind-group 只在各级内部生效
-  -> 未早停行做 hybrid classify-only
+  -> 未早停行做 hybrid classify-only，不存在 Clean 分类
   -> 建立资源资格
   -> 跨级统一优先级处理
        - 分类优先级
@@ -707,8 +743,10 @@ Level 5 的 32 code + Level 6 的 32 code
        - 预算裁剪和 Unscheduled 决策
   -> HISO MUX 和 SISO MUX 只做 code-to-core 路由
   -> 执行被路由的 HISO/SISO code
+       - SISO 执行时按来源使用各自 beta
   -> 按来源拆回第五级和第六级
-  -> 分别 normalize、乘各自 alpha、使用各自 beta
+  -> 各级只 normalize 自己的 SisoDecode 行
+  -> 对各级 produced 行乘各自 alpha、按各自地址映射写回
   -> 先写回第五级，再写回第六级
 ```
 

@@ -20,7 +20,8 @@ void process_window_plain(matrix::Matrix<LLR>& work_llr,
                               tile_height_rows, tile_stride_rows, TILES_PER_WIN,
                               tile_stats, normalize_extrinsic, tx_llr_ref,
                               &chase::Decoder_Core_plain<CoreLLR>,
-                              /*last_tile_history_accum=*/nullptr);
+                              /*last_tile_history_accum=*/nullptr,
+                              /*level56_shared_invocation=*/nullptr);
 }
 
 template <typename LLR>
@@ -37,7 +38,8 @@ void process_window_ebchPF(matrix::Matrix<LLR>& work_llr,
                               tile_height_rows, tile_stride_rows, TILES_PER_WIN,
                               tile_stats, normalize_extrinsic, tx_llr_ref,
                               &chase::Decoder_Core_ebchPF<CoreLLR>,
-                              /*last_tile_history_accum=*/nullptr);
+                              /*last_tile_history_accum=*/nullptr,
+                              /*level56_shared_invocation=*/nullptr);
 }
 
 template <typename LLR>
@@ -54,7 +56,8 @@ void process_window_topk_pruned(matrix::Matrix<LLR>& work_llr,
                               tile_height_rows, tile_stride_rows, TILES_PER_WIN,
                               tile_stats, normalize_extrinsic, tx_llr_ref,
                               &chase::Decoder_Core_topk_pruned<CoreLLR>,
-                              /*last_tile_history_accum=*/nullptr);
+                              /*last_tile_history_accum=*/nullptr,
+                              /*level56_shared_invocation=*/nullptr);
 }
 
 template <typename LLR>
@@ -71,7 +74,8 @@ void process_window_global_pair(matrix::Matrix<LLR>& work_llr,
                               tile_height_rows, tile_stride_rows, TILES_PER_WIN,
                               tile_stats, normalize_extrinsic, tx_llr_ref,
                               &chase::Decoder_Core_global_pair<CoreLLR>,
-                              /*last_tile_history_accum=*/nullptr);
+                              /*last_tile_history_accum=*/nullptr,
+                              /*level56_shared_invocation=*/nullptr);
 }
 
 template <typename LLR>
@@ -88,7 +92,8 @@ void process_window_group_minima(matrix::Matrix<LLR>& work_llr,
                               tile_height_rows, tile_stride_rows, TILES_PER_WIN,
                               tile_stats, normalize_extrinsic, tx_llr_ref,
                               &chase::Decoder_Core_group_minima<CoreLLR>,
-                              /*last_tile_history_accum=*/nullptr);
+                              /*last_tile_history_accum=*/nullptr,
+                              /*level56_shared_invocation=*/nullptr);
 }
 
 // ===== 显式实例化 =====

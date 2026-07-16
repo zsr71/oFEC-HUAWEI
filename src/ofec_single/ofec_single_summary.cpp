@@ -175,6 +175,15 @@ void log_run_overview(const Config& cfg,
       << hybrid_siso_backfill_mode_name(params.HYBRID_SISO_BACKFILL_MODE)
       << ", normalize_soft_only = "
       << (params.HYBRID_NORMALIZE_SOFT_ONLY ? "ON" : "OFF") << "\n";
+  log << "[INFO] Level5/6 shared = "
+      << (params.LEVEL56_SHARED_ENABLE ? "ON" : "OFF")
+      << ", HISO/SISO = "
+      << params.LEVEL56_SHARED_HISO_ACTIVE << "/"
+      << params.LEVEL56_SHARED_SISO_ACTIVE
+      << ", priority_mode = "
+      << static_cast<int>(params.LEVEL56_PRIORITY_MODE)
+      << ", alternate_start = "
+      << (params.LEVEL56_FAIR_ALTERNATE_START ? "ON" : "OFF") << "\n";
   log << "[INFO] Dump quantized LLR = "
       << (cfg.dump_quantized_llr ? "ON" : "OFF");
   if (cfg.dump_quantized_llr) {

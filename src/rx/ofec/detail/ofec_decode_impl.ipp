@@ -42,13 +42,22 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
       throw std::invalid_argument("ofec_decode_llr: llr_mat cols != N.");
 
   assert(p.valid());
-  const auto mux_ok =
-      newcode::mux::validate_siso_active_list(p.SISO_ACTIVE_LIST, p.TILES_PER_WIN);
+  validate_level56_shared_config(p);
+  const std::size_t mux_tile_count =
+      p.LEVEL56_SHARED_ENABLE ? kLevel5TileIndex : p.TILES_PER_WIN;
+  const auto mux_ok = p.LEVEL56_SHARED_ENABLE
+      ? newcode::mux::validate_siso_active_prefix(p.SISO_ACTIVE_LIST,
+                                                  mux_tile_count)
+      : newcode::mux::validate_siso_active_list(p.SISO_ACTIVE_LIST,
+                                                mux_tile_count);
   if (!mux_ok.ok) {
     throw std::invalid_argument("ofec_decode_llr: " + mux_ok.error);
   }
-  const auto hiho_ok =
-      newcode::mux::validate_hiho_active_list(p.HIHO_ACTIVE_LIST, p.TILES_PER_WIN);
+  const auto hiho_ok = p.LEVEL56_SHARED_ENABLE
+      ? newcode::mux::validate_hiho_active_prefix(p.HIHO_ACTIVE_LIST,
+                                                  mux_tile_count)
+      : newcode::mux::validate_hiho_active_list(p.HIHO_ACTIVE_LIST,
+                                                mux_tile_count);
   if (!hiho_ok.ok) {
     throw std::invalid_argument("ofec_decode_llr: " + hiho_ok.error);
   }
@@ -71,7 +80,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
     throw std::invalid_argument("ofec_decode_llr: " + group_ok.error);
   }
   if (p.MUX_ENABLE_RECONFIG) {
-    for (std::size_t tile_idx = 0; tile_idx < p.SISO_ACTIVE_LIST.size(); ++tile_idx) {
+    for (std::size_t tile_idx = 0; tile_idx < mux_tile_count; ++tile_idx) {
       const auto reconfig_ok = newcode::mux::validate_mux_reconfig_runtime(
           p.MUX_GROUP_G, p.SISO_ACTIVE_LIST[tile_idx], rows_to_decode);
       if (!reconfig_ok.ok) {
@@ -113,6 +122,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
     local_tile_stats.assign(p.TILES_PER_WIN, TileEarlyStopCounter{});
     stats_ptr = &local_tile_stats;
   }
+  std::size_t level56_shared_invocation = 0;
 
   while (win_start <= last_ws) {
     const size_t win_end = win_start + WIN_HEIGHT_ROWS - 1;
@@ -124,7 +134,8 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
                              normalize_extrinsic,
                              tx_llr_ref,
                              core_fn,
-                             &last_tile_history_llr);
+                             &last_tile_history_llr,
+                             &level56_shared_invocation);
 
     win_start += POP_PUSH_ROWS;
   }

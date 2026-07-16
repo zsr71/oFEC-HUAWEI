@@ -42,7 +42,7 @@ static constexpr std::size_t kLlrBits = 6;      // LLR 位宽：16=浮点，2~15
 static constexpr float kQuantClipRatio = 0.5f;  // 动态 clip 比例，0 表示禁用自适应 clip
 
 // 低 BER 聚合参数：每点多 chunk 聚合，直到达到停止条件
-static constexpr std::size_t kTilesPerWindow = 4;               // 本 app 使用的 TILES_PER_WIN；需与显式 alpha/beta 列表长度一致
+static constexpr std::size_t kTilesPerWindow = 6;               // 本 app 使用的 TILES_PER_WIN；需与显式 alpha/beta 列表长度一致
 static constexpr std::size_t kChunkNumInfoBits = 8 * 132 * 16 * 111; // 每个 Monte Carlo chunk 的输入信息比特数
 static constexpr std::size_t kTargetPostErrors = 1000;            // 单个 Eb/N0 点累计到这么多 post-FEC 错误后即可停止
 static constexpr std::size_t kMaxPostFecTotalBits = 2e8;        // 单个 Eb/N0 点允许累计比较的最大 post-FEC 比特数
@@ -67,37 +67,43 @@ static constexpr int kChaseTopkKeep = 8;                            // top-k/pru
 static const std::vector<int> kChaseTopkKeepCandidates = {};        // top-k 保留数扫描候选
 static constexpr int kChaseGroupMinimaBits = 4;                     // group-minima decoder 的分组 bit 数
 static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4}; // group-minima 分组 bit 数扫描候选
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 8};   // 每个 tile 的 SISO 预算
-static const std::vector<int> kHiHoActiveList = {32, 32, 32, 32};  // 每个 tile 的 HIHO 硬解码预算
-static constexpr int kMuxGroupG = 8;                                // MUX 分组粒度；1=全局池化
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 的 SISO 预算；共享模式下后两项不参与独立 MUX
+static const std::vector<int> kHiHoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 的 HIHO 预算；共享模式下后两项不参与独立 MUX
+static constexpr int kMuxGroupG = 1;                                // MUX 分组粒度；1=全局池化
 static constexpr int kMuxSchedulingMode = 0;                        // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static const std::vector<int> kMuxSchedulingModeCandidates = {};    // MUX 调度模式扫描候选
 static constexpr int kMuxPriorityRule = 0;                          // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
 static const std::vector<int> kMuxPriorityRuleCandidates = {};      // MUX 优先级规则扫描候选
 static constexpr bool kMuxEnableReconfig = false;                   // 是否启用 reconfig MUX 调度
-static constexpr int kMuxBypassScheme = 3;                          // 旁路边方案编号：仅在 reconfig 打开时真正参与调度
-static constexpr bool kHybridEnable = false;                        // true=启用方案三软硬混合前置分流
-static const std::vector<int> kHybridEnableList = {};               // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
-static constexpr float kHybridHardLlrMag = 99.0f;                   // hybrid hard-finish 默认输出 |LLR| 幅度
-static const std::vector<float> kHybridHardLlrMagList = {};         // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度；空=沿用 kHybridHardLlrMag
+static constexpr int kMuxBypassScheme = 1;                          // 旁路边方案编号：仅在 reconfig 打开时真正参与调度
+static constexpr bool kHybridEnable = true;                         // true=启用方案三软硬混合前置分流
+static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 1, 1}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
+static constexpr float kHybridHardLlrMag = 0.0f;                    // hybrid hard-finish 默认输出 |LLR| 幅度
+static const std::vector<float> kHybridHardLlrMagList = {0, 0, 0, 0, 99, 99}; // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
-    newcode::HybridClassifierMode::LegacyHardDecode;                // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
+    newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;      // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
-    newcode::HybridSisoBackfillMode::Disabled;                      // Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
+    newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority;  // Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只归一化 soft rows，false=保持兼容行为
+static constexpr bool kLevel56SharedEnable = true;                  // true=第五/六级共享 HISO/SISO
+static constexpr int kLevel56SharedHisoActive = 24;                 // 第五/六级共享 HISO 容量
+static constexpr int kLevel56SharedSisoActive = 24;                 // 第五/六级共享 SISO 容量
+static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
+    newcode::Level56PriorityMode::Fair;
+static constexpr bool kLevel56FairAlternateStart = true;
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
     {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
-     {0.342857,0.387439,0.435806,0.485714},               // 每个 tile 的 alpha 显式列表
-     {8.571428,10.037715,16.865997,31.428572},            // 每个 tile 的普通 beta 显式列表
-     {99,99,99,99}},                                                        // 每个 tile 的 early-stop 专用 beta 显式列表；空表示后续按默认规则回退
+     {0.428571,0.447738,0.482782,0.528162,0.581902,0.642857}, // 每个 tile 的 alpha 显式列表
+     {2.857143,6.179301,12.253626,20.119585,29.434408,40.000000}, // 每个 tile 的普通 beta 显式列表
+     {99.857143,99.179301,99.253626,99.119585,99,99}},    // 每个 tile 的 early-stop 专用 beta 显式列表
 };
 
 // 早停参数：总开关 -> 条件 -> 条件细参 -> 动作 -> 动作细参
 static constexpr bool kEnableEarlyStop = true;                      // 早停总开关
-static const std::vector<int> kEarlyStopEnableList = {};            // 按 tile 覆盖早停开关；空表示全部沿用总开关
+static const std::vector<int> kEarlyStopEnableList = {1, 1, 1, 1, 1, 1}; // 按 tile 覆盖早停开关；空表示全部沿用总开关
 static constexpr int kEarlyStopConditionMode = 1;                   // 早停条件模式：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionCandidates = {};   // 早停条件模式扫描候选
-static constexpr int kEarlyStopActionMode = 1;                      // 早停动作模式：1~8
+static constexpr int kEarlyStopActionMode = 7;                      // 早停动作模式：1~8
 static constexpr int kEarlyStopBindGroupSize = 1;                   // 条件1的组绑定大小；1=逐 row，4=四个绑定
 static const std::vector<int> kEarlyStopActionCandidates = {};      // 早停动作模式扫描候选
 static constexpr bool kEarlyStopCondV1RequireBch = true;            // 条件1是否要求 BCH syndrome 全 0
@@ -269,6 +275,7 @@ void ensure_csv_header_sweep3(const std::string& csv_path) {
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
           "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_bypass_scheme,"
           "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_siso_backfill_mode,hybrid_normalize_soft_only,"
+          "level56_shared_enable,level56_shared_hiso_active,level56_shared_siso_active,level56_priority_mode,level56_fair_alternate_start,"
           "early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
@@ -320,6 +327,11 @@ void write_csv_row_sweep3(std::ostream& csv,
       << hybrid_classifier_mode_name(kHybridClassifierMode) << ','
       << hybrid_siso_backfill_mode_name(kHybridSisoBackfillMode) << ','
       << (kHybridNormalizeSoftOnly ? 1 : 0) << ','
+      << (kLevel56SharedEnable ? 1 : 0) << ','
+      << kLevel56SharedHisoActive << ','
+      << kLevel56SharedSisoActive << ','
+      << static_cast<int>(kLevel56PriorityMode) << ','
+      << (kLevel56FairAlternateStart ? 1 : 0) << ','
       << point.scenario.early_stop_condition_mode << ','
       << point.scenario.early_stop_action_mode << ','
       << point.scenario.early_stop_bind_group_size << ','
@@ -824,6 +836,12 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.HYBRID_USE_FAST_CLASSIFIER =
       kHybridClassifierMode != newcode::HybridClassifierMode::LegacyHardDecode;
   config.base_params.HYBRID_NORMALIZE_SOFT_ONLY = kHybridNormalizeSoftOnly;
+  config.base_params.LEVEL56_SHARED_ENABLE = kLevel56SharedEnable;
+  config.base_params.LEVEL56_SHARED_HISO_ACTIVE = kLevel56SharedHisoActive;
+  config.base_params.LEVEL56_SHARED_SISO_ACTIVE = kLevel56SharedSisoActive;
+  config.base_params.LEVEL56_PRIORITY_MODE = kLevel56PriorityMode;
+  config.base_params.LEVEL56_FAIR_ALTERNATE_START =
+      kLevel56FairAlternateStart;
   if (!kHybridEnableList.empty() &&
       kHybridEnableList.size() != kTilesPerWindow) {
     throw std::invalid_argument(

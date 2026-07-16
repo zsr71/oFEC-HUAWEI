@@ -62,6 +62,12 @@ struct Config {
   newcode::HybridSisoBackfillMode hybrid_siso_backfill_mode =
       newcode::HybridSisoBackfillMode::Disabled;
   bool hybrid_normalize_soft_only = false;
+  bool level56_shared_enable = false;
+  int level56_shared_hiso_active = 32;
+  int level56_shared_siso_active = 32;
+  newcode::Level56PriorityMode level56_priority_mode =
+      newcode::Level56PriorityMode::Fair;
+  bool level56_fair_alternate_start = true;
   std::string interleaver_name;
   std::string decoder_name;
   bool generate_random_bits = true;

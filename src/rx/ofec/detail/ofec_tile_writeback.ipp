@@ -160,7 +160,7 @@ void writeback_tile(const TilePrepared<LLR>& prep,
         (*tile_out)[rr_idx_local][cc_idx_local] = extrinsic_llr;
       }
 
-      if (capture_last_tile_history && last_tile_history_accum) {
+      if (row_produced && capture_last_tile_history && last_tile_history_accum) {
         if (rr_global >= 0 && cc_global >= 0) {
           const size_t rr_idx_global = static_cast<size_t>(rr_global);
           const size_t cc_idx_global = static_cast<size_t>(cc_global);

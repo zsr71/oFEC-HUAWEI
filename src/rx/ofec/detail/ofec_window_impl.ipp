@@ -1,9 +1,11 @@
 #pragma once
 
 #include "ofec_tile_impl.ipp"
+#include "ofec_level56_shared.ipp"
 
 #include "newcode/ofec_decoder.hpp"
 #include "newcode/common/qfloat/llr_utils.hpp"
+#include "newcode/ofec/mux/mux_config_validate.hpp"
 #include "newcode/ofec/mux/mux_siso_budget.hpp"
 
 #include <vector>
@@ -20,7 +22,8 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                          bool normalize_extrinsic,
                          const matrix::Matrix<float>* tx_llr_ref,
                          CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn,
-                         matrix::Matrix<float>* last_tile_history_accum)
+                         matrix::Matrix<float>* last_tile_history_accum,
+                         std::size_t* level56_shared_invocation)
 {
   // 输入:
   // - work_llr: 当前全局工作矩阵，保存已经累积的外信息/历史信息，会被原地更新。
@@ -38,6 +41,25 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
   // 用途:
   // - 在一个滑动窗口内部，按 tile 顺序切片、解码、写回，并把结果覆盖回全局工作矩阵。
   (void)win_start;
+  validate_level56_shared_config(p);
+  const std::size_t mux_tile_count =
+      p.LEVEL56_SHARED_ENABLE ? kLevel5TileIndex : TILES_PER_WIN;
+  const auto mux_ok = p.LEVEL56_SHARED_ENABLE
+      ? newcode::mux::validate_siso_active_prefix(p.SISO_ACTIVE_LIST,
+                                                  mux_tile_count)
+      : newcode::mux::validate_siso_active_list(p.SISO_ACTIVE_LIST,
+                                                mux_tile_count);
+  if (!mux_ok.ok) {
+    throw std::invalid_argument("process_window_impl: " + mux_ok.error);
+  }
+  const auto hiho_ok = p.LEVEL56_SHARED_ENABLE
+      ? newcode::mux::validate_hiho_active_prefix(p.HIHO_ACTIVE_LIST,
+                                                  mux_tile_count)
+      : newcode::mux::validate_hiho_active_list(p.HIHO_ACTIVE_LIST,
+                                                mux_tile_count);
+  if (!hiho_ok.ok) {
+    throw std::invalid_argument("process_window_impl: " + hiho_ok.error);
+  }
   const auto& trace_cfg = p.debug_trace;
   const bool trace_has_coords = (trace_cfg.row >= 0 && trace_cfg.col >= 0);
   const bool trace_mismatch =
@@ -53,6 +75,99 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
   auto pick_int = [](const std::vector<int>& tbl, size_t idx, int fallback) -> int {
       return (idx < tbl.size()) ? tbl[idx] : fallback;
   };
+  auto make_tile_params = [&](size_t t) {
+      newcode::Params tile_params = p;
+      tile_params.beta = pick_float(p.beta_list, t, p.beta);
+      tile_params.EARLY_STOP_ACTION_SIGN_BETA =
+          pick_float(p.EARLY_STOP_ACTION_SIGN_BETA_LIST,
+                     t,
+                     p.EARLY_STOP_ACTION_SIGN_BETA);
+      tile_params.ENABLE_EARLY_STOP =
+          pick_int(p.EARLY_STOP_ENABLE_LIST,
+                   t,
+                   p.ENABLE_EARLY_STOP ? 1 : 0) != 0;
+      tile_params.EARLY_STOP_CONDITION_MODE =
+          pick_int(p.EARLY_STOP_CONDITION_MODE_LIST,
+                   t,
+                   p.EARLY_STOP_CONDITION_MODE);
+      tile_params.EARLY_STOP_ACTION_MODE =
+          pick_int(p.EARLY_STOP_ACTION_MODE_LIST,
+                   t,
+                   p.EARLY_STOP_ACTION_MODE);
+      tile_params.EARLY_STOP_BIND_GROUP_SIZE =
+          pick_int(p.EARLY_STOP_BIND_GROUP_SIZE_LIST,
+                   t,
+                   p.EARLY_STOP_BIND_GROUP_SIZE);
+      tile_params.HYBRID_ENABLE =
+          pick_int(p.HYBRID_ENABLE_LIST,
+                   t,
+                   p.HYBRID_ENABLE ? 1 : 0) != 0;
+      tile_params.HYBRID_HARD_LLR_MAG =
+          pick_float(p.HYBRID_HARD_LLR_MAG_LIST,
+                     t,
+                     p.HYBRID_HARD_LLR_MAG);
+      tile_params.ALPHA = pick_float(p.ALPHA_LIST, t, p.ALPHA);
+      tile_params.debug_trace.chase_tile_index = static_cast<int>(t);
+      tile_params.debug_trace.chase_invocation =
+          static_cast<int>(++chase_invocation_counter);
+      return tile_params;
+  };
+  auto update_tile_stats = [&](size_t t,
+                               const TileProcessResult<LLR>& tile_result) {
+    if (!tile_stats || t >= tile_stats->size()) {
+      return;
+    }
+    auto& counter = (*tile_stats)[t];
+    counter.total += 1;
+    if (tile_result.early_stop_triggered) {
+      counter.triggered += 1;
+    }
+    counter.row_total += tile_result.rows_total;
+    counter.row_triggered += tile_result.rows_early_stop;
+    counter.row_hard_finish += tile_result.rows_hard_finish;
+    counter.row_need_siso_before_mux += tile_result.rows_need_siso_before_mux;
+    counter.row_unscheduled += tile_result.rows_unscheduled;
+    counter.samples.push_back(TileEarlyStopSample{
+        .invocation = counter.total,
+        .tile_index = t,
+        .rows_total = tile_result.rows_total,
+        .rows_passed = tile_result.rows_early_stop,
+        .rows_hard_finish = tile_result.rows_hard_finish,
+        .rows_need_siso_before_mux = tile_result.rows_need_siso_before_mux,
+        .rows_unscheduled = tile_result.rows_unscheduled,
+    });
+    if (tile_result.has_group_bind_debug_sample) {
+      auto group_bind_sample = tile_result.group_bind_debug_sample;
+      group_bind_sample.invocation = counter.total;
+      group_bind_sample.tile_index = t;
+      counter.group_bind_debug_samples.push_back(std::move(group_bind_sample));
+    }
+    counter.hybrid_class_counts.push_back(tile_result.hybrid_class_count);
+  };
+  auto write_tile_to_work = [&](size_t t,
+                                size_t tile_top_row,
+                                const matrix::Matrix<LLR>& tile_out) {
+    for (size_t r = 0; r < tile_out.rows(); ++r) {
+      const size_t global_row = tile_top_row + r;
+      for (size_t c = 0; c < work_llr.cols(); ++c) {
+        const auto incoming = tile_out[r][c];
+        if (trace_mismatch &&
+            static_cast<long>(global_row) == trace_row &&
+            static_cast<long>(c) == trace_col) {
+          const float existing_val = qfloat::llr_to_float(work_llr[global_row][c]);
+          const float incoming_val = qfloat::llr_to_float(incoming);
+          const float channel_val = qfloat::llr_to_float(channel_llr[global_row][c]);
+          if (existing_val != incoming_val) {
+            std::cout << "Mismatch at work_llr[" << trace_row << "][" << trace_col
+                      << "]: tile index " << t
+                      << " incoming=" << incoming_val << '\n'
+                      << " channel =" << channel_val << '\n';
+          }
+        }
+        work_llr[global_row][c] = incoming;
+      }
+    }
+  };
   std::vector<bool> hard_tile_mask(TILES_PER_WIN);
   int last_soft_tile_idx = -1;
   for (size_t t = 0; t < TILES_PER_WIN; ++t) {
@@ -66,6 +181,41 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
 
   for (size_t t = 0; t < TILES_PER_WIN; ++t)
   {
+        if (p.LEVEL56_SHARED_ENABLE && t == kLevel5TileIndex) {
+          const size_t bottom5 = win_end - kLevel5TileIndex * tile_stride_rows;
+          const size_t top5 = bottom5 + 1 - tile_height_rows;
+          const size_t bottom6 = win_end - kLevel6TileIndex * tile_stride_rows;
+          const size_t top6 = bottom6 + 1 - tile_height_rows;
+          matrix::Matrix<LLR> tile_in5(tile_height_rows, N);
+          matrix::Matrix<LLR> tile_in6(tile_height_rows, N);
+          matrix::Matrix<LLR> ch_tile5(tile_height_rows, N);
+          matrix::Matrix<LLR> ch_tile6(tile_height_rows, N);
+          for (size_t r = 0; r < tile_height_rows; ++r) {
+            for (size_t c = 0; c < N; ++c) {
+              tile_in5[r][c] = work_llr[top5 + r][c];
+              tile_in6[r][c] = work_llr[top6 + r][c];
+              ch_tile5[r][c] = channel_llr[top5 + r][c];
+              ch_tile6[r][c] = channel_llr[top6 + r][c];
+            }
+          }
+          auto params5 = make_tile_params(kLevel5TileIndex);
+          auto params6 = make_tile_params(kLevel6TileIndex);
+          const std::size_t invocation = level56_shared_invocation
+              ? (*level56_shared_invocation)++
+              : 0u;
+          auto shared = process_level56_shared(
+              tile_in5, ch_tile5, tile_in6, ch_tile6,
+              params5, params6, top5, top6, invocation,
+              normalize_extrinsic, tx_llr_ref, core_fn,
+              last_tile_history_accum);
+          update_tile_stats(kLevel5TileIndex, shared.level5);
+          update_tile_stats(kLevel6TileIndex, shared.level6);
+          write_tile_to_work(kLevel5TileIndex, top5, shared.level5.tile_out);
+          write_tile_to_work(kLevel6TileIndex, top6, shared.level6.tile_out);
+          ++t;
+          continue;
+        }
+
         // 当前 tile 在窗口中的全局行范围。
         const size_t tile_bottom_row = win_end  - t * tile_stride_rows;
         const size_t tile_top_row    = tile_bottom_row + 1 - tile_height_rows;
@@ -95,40 +245,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             }
         }
 
-        newcode::Params tile_params = p;
-        tile_params.beta = pick_float(p.beta_list, t, p.beta);
-        tile_params.EARLY_STOP_ACTION_SIGN_BETA =
-            pick_float(p.EARLY_STOP_ACTION_SIGN_BETA_LIST,
-                       t,
-                       p.EARLY_STOP_ACTION_SIGN_BETA);
-        tile_params.ENABLE_EARLY_STOP =
-            pick_int(p.EARLY_STOP_ENABLE_LIST,
-                     t,
-                     p.ENABLE_EARLY_STOP ? 1 : 0) != 0;
-        tile_params.EARLY_STOP_CONDITION_MODE =
-            pick_int(p.EARLY_STOP_CONDITION_MODE_LIST,
-                     t,
-                     p.EARLY_STOP_CONDITION_MODE);
-        tile_params.EARLY_STOP_ACTION_MODE =
-            pick_int(p.EARLY_STOP_ACTION_MODE_LIST,
-                     t,
-                     p.EARLY_STOP_ACTION_MODE);
-        tile_params.EARLY_STOP_BIND_GROUP_SIZE =
-            pick_int(p.EARLY_STOP_BIND_GROUP_SIZE_LIST,
-                     t,
-                     p.EARLY_STOP_BIND_GROUP_SIZE);
-        tile_params.HYBRID_ENABLE =
-            pick_int(p.HYBRID_ENABLE_LIST,
-                     t,
-                     p.HYBRID_ENABLE ? 1 : 0) != 0;
-        tile_params.HYBRID_HARD_LLR_MAG =
-            pick_float(p.HYBRID_HARD_LLR_MAG_LIST,
-                       t,
-                       p.HYBRID_HARD_LLR_MAG);
-        tile_params.ALPHA = pick_float(p.ALPHA_LIST, t, p.ALPHA);
-        tile_params.debug_trace.chase_tile_index = static_cast<int>(t);
-        tile_params.debug_trace.chase_invocation =
-            static_cast<int>(++chase_invocation_counter);
+        newcode::Params tile_params = make_tile_params(t);
         const int siso_active_for_tile =
             newcode::mux::pick_siso_active_for_tile(p.SISO_ACTIVE_LIST, t);
         const int hiho_active_for_tile =
@@ -149,57 +266,8 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                                                                 last_tile_history_accum,
                                                                 capture_history);
 
-    if (tile_stats && t < tile_stats->size()) {
-      // 将本 tile 的 early-stop 统计累加到窗口级统计数组。
-      auto& counter = (*tile_stats)[t];
-      counter.total += 1;
-      if (tile_result.early_stop_triggered) {
-        counter.triggered += 1;
-      }
-      counter.row_total += tile_result.rows_total;
-      counter.row_triggered += tile_result.rows_early_stop;
-      counter.row_hard_finish += tile_result.rows_hard_finish;
-      counter.row_need_siso_before_mux += tile_result.rows_need_siso_before_mux;
-      counter.row_unscheduled += tile_result.rows_unscheduled;
-      counter.samples.push_back(TileEarlyStopSample{
-          .invocation = counter.total,
-          .tile_index = t,
-          .rows_total = tile_result.rows_total,
-          .rows_passed = tile_result.rows_early_stop,
-          .rows_hard_finish = tile_result.rows_hard_finish,
-          .rows_need_siso_before_mux = tile_result.rows_need_siso_before_mux,
-          .rows_unscheduled = tile_result.rows_unscheduled,
-      });
-      if (tile_result.has_group_bind_debug_sample) {
-        auto group_bind_sample = tile_result.group_bind_debug_sample;
-        group_bind_sample.invocation = counter.total;
-        group_bind_sample.tile_index = t;
-        counter.group_bind_debug_samples.push_back(std::move(group_bind_sample));
-      }
-      counter.hybrid_class_counts.push_back(tile_result.hybrid_class_count);
-    }
-
-    for (size_t r = 0; r < tile_height_rows_actual; ++r) {
-      const size_t global_row = tile_top_row + r;
-      for (size_t c = 0; c < work_llr.cols(); ++c) {
-        const auto incoming = tile_result.tile_out[r][c];
-        if (trace_mismatch &&
-            static_cast<long>(global_row) == trace_row &&
-            static_cast<long>(c) == trace_col) {
-          const float existing_val = qfloat::llr_to_float(work_llr[global_row][c]);
-          const float incoming_val = qfloat::llr_to_float(incoming);
-          const float channel_val  = qfloat::llr_to_float(channel_llr[global_row][c]);
-          if (existing_val != incoming_val) {
-            std::cout << "Mismatch at work_llr[" << trace_row << "][" << trace_col
-                      << "]: tile index " << t
-                      << " incoming=" << incoming_val << '\n'
-                      << " channel =" << channel_val << '\n';
-          }
-        }
-        // tile 解码写回后的结果覆盖到全局工作矩阵，供后续 tile/窗口继续使用。
-        work_llr[global_row][c] = incoming;
-      }
-    }
+    update_tile_stats(t, tile_result);
+    write_tile_to_work(t, tile_top_row, tile_result.tile_out);
   }
 }
 

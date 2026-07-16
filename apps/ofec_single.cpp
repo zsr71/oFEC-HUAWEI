@@ -22,7 +22,7 @@ static constexpr bool        kEnableEarlyStop              = true;   // true=启
 static const std::vector<int> kEarlyStopEnableList         = {1,1,1,1,1,1};      // 按 tile 覆盖早停总开关：0=关，非 0=开；空表示所有 tile 沿用 kEnableEarlyStop
 static constexpr int         kEarlyStopConditionMode       = 1;       // 早停条件编号：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionModeList  = {};      // 按 tile 覆盖早停条件模式；空表示所有 tile 沿用 kEarlyStopConditionMode
-static constexpr int         kEarlyStopActionMode          = 6;       // 早停动作：1=sign beta，2=residual only，3=硬解输出 ±hard_mag，4=mode1 预除 alpha，5=residual 预除 alpha 后加 sign beta，6=直接 ±beta，7=直接 ±beta 预除 alpha，8=(直接 ±beta-channel) 预除 alpha
+static constexpr int         kEarlyStopActionMode          = 7;       // 早停动作：1=sign beta，2=residual only，3=硬解输出 ±hard_mag，4=mode1 预除 alpha，5=residual 预除 alpha 后加 sign beta，6=直接 ±beta，7=直接 ±beta 预除 alpha，8=(直接 ±beta-channel) 预除 alpha
 static const std::vector<int> kEarlyStopActionModeList     = {};      // 按 tile 覆盖早停动作模式；空表示所有 tile 沿用 kEarlyStopActionMode
 static constexpr int         kEarlyStopBindGroupSize       = 1;       // 条件1专用的组绑定大小：1=逐 row；4=每 4 个 row 都通过才整体 early-stop
 static const std::vector<int> kEarlyStopBindGroupSizeList  = {};      // 按 tile 覆盖条件1绑定组大小；空表示所有 tile 沿用 kEarlyStopBindGroupSize
@@ -63,7 +63,7 @@ static const std::vector<float> kBeta_explicit = {       // 每个 tile 的 Chas
   2.857143,6.179301,12.253626,20.119585,29.434408,40.000000
 };
 static const std::vector<float> kEarlyStopActionBeta_explicit = { // 每个 tile 的 early-stop 动作 beta 显式列表
-  99.857143,99.179301,99.253626,99.119585,99.434408,99.000000
+  99.857143,99.179301,99.253626,99.119585,99,99
 };
 static const std::vector<int> kSisoActiveList = {32, 32, 32, 32,32,32}; // 每个 tile 允许参与 SISO 的行数预算
 static const std::vector<int> kHiHoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 允许参与 HIHO 硬解码的行数预算
@@ -75,15 +75,21 @@ static constexpr int  kMuxBypassScheme    = 1;                     // 旁路边�
 
 
 
-static constexpr bool kHybridEnable       = false;                 // true=方案三软硬混合前置分流开关
-static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 0, 0}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
+static constexpr bool kHybridEnable       = true;                 // true=方案三软硬混合前置分流开关
+static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 1, 1}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
 static constexpr float kHybridHardLlrMag = 0.0f;                // hybrid hard-finish 默认输出 |LLR| 幅度
-static const std::vector<float> kHybridHardLlrMagList = {0,0,0,0,0,99};      // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度；空=沿用 kHybridHardLlrMag
+static const std::vector<float> kHybridHardLlrMagList = {0,0,0,0,99,99};      // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度；空=沿用 kHybridHardLlrMag
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
-    newcode::HybridClassifierMode::RepoFastClassifier;            // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
+    newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;            // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
-    newcode::HybridSisoBackfillMode::TwoErrorOnly;                    // Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
+    newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority;                    // Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;            // true=只归一化 soft rows，false=保持当前兼容行为
+static constexpr bool kLevel56SharedEnable = true;                // true=第五/六级共享 HISO/SISO
+static constexpr int kLevel56SharedHisoActive = 24;                 // 第五/六级共享 HISO 容量
+static constexpr int kLevel56SharedSisoActive = 24;                 // 第五/六级共享 SISO 容量
+static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
+    newcode::Level56PriorityMode::Fair;
+static constexpr bool kLevel56FairAlternateStart = true;
 
 // LLR 导出相关
 static constexpr bool        kDumpQuantizedLlr = false;                         // 是否导出量化后的信道 LLR
@@ -194,6 +200,11 @@ int main() {
     .hybrid_classifier_mode = kHybridClassifierMode,
     .hybrid_siso_backfill_mode = kHybridSisoBackfillMode,
     .hybrid_normalize_soft_only = kHybridNormalizeSoftOnly,
+    .level56_shared_enable = kLevel56SharedEnable,
+    .level56_shared_hiso_active = kLevel56SharedHisoActive,
+    .level56_shared_siso_active = kLevel56SharedSisoActive,
+    .level56_priority_mode = kLevel56PriorityMode,
+    .level56_fair_alternate_start = kLevel56FairAlternateStart,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,
     .generate_random_bits = kGenerateRandomBits,
