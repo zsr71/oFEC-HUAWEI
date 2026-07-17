@@ -4,6 +4,7 @@
 
 #include "newcode/ofec_decoder.hpp"
 #include "newcode/common/qfloat/llr_utils.hpp"
+#include "newcode/ofec/mux/mux_group_config_validate.hpp"
 #include "newcode/ofec/mux/mux_siso_budget.hpp"
 
 #include <vector>
@@ -117,6 +118,9 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             pick_int(p.EARLY_STOP_BIND_GROUP_SIZE_LIST,
                      t,
                      p.EARLY_STOP_BIND_GROUP_SIZE);
+        tile_params.MUX_GROUP_G =
+            newcode::mux::pick_mux_group_g_for_tile(
+                p.MUX_GROUP_G_LIST, t, p.MUX_GROUP_G);
         tile_params.HYBRID_ENABLE =
             pick_int(p.HYBRID_ENABLE_LIST,
                      t,

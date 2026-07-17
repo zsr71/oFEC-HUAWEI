@@ -20,6 +20,7 @@
 #include "newcode/common/qfloat/qfloat.hpp"
 #include "newcode/llr_known_prefix.hpp"
 #include "newcode/ofec/mux/mux_config_validate.hpp"
+#include "newcode/ofec/mux/mux_group_config_validate.hpp"
 #include "newcode/ofec/mux/mux_siso_budget.hpp"
 #include "newcode/ofec/common/lin_matrix_adapters.hpp"
 #include "newcode/ofec/earlystop/tile_early_stop_group_bind.hpp"
@@ -396,6 +397,8 @@ Params build_tile_params(const Params& base_params,
       pick_int(base_params.EARLY_STOP_BIND_GROUP_SIZE_LIST,
                tile_index,
                base_params.EARLY_STOP_BIND_GROUP_SIZE);
+  tile_params.MUX_GROUP_G = mux::pick_mux_group_g_for_tile(
+      base_params.MUX_GROUP_G_LIST, tile_index, base_params.MUX_GROUP_G);
   tile_params.HYBRID_ENABLE =
       pick_int(base_params.HYBRID_ENABLE_LIST,
                tile_index,
@@ -734,6 +737,34 @@ SharedLlrDecodeArtifacts<LLR> decode_two_stream_shared_llr(
       mux::validate_hiho_active_list(params.HIHO_ACTIVE_LIST, params.TILES_PER_WIN);
   if (!hiho_ok.ok) {
     throw std::invalid_argument("decode_two_stream_shared_llr: " + hiho_ok.error);
+  }
+  if (!params.MUX_GROUP_G_LIST.empty() &&
+      params.MUX_GROUP_G_LIST.size() != params.TILES_PER_WIN) {
+    throw std::invalid_argument(
+        "decode_two_stream_shared_llr: MUX_GROUP_G_LIST length must equal "
+        "TILES_PER_WIN");
+  }
+  const std::size_t shared_code_count =
+      2u * static_cast<std::size_t>(params.CHASE_SBR) *
+      Params::BITS_PER_SUBBLOCK_DIM;
+  for (std::size_t tile_idx = 0; tile_idx < params.TILES_PER_WIN; ++tile_idx) {
+    const int group_g = mux::pick_mux_group_g_for_tile(
+        params.MUX_GROUP_G_LIST, tile_idx, params.MUX_GROUP_G);
+    const auto group_ok = mux::validate_mux_group_g(group_g, shared_code_count);
+    if (!group_ok.ok) {
+      throw std::invalid_argument(
+          "decode_two_stream_shared_llr: tile " + std::to_string(tile_idx) +
+          ": " + group_ok.error);
+    }
+    if (params.MUX_ENABLE_RECONFIG) {
+      const auto reconfig_ok = mux::validate_mux_reconfig_runtime(
+          group_g, params.SISO_ACTIVE_LIST[tile_idx], shared_code_count);
+      if (!reconfig_ok.ok) {
+        throw std::invalid_argument(
+            "decode_two_stream_shared_llr: tile " +
+            std::to_string(tile_idx) + ": " + reconfig_ok.error);
+      }
+    }
   }
 
   if (rows < params.win_height_rows()) {

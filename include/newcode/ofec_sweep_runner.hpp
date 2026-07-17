@@ -62,6 +62,8 @@ struct SweepParameterConfig {
   std::vector<int> siso_active_list;
   std::vector<int> hiho_active_list;
   int mux_group_g = 1;
+  // 按 tile 覆盖 MUX 分组数；空表示沿用 mux_group_g
+  std::vector<int> mux_group_g_list;
   int mux_scheduling_mode = 0;
   std::vector<int> mux_scheduling_mode_candidates;
   int mux_early_stop_priority_rule = 0;

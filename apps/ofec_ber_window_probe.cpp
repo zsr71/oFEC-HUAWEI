@@ -45,7 +45,7 @@ static constexpr bool        kEnableEarlyStop              = true;   // 早停�
 static const std::vector<int> kEarlyStopEnableList         = {1,1,1,1,1,1}; // 按 tile 覆盖早停总开关：0=关，非 0=开
 static constexpr int         kEarlyStopConditionMode       = 1;      // 早停条件模式：1=v1，2=v2
 static const std::vector<int> kEarlyStopConditionModeList  = {};     // 按 tile 覆盖条件模式；空表示沿用全局值
-static constexpr int         kEarlyStopActionMode          = 1;      // 早停动作模式：1~8
+static constexpr int         kEarlyStopActionMode          = 7;      // 早停动作模式：1~8
 static const std::vector<int> kEarlyStopActionModeList     = {};     // 按 tile 覆盖动作模式；空表示沿用全局值
 static constexpr int         kEarlyStopBindGroupSize       = 1;      // 条件1的绑定组大小：1=逐 row，4=四个绑定
 static const std::vector<int> kEarlyStopBindGroupSizeList  = {};     // 按 tile 覆盖绑定组大小；空表示沿用全局值
@@ -83,6 +83,7 @@ static const std::vector<float> kEarlyStopActionBetaExplicit = {
 static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 允许参与 SISO 的行数预算
 static const std::vector<int> kHiHoActiveList = {32, 32, 32, 32, 32, 32}; // 每个 tile 允许参与 HIHO 硬解码的行数预算
 static constexpr int  kMuxGroupG          = 1;                             // MUX 分组粒度，1 表示全局池化
+static const std::vector<int> kMuxGroupGList = {};                         // 按 tile 覆盖 MUX 分组数；空表示沿用 kMuxGroupG
 static constexpr int  kMuxSchedulingMode  = 0;                             // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static constexpr int  kMuxPriorityRule    = 0;                             // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
 static constexpr bool kMuxEnableReconfig  = false;                         // true 表示启用重配置版 MUX 调度
@@ -451,6 +452,7 @@ ofec_single::Config make_base_config() {
       .siso_active_list = kSisoActiveList,
       .hiho_active_list = kHiHoActiveList,
       .mux_group_g = kMuxGroupG,
+      .mux_group_g_list = kMuxGroupGList,
       .mux_scheduling_mode = kMuxSchedulingMode,
       .mux_early_stop_priority_rule = kMuxPriorityRule,
       .mux_enable_reconfig = kMuxEnableReconfig,

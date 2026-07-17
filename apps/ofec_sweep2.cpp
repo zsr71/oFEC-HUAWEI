@@ -37,6 +37,8 @@ static constexpr float       kQuantClipRatio          = 0.5f;
 static constexpr int         kEarlyStopBindGroupSize  = 1;
 const std::vector<int> kSisoActiveList                = {32,32,32,32};
 const std::vector<int> kHiHoActiveList                = {32,32,32,32};
+static constexpr int kMuxGroupG                       = 1;
+const std::vector<int> kMuxGroupGList                 = {}; // 按 tile 覆盖 MUX 分组数；空表示沿用 kMuxGroupG
 
 const std::vector<float> kAlphaLowGrid   = utils::linspace(0.00f, 1.50f, 7);
 const std::vector<float> kAlphaHighGrid  = utils::linspace(0.00f, 1.50f, 7);
@@ -147,6 +149,8 @@ ofec_sweep::SweepParameterConfig build_base_config() {
   config.quant_clip_ratio = kQuantClipRatio;
   config.siso_active_list = kSisoActiveList;
   config.hiho_active_list = kHiHoActiveList;
+  config.mux_group_g = kMuxGroupG;
+  config.mux_group_g_list = kMuxGroupGList;
   config.enable_early_stop = false;
   config.early_stop_bind_group_size = kEarlyStopBindGroupSize;
   config.mux_scheduling_mode = 0;

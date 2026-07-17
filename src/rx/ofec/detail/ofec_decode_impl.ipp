@@ -65,15 +65,28 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   const std::size_t rows_to_decode =
       static_cast<std::size_t>(p.CHASE_SBR) *
       newcode::Params::BITS_PER_SUBBLOCK_DIM;
-  const auto group_ok =
-      newcode::mux::validate_mux_group_g(p.MUX_GROUP_G, rows_to_decode);
-  if (!group_ok.ok) {
-    throw std::invalid_argument("ofec_decode_llr: " + group_ok.error);
+  if (!p.MUX_GROUP_G_LIST.empty() &&
+      p.MUX_GROUP_G_LIST.size() != p.TILES_PER_WIN) {
+    throw std::invalid_argument(
+        "ofec_decode_llr: MUX_GROUP_G_LIST length must equal TILES_PER_WIN");
+  }
+  for (std::size_t tile_idx = 0; tile_idx < p.TILES_PER_WIN; ++tile_idx) {
+    const int group_g = newcode::mux::pick_mux_group_g_for_tile(
+        p.MUX_GROUP_G_LIST, tile_idx, p.MUX_GROUP_G);
+    const auto group_ok =
+        newcode::mux::validate_mux_group_g(group_g, rows_to_decode);
+    if (!group_ok.ok) {
+      throw std::invalid_argument(
+          "ofec_decode_llr: tile " + std::to_string(tile_idx) + ": " +
+          group_ok.error);
+    }
   }
   if (p.MUX_ENABLE_RECONFIG) {
     for (std::size_t tile_idx = 0; tile_idx < p.SISO_ACTIVE_LIST.size(); ++tile_idx) {
+      const int group_g = newcode::mux::pick_mux_group_g_for_tile(
+          p.MUX_GROUP_G_LIST, tile_idx, p.MUX_GROUP_G);
       const auto reconfig_ok = newcode::mux::validate_mux_reconfig_runtime(
-          p.MUX_GROUP_G, p.SISO_ACTIVE_LIST[tile_idx], rows_to_decode);
+          group_g, p.SISO_ACTIVE_LIST[tile_idx], rows_to_decode);
       if (!reconfig_ok.ok) {
         throw std::invalid_argument(
             "ofec_decode_llr: tile " + std::to_string(tile_idx) + ": " +

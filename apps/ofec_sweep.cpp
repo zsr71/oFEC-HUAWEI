@@ -47,6 +47,7 @@ static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4};       // ch
 static const std::vector<int> kSisoActiveList               = {32, 32, 32, 32}; // 每个 tile 的 SISO 行数预算
 static const std::vector<int> kHiHoActiveList               = {32, 32, 32, 32}; // 每个 tile 的 HIHO 硬解码行数预算
 static constexpr int         kMuxGroupG                     = 1;          // MUX 分组粒度，1 表示全局池化
+static const std::vector<int> kMuxGroupGList                = {};         // 按 tile 覆盖 MUX 分组数；空表示沿用 kMuxGroupG
 static constexpr int         kMuxSchedulingMode             = 0;          // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
 static const std::vector<int> kMuxSchedulingModeCandidates  = {};         // MUX 调度模式扫描候选，空表示沿用固定值
 static constexpr int         kMuxPriorityRule               = 0;          // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
@@ -171,6 +172,7 @@ int main() {
   config.siso_active_list = kSisoActiveList;
   config.hiho_active_list = kHiHoActiveList;
   config.mux_group_g = kMuxGroupG;
+  config.mux_group_g_list = kMuxGroupGList;
   config.mux_scheduling_mode = kMuxSchedulingMode;
   config.mux_scheduling_mode_candidates = kMuxSchedulingModeCandidates;
   config.mux_early_stop_priority_rule = kMuxPriorityRule;

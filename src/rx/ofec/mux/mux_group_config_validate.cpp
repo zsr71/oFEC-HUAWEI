@@ -4,6 +4,14 @@
 
 namespace newcode::mux {
 
+int pick_mux_group_g_for_tile(const std::vector<int>& group_g_list,
+                              std::size_t tile_index,
+                              int fallback_group_g) {
+  return tile_index < group_g_list.size()
+             ? group_g_list[tile_index]
+             : fallback_group_g;
+}
+
 ValidationResult validate_mux_group_g(int group_g, std::size_t code_count) {
   if (group_g < 1) {
     std::ostringstream oss;

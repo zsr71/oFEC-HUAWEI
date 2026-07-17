@@ -70,6 +70,7 @@ static const std::vector<int> kHiHoActiveList = {64, 64, 64, 64, 64, 64}; // 每
 
 // MUX 调度参数
 static constexpr int kMuxGroupG = 1;                  // MUX 分组数：1=全局池化，>1=按组平均切预算
+static const std::vector<int> kMuxGroupGList = {};     // 按 tile 覆盖 MUX 分组数；空表示沿用 kMuxGroupG
 static constexpr int kMuxSchedulingMode = 0;          // MUX 调度模式：0=legacy 顺序裁剪，1=按 early-stop 细节排序
 static constexpr int kMuxPriorityRule = 0;            // MUX 优先级规则：0=harder_first，1=near_threshold_first
 static constexpr bool kMuxEnableReconfig = false;     // true=启用 staged reconfig 调度，false=直接预算裁剪
@@ -195,6 +196,7 @@ int main() {
   base_cfg.siso_active_list = kSisoActiveList;
   base_cfg.hiho_active_list = kHiHoActiveList;
   base_cfg.mux_group_g = kMuxGroupG;
+  base_cfg.mux_group_g_list = kMuxGroupGList;
   base_cfg.mux_scheduling_mode = kMuxSchedulingMode;
   base_cfg.mux_early_stop_priority_rule = kMuxPriorityRule;
   base_cfg.mux_enable_reconfig = kMuxEnableReconfig;

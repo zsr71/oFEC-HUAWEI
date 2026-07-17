@@ -104,6 +104,7 @@ static const std::vector<int> kHiHoActiveList = {64, 64, 64, 64, 64, 64}; // 每
 
 // MUX 调度参数
 static constexpr int kMuxGroupG = 1;                    // MUX 分组数：1=全局池化；>1 时会把共享 code 域均分成多个组分别切预算
+static const std::vector<int> kMuxGroupGList = {};       // 按 tile 覆盖 MUX 分组数；空表示沿用 kMuxGroupG
 static constexpr int kMuxSchedulingMode = 0;            // MUX 调度模式：0=legacy 顺序裁剪；1=按 early-stop 细节排序后再裁剪
 static constexpr int kMuxPriorityRule = 0;              // MUX 优先级规则：0=harder_first；1=near_threshold_first；仅在 scheduling_mode=1 时真正起作用
 static constexpr bool kMuxEnableReconfig = false;       // true=启用 staged reconfig 调度；false=直接用 grouped budget 裁剪
@@ -315,6 +316,7 @@ newcode::two_stream_shared::Config build_chunk_config(float ebn0_db,
   base_cfg.siso_active_list = kSisoActiveList;
   base_cfg.hiho_active_list = kHiHoActiveList;
   base_cfg.mux_group_g = kMuxGroupG;
+  base_cfg.mux_group_g_list = kMuxGroupGList;
   base_cfg.mux_scheduling_mode = kMuxSchedulingMode;
   base_cfg.mux_early_stop_priority_rule = kMuxPriorityRule;
   base_cfg.mux_enable_reconfig = kMuxEnableReconfig;

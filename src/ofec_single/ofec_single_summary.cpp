@@ -155,6 +155,8 @@ void log_run_overview(const Config& cfg,
       << params.MUX_GROUP_G << "/"
       << params.MUX_SCHEDULING_MODE << "/"
       << params.MUX_EARLY_STOP_PRIORITY_RULE
+      << ", per-tile group list = "
+      << format_compact_int_list(params.MUX_GROUP_G_LIST)
       << ", reconfig = " << (params.MUX_ENABLE_RECONFIG ? "ON" : "OFF")
       << ", siso_active_list = "
       << format_compact_int_list(params.SISO_ACTIVE_LIST)

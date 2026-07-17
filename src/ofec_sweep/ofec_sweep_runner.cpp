@@ -392,6 +392,9 @@ int run_sweep(const SweepParameterConfig& config) {
   if (!resolved.hiho_active_list.empty()) {
     resolved.base_params.HIHO_ACTIVE_LIST = resolved.hiho_active_list;
   }
+  if (!resolved.mux_group_g_list.empty()) {
+    resolved.base_params.MUX_GROUP_G_LIST = resolved.mux_group_g_list;
+  }
   resolved.base_params.ENABLE_EARLY_STOP = resolved.enable_early_stop;
   resolved.base_params.EARLY_STOP_ENABLE_LIST = resolved.early_stop_enable_list;
   resolved.base_params.EARLY_STOP_CONDITION_MODE =
@@ -477,6 +480,12 @@ int run_sweep(const SweepParameterConfig& config) {
   for (int bind_group_size : resolved.early_stop_bind_group_size_list) {
     if (bind_group_size < 1) {
       std::cerr << "[ERROR] early_stop_bind_group_size_list must contain values >= 1\n";
+      return 1;
+    }
+  }
+  for (int group_g : resolved.mux_group_g_list) {
+    if (group_g < 1) {
+      std::cerr << "[ERROR] mux_group_g_list must contain values >= 1\n";
       return 1;
     }
   }
@@ -617,22 +626,32 @@ int run_sweep(const SweepParameterConfig& config) {
     std::cerr << "[ERROR] early_stop_bind_group_size_list must have length TILES_PER_WIN\n";
     return 1;
   }
+  if (!resolved.base_params.MUX_GROUP_G_LIST.empty() &&
+      resolved.base_params.MUX_GROUP_G_LIST.size() !=
+          resolved.base_params.TILES_PER_WIN) {
+    std::cerr << "[ERROR] mux_group_g_list must have length TILES_PER_WIN\n";
+    return 1;
+  }
   const std::size_t rows_to_decode =
       static_cast<std::size_t>(resolved.base_params.CHASE_SBR) *
       newcode::Params::BITS_PER_SUBBLOCK_DIM;
-  const auto group_ok = newcode::mux::validate_mux_group_g(
-      resolved.base_params.MUX_GROUP_G,
-      rows_to_decode);
-  if (!group_ok.ok) {
-    std::cerr << "[ERROR] " << group_ok.error << "\n";
-    return 1;
-  }
-  if (resolved.base_params.MUX_ENABLE_RECONFIG) {
-    for (std::size_t tile_idx = 0;
-         tile_idx < resolved.base_params.SISO_ACTIVE_LIST.size();
-         ++tile_idx) {
+  for (std::size_t tile_idx = 0;
+       tile_idx < resolved.base_params.TILES_PER_WIN;
+       ++tile_idx) {
+    const int group_g = newcode::mux::pick_mux_group_g_for_tile(
+        resolved.base_params.MUX_GROUP_G_LIST,
+        tile_idx,
+        resolved.base_params.MUX_GROUP_G);
+    const auto group_ok =
+        newcode::mux::validate_mux_group_g(group_g, rows_to_decode);
+    if (!group_ok.ok) {
+      std::cerr << "[ERROR] tile " << tile_idx << ": "
+                << group_ok.error << "\n";
+      return 1;
+    }
+    if (resolved.base_params.MUX_ENABLE_RECONFIG) {
       const auto reconfig_ok = newcode::mux::validate_mux_reconfig_runtime(
-          resolved.base_params.MUX_GROUP_G,
+          group_g,
           resolved.base_params.SISO_ACTIVE_LIST[tile_idx],
           rows_to_decode);
       if (!reconfig_ok.ok) {
@@ -780,6 +799,7 @@ int run_sweep(const SweepParameterConfig& config) {
   csv_snapshot.explicit_patterns = summarize_patterns(cfg.explicit_patterns);
   csv_snapshot.siso_active_list = cfg.siso_active_list;
   csv_snapshot.mux_group_g = cfg.mux_group_g;
+  csv_snapshot.mux_group_g_list = join_compact(cfg.mux_group_g_list);
   csv_snapshot.mux_scheduling_mode = cfg.mux_scheduling_mode;
   csv_snapshot.mux_scheduling_mode_candidates =
       join_compact(cfg.mux_scheduling_mode_candidates);

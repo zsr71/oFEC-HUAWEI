@@ -95,6 +95,8 @@ struct Params {
   std::vector<int> HIHO_ACTIVE_LIST = {32, 32, 32, 32, 32, 32};
   // MUX 分组数：1=现有 max 全局池化，>1=按组预算裁剪
   int MUX_GROUP_G = 1;
+  // 每级 tile 的 MUX 分组数（索引 t 按 bottom->top）；空表示沿用 MUX_GROUP_G
+  std::vector<int> MUX_GROUP_G_LIST;
   // MUX 调度模式：0=legacy（按原顺序裁剪），1=early-stop priority（按 early-stop 细节排序后裁剪）
   int MUX_SCHEDULING_MODE = 0;
   // early-stop priority 的排序规则：0=harder_first，1=near_threshold_first

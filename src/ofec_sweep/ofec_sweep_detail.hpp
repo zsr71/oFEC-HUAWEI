@@ -173,6 +173,7 @@ struct ExtendedCsvConfigSnapshot {
   std::string early_stop_action_beta_start_candidates;
   std::string early_stop_action_beta_step_candidates;
   std::string early_stop_action_hard_llr_mag_candidates;
+  std::string mux_group_g_list;
   std::size_t tiles_per_window = 0;
   float eval_ebn0_db = 0.0f;
   std::size_t stage1_bits = 0;

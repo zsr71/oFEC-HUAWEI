@@ -197,6 +197,7 @@ std::optional<newcode::Params> build_params(const Config& cfg,
     params.HIHO_ACTIVE_LIST = cfg.hiho_active_list;
   }
   params.MUX_GROUP_G = cfg.mux_group_g;
+  params.MUX_GROUP_G_LIST = cfg.mux_group_g_list;
   params.MUX_SCHEDULING_MODE = cfg.mux_scheduling_mode;
   params.MUX_EARLY_STOP_PRIORITY_RULE = cfg.mux_early_stop_priority_rule;
   params.MUX_ENABLE_RECONFIG = cfg.mux_enable_reconfig;
@@ -245,11 +246,20 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   const std::size_t rows_to_decode =
       static_cast<std::size_t>(params.CHASE_SBR) *
       newcode::Params::BITS_PER_SUBBLOCK_DIM;
-  const auto group_ok =
-      newcode::mux::validate_mux_group_g(params.MUX_GROUP_G, rows_to_decode);
-  if (!group_ok.ok) {
-    log << "[ERROR] " << group_ok.error << "\n";
+  if (!params.MUX_GROUP_G_LIST.empty() &&
+      params.MUX_GROUP_G_LIST.size() != tiles) {
+    log << "[ERROR] mux_group_g_list 长度必须等于 TILES_PER_WIN\n";
     return std::nullopt;
+  }
+  for (std::size_t tile_idx = 0; tile_idx < tiles; ++tile_idx) {
+    const int group_g = newcode::mux::pick_mux_group_g_for_tile(
+        params.MUX_GROUP_G_LIST, tile_idx, params.MUX_GROUP_G);
+    const auto group_ok =
+        newcode::mux::validate_mux_group_g(group_g, rows_to_decode);
+    if (!group_ok.ok) {
+      log << "[ERROR] tile " << tile_idx << ": " << group_ok.error << "\n";
+      return std::nullopt;
+    }
   }
   if (params.MUX_SCHEDULING_MODE != 0 && params.MUX_SCHEDULING_MODE != 1) {
     log << "[ERROR] mux_scheduling_mode 目前必须是 0 或 1\n";
@@ -262,8 +272,10 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   }
   if (params.MUX_ENABLE_RECONFIG) {
     for (std::size_t tile_idx = 0; tile_idx < params.SISO_ACTIVE_LIST.size(); ++tile_idx) {
+      const int group_g = newcode::mux::pick_mux_group_g_for_tile(
+          params.MUX_GROUP_G_LIST, tile_idx, params.MUX_GROUP_G);
       const auto reconfig_ok = newcode::mux::validate_mux_reconfig_runtime(
-          params.MUX_GROUP_G, params.SISO_ACTIVE_LIST[tile_idx], rows_to_decode);
+          group_g, params.SISO_ACTIVE_LIST[tile_idx], rows_to_decode);
       if (!reconfig_ok.ok) {
         log << "[ERROR] tile " << tile_idx << ": " << reconfig_ok.error << "\n";
         return std::nullopt;
