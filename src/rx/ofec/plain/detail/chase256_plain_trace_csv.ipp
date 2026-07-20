@@ -1,0 +1,130 @@
+#pragma once
+
+namespace newcode {
+namespace detail {
+
+static void dump_chase_csv(const newcode::Params::DebugTraceConfig& trace,
+                           const float* y,
+                           const uint8_t* hard_ch,
+                           const uint8_t* ML,
+                           const float* omega)
+{
+    // 输入:
+    // - trace: 调试追踪配置。
+    // - y: 当前输入 LLR（float 域）。
+    // - hard_ch: 输入硬判结果。
+    // - ML: 最终选择的 ML 码字。
+    // - omega: 输出外信息。
+    // 输出:
+    // - 无返回值；若配置允许，则把本次 Chase 的关键量导出到 CSV。
+    // 用途:
+    // - 用于离线分析某个比特/坐标在 Chase 内部的候选码字和外信息变化。
+    if (!trace.enable || !trace.dump_chase_csv) return;
+    if (trace.chase_tile_index < 0 || trace.chase_invocation < 0) return;
+
+    std::vector<newcode::Params::DebugTraceConfig::ChaseTraceEntry> entries =
+        trace.active_chase_entries;
+    if (entries.empty()) {
+        if (trace.chase_decoder_col < 0) return;
+        newcode::Params::DebugTraceConfig::ChaseTraceEntry fallback;
+        fallback.row_index = trace.chase_decoder_row;
+        fallback.k = trace.chase_decoder_col;
+        fallback.global_row = trace.row;
+        fallback.global_col = trace.col;
+        fallback.bit_index = -1;
+        entries.push_back(fallback);
+    }
+
+    const int tile_idx = trace.chase_tile_index;
+    const int inv_id   = trace.chase_invocation;
+
+    namespace fs = std::filesystem;
+    const fs::path dir = trace.chase_csv_dir.empty()
+                           ? fs::path("data/chase_csv")
+                           : fs::path(trace.chase_csv_dir);
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+
+    for (const auto& entry : entries) {
+        // 每个被追踪目标单独输出一个 CSV 文件。
+        if (entry.row_index < 0 || entry.k < 0) continue;
+        std::string label = entry.label;
+        if (label.empty()) {
+            if (entry.bit_index >= 0) {
+                label = "bit" + std::to_string(entry.bit_index);
+            } else {
+                label = "row" + std::to_string(entry.global_row) +
+                        "_col" + std::to_string(entry.global_col);
+            }
+        }
+        std::string safe_label = label;
+        for (char& ch : safe_label) {
+            if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-') {
+                ch = '_';
+            }
+        }
+        const fs::path file = dir / ("tile" + std::to_string(tile_idx)
+                                     + "_call" + std::to_string(inv_id)
+                                     + "_" + safe_label + ".csv");
+        std::ofstream out(file);
+        if (!out) continue;
+        out << "target_label," << label << '\n';
+        out << "target_bit_index," << entry.bit_index << '\n';
+        out << "target_global_row," << entry.global_row << '\n';
+        out << "target_global_col," << entry.global_col << '\n';
+        out << "target_expected_bit," << entry.expected_bit << '\n';
+        out << "lin_matrix_row_index," << entry.row_index << '\n';
+        out << "lin_matrix_k," << entry.k << '\n';
+        const std::vector<int8_t>* expected_bits_row = trace.chase_expected_bits_row;
+        const bool has_competing =
+            entry.cplus_bits.size() == detail::BCH_N_TOTAL &&
+            entry.cminus_bits.size() == detail::BCH_N_TOTAL;
+        out << "Index,LLR,Omega,ML,HardCh,ExpectedBit";
+        if (has_competing) {
+            out << ",CplusBit,CminusBit";
+        }
+        out << '\n';
+        for (int k = 0; k < BCH_N_TOTAL; ++k) {
+            int expected_bit = -1;
+            if (expected_bits_row && static_cast<size_t>(k) < expected_bits_row->size()) {
+                expected_bit = (*expected_bits_row)[static_cast<size_t>(k)];
+            }
+            out << k << ',' << y[k] << ',' << omega[k] << ','
+                << int(ML[k]) << ',' << int(hard_ch[k]) << ','
+                << expected_bit;
+            if (has_competing) {
+                out << ',' << int(entry.cplus_bits[static_cast<size_t>(k)])
+                    << ',' << int(entry.cminus_bits[static_cast<size_t>(k)]);
+            }
+            out << '\n';
+        }
+
+        const bool has_candidate_syndrome =
+            trace.chase_candidate_s1.size() == trace.chase_candidate_s3.size() &&
+            !trace.chase_candidate_s1.empty();
+        if (has_candidate_syndrome) {
+            const bool has_candidate_status =
+                trace.chase_candidate_good.size() == trace.chase_candidate_s1.size() &&
+                trace.chase_candidate_corrected_errors.size() == trace.chase_candidate_s1.size();
+            out << '\n';
+            out << "CandidateIndex,S1,S3";
+            if (has_candidate_status) {
+                out << ",BchGood,CorrectedErrors";
+            }
+            out << '\n';
+            for (std::size_t c = 0; c < trace.chase_candidate_s1.size(); ++c) {
+                out << c << ','
+                    << int(trace.chase_candidate_s1[c]) << ','
+                    << int(trace.chase_candidate_s3[c]);
+                if (has_candidate_status) {
+                    out << ',' << int(trace.chase_candidate_good[c])
+                        << ',' << trace.chase_candidate_corrected_errors[c];
+                }
+                out << '\n';
+            }
+        }
+    }
+}
+
+} // namespace detail
+} // namespace newcode

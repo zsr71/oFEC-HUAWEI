@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 // 如果 Matrix 的定义不在这个头里，请按你的工程实际修改路径
-#include "newcode/matrix.hpp"
+#include "newcode/common/matrix/matrix.hpp"
 
 namespace newcode {
 
@@ -11,7 +11,7 @@ namespace newcode {
  * @brief 将一维 LLR（row-major）还原为 rows x cols 的 Matrix<float>
  * @throws std::invalid_argument 当 llr.size() != rows*cols 时
  */
-Matrix<float> llr_to_matrix_row_major(const std::vector<float>& llr,
+matrix::Matrix<float> llr_to_matrix_row_major(const std::vector<float>& llr,
                                       size_t rows,
                                       size_t cols);
 
@@ -20,6 +20,6 @@ Matrix<float> llr_to_matrix_row_major(const std::vector<float>& llr,
  * @throws std::invalid_argument 当 llr.size() != M.rows()*M.cols() 时
  */
 void fill_llr_matrix_row_major(const std::vector<float>& llr,
-                               Matrix<float>& M);
+                               matrix::Matrix<float>& M);
 
 } // namespace newcode

@@ -1,0 +1,167 @@
+[
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/common/bch/bch_255_239_decode.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/common/bch/bch_255_239_decode.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/common/bch/bch_255_239_decode.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/common/bch/bch_255_239_encode.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/common/bch/bch_255_239_encode.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/common/bch/bch_255_239_encode.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/common/bch/bch_255_239_parity.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/common/bch/bch_255_239_parity.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/common/bch/bch_255_239_parity.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/common/utils/ensure_dir.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/common/utils/ensure_dir.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/common/utils/ensure_dir.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/common/utils/hard_bits_to_llr_matrix.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/common/utils/hard_bits_to_llr_matrix.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/common/utils/hard_bits_to_llr_matrix.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/common/utils/now_stamp.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/common/utils/now_stamp.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/common/utils/now_stamp.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/common/utils/prepare_log_file.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/common/utils/prepare_log_file.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/common/utils/prepare_log_file.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/channel/awgn.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/channel/awgn.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/channel/awgn.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/channel/ebn0_to_sigma.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/channel/ebn0_to_sigma.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/channel/ebn0_to_sigma.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/pipeline/pipeline_runner.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/pipeline/pipeline_runner.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/pipeline/pipeline_runner.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/ber/ber.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/ber/ber.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/ber/ber.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/extract/info_extract.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/extract/info_extract.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/extract/info_extract.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/llr/llr_known_prefix.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/llr/llr_known_prefix.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/llr/llr_known_prefix.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/llr/ofec_llr_matrix.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/llr/ofec_llr_matrix.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/llr/ofec_llr_matrix.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/ofec/ofec_frame_decode.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/ofec/ofec_frame_decode.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/ofec/ofec_frame_decode.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/ofec/ofec_hard_decode_bch.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/ofec/ofec_hard_decode_bch.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/ofec/ofec_hard_decode_bch.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/ofec/ofec_row_decoder_core.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/ofec/ofec_row_decoder_core.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/ofec/ofec_row_decoder_core.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/ofec/ofec_tile_process.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/ofec/ofec_tile_process.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/ofec/ofec_tile_process.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/ofec/ofec_window_process.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/ofec/ofec_window_process.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/ofec/ofec_window_process.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/ofec/plain/chase256_plain.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/ofec/plain/chase256_plain.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/ofec/plain/chase256_plain.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/rx/qam/qam_llr.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/rx/qam/qam_llr.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/rx/qam/qam_llr.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/tx/bitgen/bitgen.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/tx/bitgen/bitgen.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/tx/bitgen/bitgen.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/tx/ofec/ofec_encoder.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/tx/ofec/ofec_encoder.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/tx/ofec/ofec_encoder.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/tx/qam/qam.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/tx/qam/qam.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/tx/qam/qam.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/ofec_single/ofec_single_runner.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/ofec_single/ofec_single_runner.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/ofec_single/ofec_single_runner.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/ofec_single/ofec_single_dual_writer.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/ofec_single/ofec_single_dual_writer.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/ofec_single/ofec_single_dual_writer.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/seed_sweep/ebn0_sweep_runner.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/seed_sweep/ebn0_sweep_runner.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/seed_sweep/ebn0_sweep_runner.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/seed_sweep/seed_sweep_runner.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/seed_sweep/seed_sweep_runner.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/seed_sweep/seed_sweep_runner.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/new_float_only_core.dir/src/seed_sweep/sweep_task_runner.cpp.o -c /home/zsr71/projects/newcode/new_float_only/src/seed_sweep/sweep_task_runner.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/src/seed_sweep/sweep_task_runner.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/ofec_single_float.dir/apps/ofec_single_float.cpp.o -c /home/zsr71/projects/newcode/new_float_only/apps/ofec_single_float.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/apps/ofec_single_float.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/ofec_seed_sweep_float.dir/apps/ofec_seed_sweep_float.cpp.o -c /home/zsr71/projects/newcode/new_float_only/apps/ofec_seed_sweep_float.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/apps/ofec_seed_sweep_float.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/ofec_alpha_beta_sweep_float.dir/apps/ofec_alpha_beta_sweep_float.cpp.o -c /home/zsr71/projects/newcode/new_float_only/apps/ofec_alpha_beta_sweep_float.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/apps/ofec_alpha_beta_sweep_float.cpp"
+},
+{
+  "directory": "/home/zsr71/projects/newcode/new_float_only/build",
+  "command": "/usr/bin/g++  -I/home/zsr71/projects/newcode/new_float_only/include -I/home/zsr71/projects/newcode/new_float_only/src -I/home/zsr71/projects/newcode/new_float_only/src/common -I/home/zsr71/projects/newcode/new_float_only/src/rx -O3 -DNDEBUG -Wall -Wextra -Wpedantic -std=gnu++20 -o CMakeFiles/ofec_ebn0_sweep_float.dir/apps/ofec_ebn0_sweep_float.cpp.o -c /home/zsr71/projects/newcode/new_float_only/apps/ofec_ebn0_sweep_float.cpp",
+  "file": "/home/zsr71/projects/newcode/new_float_only/apps/ofec_ebn0_sweep_float.cpp"
+}
+]

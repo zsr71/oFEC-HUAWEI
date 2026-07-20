@@ -14,5 +14,46 @@ Makefile
 *.a
 *.lib
 
+# Generated data / logs
+*.csv
+*.CSV
+*.json
+*.log
+*.LOG
+logs/
+log/
+*.out
+*.err
+*.txt
+!**/CMakeLists.txt
+
+# Python cache / virtualenv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+ENV/
+
+# Generated figures
+*.png
+*.svg
+*.pptx
+generated_ppt/
+
+# Local tool dependencies
+tools/ppt/
+
 # IDE
 .vscode/
+.VSCodeCounter/2025-10-27_23-30-43/details.md
+.VSCodeCounter/2025-10-27_23-30-43/diff.txt
+.VSCodeCounter/2025-10-27_23-30-43/diff-details.md
+.VSCodeCounter/
+**/.VSCodeCounter/

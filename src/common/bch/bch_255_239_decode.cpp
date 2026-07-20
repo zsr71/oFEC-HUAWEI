@@ -1,0 +1,221 @@
+#include "newcode/common/bch/bch_255_239.hpp"
+#include <algorithm>
+#include <cstring>
+
+namespace bch
+{
+
+// ================== 硬判决译码（t=2，GF(2^8)） ==================
+namespace {
+struct GF256
+{
+    static constexpr int PRIM = 0x11D; // x^8 + x^4 + x^3 + x^2 + 1
+    static constexpr int N    = 255;
+
+    static bool      inited;
+    static uint8_t   alpha_to[N];
+    static int16_t   index_of[256];
+
+    static void init()
+    {
+        if (inited) return;
+        index_of[0] = -1;
+        uint16_t a = 1;
+        for (int i = 0; i < N; ++i)
+        {
+            alpha_to[i] = static_cast<uint8_t>(a);
+            index_of[alpha_to[i]] = static_cast<int16_t>(i);
+            a <<= 1;
+            if (a & 0x100) a ^= PRIM;
+        }
+        inited = true;
+    }
+    static inline uint8_t add(uint8_t x, uint8_t y) { return x ^ y; }
+    static inline uint8_t mul(uint8_t x, uint8_t y)
+    {
+        if (!x || !y) return 0;
+        int lx = index_of[x], ly = index_of[y];
+        return alpha_to[(lx + ly) % N];
+    }
+    static inline uint8_t div(uint8_t x, uint8_t y)
+    {
+        if (!x) return 0;
+        int lx = index_of[x], ly = index_of[y];
+        return alpha_to[(lx - ly + N) % N];
+    }
+};
+
+bool GF256::inited = false;
+uint8_t GF256::alpha_to[GF256::N];
+int16_t GF256::index_of[256];
+
+static void compute_syndromes_1_4(const uint8_t* in255, uint8_t S[4])
+{
+    GF256::init();
+    S[0]=S[1]=S[2]=S[3]=0;
+    for (int j = 0; j < GF256::N; ++j)
+    {
+        if ((in255[j] & 1u) == 0) continue;
+        int e1 =  j             % GF256::N;
+        int e2 = (j + e1)       % GF256::N;   // 2*j
+        int e3 = (j + e2)       % GF256::N;   // 3*j
+        int e4 = (j + e3)       % GF256::N;   // 4*j
+        S[0] ^= GF256::alpha_to[e1];
+        S[1] ^= GF256::alpha_to[e2];
+        S[2] ^= GF256::alpha_to[e3];
+        S[3] ^= GF256::alpha_to[e4];
+    }
+}
+
+// 轻量 BM（t=2）：σ(x)=1 + c1 x + c2 x^2
+static int berlekamp_massey_t2(const uint8_t S[4], uint8_t sigma[3])
+{
+    using G = GF256;
+    uint8_t C[3] = {1,0,0}, B[3] = {1,0,0};
+    int L = 0, m = 1;
+    uint8_t b = 1;
+
+    for (int n = 0; n < 4; ++n)
+    {
+        // 本实现只支持 t=2，因此 sigma/C/B 只保留 0..2 三项。
+        // 一旦 BM 过程已经判定 L>2，后续样本不可纠，必须提前退出，
+        // 否则 discrepancy 计算会访问 C[3] 越界。
+        if (L > 2) return L;
+
+        uint8_t d = S[n];
+        for (int i = 1; i <= L && i <= 2; ++i) d ^= G::mul(C[i], S[n-i]);
+
+        if (d == 0) { m++; continue; }
+
+        uint8_t T0=C[0], T1=C[1], T2=C[2];
+        uint8_t db = G::div(d, b);
+        if      (m == 1) { C[2] ^= G::mul(db, B[1]); C[1] ^= G::mul(db, B[0]); }
+        else if (m >= 2) { C[2] ^= G::mul(db, B[0]); }
+
+        if (2*L <= n) { L = n + 1 - L; B[0]=T0; B[1]=T1; B[2]=T2; b=d; m=1; }
+        else          { m++; }
+
+        // L>2 表示当前硬判码字已经超过 BCH(255,239) 的 t=2 能力。
+        // 这里立即返回，让上层按“硬译码失败”处理，不再继续构造 sigma。
+        if (L > 2) return L;
+    }
+    sigma[0]=C[0]; sigma[1]=C[1]; sigma[2]=C[2];
+    return L; // 0/1/2
+}
+
+static int chien_and_correct(uint8_t* cw255, const uint8_t sigma[3], int L)
+{
+    using G = GF256;
+    if (L == 0) return 0;
+
+    int count = 0, locs[2] = {-1,-1};
+    int reg1 = (sigma[1] ? G::index_of[sigma[1]] : -1);
+    int reg2 = (L>=2 && sigma[2] ? G::index_of[sigma[2]] : -1);
+
+    for (int i = 1; i <= G::N; ++i)
+    {
+        uint8_t q = 1;
+        if (reg1 != -1) { reg1 = (reg1 + 1) % G::N; q ^= G::alpha_to[reg1]; }
+        if (reg2 != -1) { reg2 = (reg2 + 2) % G::N; q ^= G::alpha_to[reg2]; }
+        if (q == 0)
+        {
+            int pos = G::N - i; // 与 AFF3CT 一致：loc = 255 - i
+            if (pos >= 0 && pos < G::N) { if (count < L) locs[count] = pos; count++; }
+        }
+    }
+    if (count != L) return -1;
+    for (int k = 0; k < L; ++k) if (locs[k] >= 0) cw255[locs[k]] ^= 1u;
+    return L;
+}
+} // anon
+
+bool bch_255_239_decode_hiho_cw_255(const uint8_t* in255,
+                                    uint8_t* out255,
+                                    int* corrected_errors,
+                                    Bch255239DecodeTrace* trace)
+{
+    using G = GF256;
+    G::init();
+    if (corrected_errors) *corrected_errors = 0;
+    if (trace) {
+        *trace = Bch255239DecodeTrace{};
+    }
+
+    uint8_t cw[GF256::N];
+    std::memcpy(cw, in255, GF256::N);
+
+    uint8_t S[4]; compute_syndromes_1_4(cw, S);
+    if (trace) {
+        std::copy(S, S + 4, trace->input_syndromes.begin());
+    }
+    if ((S[0]|S[1]|S[2]|S[3]) == 0) {
+        if (trace) {
+            trace->output_syndromes = trace->input_syndromes;
+            trace->has_output_syndromes = true;
+        }
+        std::memcpy(out255, cw, GF256::N);
+        return true;
+    }
+
+    uint8_t sigma[3]; int L = berlekamp_massey_t2(S, sigma);
+    if (L < 0 || L > 2) {
+        if (corrected_errors) *corrected_errors = -1;
+        // 失败时不向外暴露任何“半纠错”结果，统一回传原始输入。
+        std::memcpy(out255, in255, GF256::N);
+        return false;
+    }
+
+    int corr = chien_and_correct(cw, sigma, L);
+    if (corr < 0) {
+        if (corrected_errors) *corrected_errors = -1;
+        std::memcpy(out255, in255, GF256::N);
+        return false;
+    }
+
+    uint8_t S2[4]; compute_syndromes_1_4(cw, S2);
+    if (trace) {
+        std::copy(S2, S2 + 4, trace->output_syndromes.begin());
+        trace->has_output_syndromes = true;
+    }
+    bool ok = ((S2[0]|S2[1]|S2[2]|S2[3]) == 0);
+    if (ok) {
+        if (corrected_errors) *corrected_errors = corr;
+        std::memcpy(out255, cw, GF256::N);
+        return true;
+    }
+
+    // Chien 已经翻过 cw，但最终 syndrome 仍未清零，说明这不是合法纠错结果。
+    // 按接口契约：只有 return true 才允许 out255 携带纠错后的合法码字；
+    // return false 时必须回传原始输入，避免上层误用半成品 cw。
+    if (corrected_errors) *corrected_errors = -1;
+    std::memcpy(out255, in255, GF256::N);
+    return false;
+}
+
+bool bch_255_239_syndromes_zero_cw_255(const uint8_t* in255)
+{
+    uint8_t S[4];
+    compute_syndromes_1_4(in255, S);
+    return ((S[0] | S[1] | S[2] | S[3]) == 0);
+}
+
+std::array<uint8_t,4> bch_255_239_syndromes_1_4_cw_255(const uint8_t* in255)
+{
+    std::array<uint8_t,4> S{};
+    compute_syndromes_1_4(in255, S.data());
+    return S;
+}
+
+uint8_t bch_255_239_syndrome_nonzero_mask_cw_255(const uint8_t* in255)
+{
+    const auto S = bch_255_239_syndromes_1_4_cw_255(in255);
+    uint8_t mask = 0u;
+    for (std::size_t i = 0; i < S.size(); ++i) {
+        if (S[i] != 0u) {
+            mask |= static_cast<uint8_t>(1u << i);
+        }
+    }
+    return mask;
+}
+
+} // namespace bch

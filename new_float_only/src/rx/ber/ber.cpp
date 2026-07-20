@@ -1,0 +1,69 @@
+#include "new_float_only/rx/ber/ber.hpp"
+#include "new_float_only/params.hpp"
+#include <algorithm>
+#include <iostream>
+
+namespace new_float_only {
+
+BerStats compute_ber(const std::vector<uint8_t>& ref_bits,
+                     const std::vector<uint8_t>& rx_bits,
+                     const Params& p,
+                     std::vector<std::size_t>* error_positions)
+{
+    const std::size_t L = std::min(ref_bits.size(), rx_bits.size());
+
+    // 每行比特数  = 111（由 Params 得出，不再依赖矩阵形状）
+    const std::size_t row_bits = 111;
+
+    // 窗口高度（比特行） * 每行比特数 = 一个 window 覆盖的比特数
+    const std::size_t win_rows  = p.win_height_rows(); // 已是“比特行”数量
+    const std::size_t win_bits  = win_rows * row_bits;
+
+    // 去掉首尾各一个 window 覆盖的比特
+    const std::size_t skip_prefix = std::min(L, 4*win_bits);
+    const std::size_t skip_suffix = std::min(L - skip_prefix, 1*win_bits);
+
+    const std::size_t start = skip_prefix;
+    const std::size_t stop  = L - skip_suffix;
+
+    if (error_positions) error_positions->clear();
+    std::size_t err = 0;
+    for (std::size_t i = start; i < stop; ++i) {
+        if ((ref_bits[i] ^ rx_bits[i]) & 1u) {
+            ++err;
+            if (error_positions) error_positions->push_back(i);
+        }
+    }
+
+    BerStats s;
+    s.errors = err;
+    s.total  = (stop > start) ? (stop - start) : 0;
+    s.ber    = (s.total == 0) ? 0.0 : static_cast<double>(err) / static_cast<double>(s.total);
+    return s;
+}
+
+BerStats compute_and_print_ber(const std::vector<uint8_t>& ref_bits,
+                               const std::vector<uint8_t>& rx_bits,
+                               const char* label,
+                               const Params& p,
+                               std::vector<std::size_t>* error_positions,
+                               bool quiet)
+{
+    BerStats s = compute_ber(ref_bits, rx_bits, p, error_positions);
+
+    // 为了可见性，把被剔除的前后窗口比特数也打印出来
+    const std::size_t L = std::min(ref_bits.size(), rx_bits.size());
+    const std::size_t row_bits = 111;
+    const std::size_t win_bits = std::min(L, p.win_height_rows() * row_bits);
+    const std::size_t cut_total = std::min(L, win_bits) + std::min(L > win_bits ? (L - win_bits) : 0, win_bits);
+
+    if (!quiet) {
+        std::cout << "[RESULT] " << (label ? label : "BER")
+                  << " BER=" << s.ber
+                  << "  (errs=" << s.errors << " / " << s.total << " compared"
+                  << ", cut=" << cut_total << " of " << L << ")\n";
+    }
+    return s;
+}
+
+} // namespace new_float_only
