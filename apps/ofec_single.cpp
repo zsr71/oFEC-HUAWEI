@@ -88,8 +88,8 @@ static constexpr bool kLevel56SharedEnable = true;                // true=第五
 static constexpr int kLevel56SharedHisoActive = 24;                 // 第五/六级共享 HISO 容量
 static constexpr int kLevel56SharedSisoActive = 24;                 // 第五/六级共享 SISO 容量
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
-    newcode::Level56PriorityMode::Fair;
-static constexpr bool kLevel56FairAlternateStart = true;
+    newcode::Level56PriorityMode::Level5First;
+static constexpr bool kLevel56SingleLevelSelectEnable = false; // true=按 early-stop 命中数动态只解一级
 
 // LLR 导出相关
 static constexpr bool        kDumpQuantizedLlr = false;                         // 是否导出量化后的信道 LLR
@@ -204,7 +204,7 @@ int main() {
     .level56_shared_hiso_active = kLevel56SharedHisoActive,
     .level56_shared_siso_active = kLevel56SharedSisoActive,
     .level56_priority_mode = kLevel56PriorityMode,
-    .level56_fair_alternate_start = kLevel56FairAlternateStart,
+    .level56_single_level_select_enable = kLevel56SingleLevelSelectEnable,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,
     .generate_random_bits = kGenerateRandomBits,

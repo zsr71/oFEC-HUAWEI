@@ -89,8 +89,8 @@ static constexpr bool kLevel56SharedEnable = true;                  // true=第�
 static constexpr int kLevel56SharedHisoActive = 24;                 // 第五/六级共享 HISO 容量
 static constexpr int kLevel56SharedSisoActive = 24;                 // 第五/六级共享 SISO 容量
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
-    newcode::Level56PriorityMode::Fair;
-static constexpr bool kLevel56FairAlternateStart = true;
+    newcode::Level56PriorityMode::Level5First;
+static constexpr bool kLevel56SingleLevelSelectEnable = false; // true=按 early-stop 命中数动态只解一级
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
     {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
      {0.428571,0.447738,0.482782,0.528162,0.581902,0.642857}, // 每个 tile 的 alpha 显式列表
@@ -275,7 +275,7 @@ void ensure_csv_header_sweep3(const std::string& csv_path) {
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
           "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_bypass_scheme,"
           "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_siso_backfill_mode,hybrid_normalize_soft_only,"
-          "level56_shared_enable,level56_shared_hiso_active,level56_shared_siso_active,level56_priority_mode,level56_fair_alternate_start,"
+          "level56_shared_enable,level56_shared_hiso_active,level56_shared_siso_active,level56_priority_mode,"
           "early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
@@ -331,7 +331,6 @@ void write_csv_row_sweep3(std::ostream& csv,
       << kLevel56SharedHisoActive << ','
       << kLevel56SharedSisoActive << ','
       << static_cast<int>(kLevel56PriorityMode) << ','
-      << (kLevel56FairAlternateStart ? 1 : 0) << ','
       << point.scenario.early_stop_condition_mode << ','
       << point.scenario.early_stop_action_mode << ','
       << point.scenario.early_stop_bind_group_size << ','
@@ -840,8 +839,8 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.LEVEL56_SHARED_HISO_ACTIVE = kLevel56SharedHisoActive;
   config.base_params.LEVEL56_SHARED_SISO_ACTIVE = kLevel56SharedSisoActive;
   config.base_params.LEVEL56_PRIORITY_MODE = kLevel56PriorityMode;
-  config.base_params.LEVEL56_FAIR_ALTERNATE_START =
-      kLevel56FairAlternateStart;
+  config.base_params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE =
+      kLevel56SingleLevelSelectEnable;
   if (!kHybridEnableList.empty() &&
       kHybridEnableList.size() != kTilesPerWindow) {
     throw std::invalid_argument(

@@ -314,36 +314,11 @@ classification priority
   -> source_local_row ascending
 ```
 
-### 9.2 三种跨级优先级策略
+### 9.2 两种跨级优先级策略
 
 当两个 code 的分类优先级相同时，再使用跨级策略决定第五级和第六级的先后顺序。
 
-#### 策略 A：公平模式
-
-公平模式在统一优先级处理内部按两级轮转取 code：
-
-```text
-L5 first candidate
-L6 first candidate
-L5 second candidate
-L6 second candidate
-...
-```
-
-注意：这里只是优先级处理产生的有序请求，不改变原始 shared batch 的 `[L5 0..31][L6 0..31]` 存储顺序。
-
-如果某一级在当前优先级桶中没有候选，另一级可以使用剩余资源，不能为了形式公平而让核空闲。
-
-为了避免每个 invocation 都固定从第五级开始，可选地按 shared invocation 轮换起始级别：
-
-```text
-偶数 invocation：L5 -> L6 -> L5 -> L6
-奇数 invocation：L6 -> L5 -> L6 -> L5
-```
-
-第一版也可以固定 L5 起始，但 CSV 中必须记录起始级别，便于判断是否形成长期偏置。
-
-#### 策略 B：第五级优先
+#### 策略 A：第五级优先
 
 在相同分类优先级下：
 
@@ -353,7 +328,7 @@ L6 second candidate
 
 第五级没有候选或其候选全部已分配后，第六级使用剩余资源。
 
-#### 策略 C：第六级优先
+#### 策略 B：第六级优先
 
 在相同分类优先级下：
 
@@ -367,7 +342,6 @@ L6 second candidate
 
 ```cpp
 enum class Level56PriorityMode {
-  Fair = 0,
   Level5First = 1,
   Level6First = 2,
 };
@@ -649,8 +623,7 @@ group binding 约束：
 bool LEVEL56_SHARED_ENABLE = false;
 int LEVEL56_SHARED_HISO_ACTIVE = 32;
 int LEVEL56_SHARED_SISO_ACTIVE = 32;
-Level56PriorityMode LEVEL56_PRIORITY_MODE = Level56PriorityMode::Fair;
-bool LEVEL56_FAIR_ALTERNATE_START = true;
+Level56PriorityMode LEVEL56_PRIORITY_MODE = Level56PriorityMode::Level5First;
 ```
 
 第五/六级共享模式打开后，`SISO_ACTIVE_LIST[4]`、`SISO_ACTIVE_LIST[5]`、`HIHO_ACTIVE_LIST[4]` 和 `HIHO_ACTIVE_LIST[5]` 不再分别表示两套独立资源。共享容量由专门的 `LEVEL56_SHARED_*` 参数控制，避免把“每级预算”和“跨级总预算”混为一谈。
@@ -663,7 +636,6 @@ bool LEVEL56_FAIR_ALTERNATE_START = true;
 window_idx
 shared_invocation
 priority_mode
-fair_start_level
 
 level5_early_stop
 level6_early_stop
@@ -707,17 +679,17 @@ assigned_core
 produced_row
 ```
 
-这些字段可以直接比较公平、第五级优先和第六级优先三种策略的 BER、资源利用率和两级饥饿情况。
+这些字段可以直接比较第五级优先和第六级优先两种策略的 BER、资源利用率和两级饥饿情况。
 
 ## 16. 验证顺序
 
 建议按以下顺序验证：
 
 1. `Shared HISO=64, Shared SISO=64`，确认共享模式没有因参数、拆分或写回改变基线结果；按 SISO 优先策略，此配置下预期 `need_hiso_reclaim=0`，HISO 可以不被使用。
-2. 固定满配资源，对比 `Fair`、`Level5First`、`Level6First`，理论上三者应得到相同结果。
+2. 固定满配资源，对比 `Level5First`、`Level6First`，理论上两者应得到相同结果。
 3. 缩小 SISO 容量，保持 HISO 满配，观察 soft resource sharing。
 4. 固定一个能够触发 `need_hiso_reclaim>0` 的受限 SISO 容量，再缩小 HISO 容量，观察 hard resource sharing。
-5. 同时限制 HISO/SISO，比较三种跨级策略的 post-FEC BER。
+5. 同时限制 HISO/SISO，比较两种跨级策略的 post-FEC BER。
 6. 检查每个 invocation 的资源守恒和 64 行状态守恒。
 7. 检查 `EARLY_STOP_BIND_GROUP_SIZE=4` 时不存在跨级 group。
 8. 检查 MUX 只执行一次 core mapping，不改变请求优先级；未获得 mapping 的请求应直接成为 `Unscheduled`，不得在本次 invocation 内补位或重试。
@@ -738,7 +710,7 @@ Level 5 的 32 code + Level 6 的 32 code
   -> 建立资源资格
   -> 跨级统一优先级处理
        - 分类优先级
-       - Fair / Level5First / Level6First
+       - Level5First / Level6First
        - HISO/SISO 路径选择
        - 预算裁剪和 Unscheduled 决策
   -> HISO MUX 和 SISO MUX 只做 code-to-core 路由

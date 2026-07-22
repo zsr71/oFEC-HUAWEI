@@ -66,8 +66,8 @@ struct Config {
   int level56_shared_hiso_active = 32;
   int level56_shared_siso_active = 32;
   newcode::Level56PriorityMode level56_priority_mode =
-      newcode::Level56PriorityMode::Fair;
-  bool level56_fair_alternate_start = true;
+      newcode::Level56PriorityMode::Level5First;
+  bool level56_single_level_select_enable = false;
   std::string interleaver_name;
   std::string decoder_name;
   bool generate_random_bits = true;

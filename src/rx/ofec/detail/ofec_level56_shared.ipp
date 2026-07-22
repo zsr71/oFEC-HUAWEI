@@ -78,7 +78,6 @@ inline void validate_level56_shared_config(const newcode::Params& p) {
         "LEVEL56 shared HISO/SISO capacities must be in [0,64]");
   }
   switch (p.LEVEL56_PRIORITY_MODE) {
-    case newcode::Level56PriorityMode::Fair:
     case newcode::Level56PriorityMode::Level5First:
     case newcode::Level56PriorityMode::Level6First:
       break;
@@ -159,15 +158,34 @@ inline bool level56_hiso_eligible(HybridRowClass row_class) {
          row_class == HybridRowClass::TwoMain;
 }
 
+inline std::size_t select_level56_decode_level(
+    const TileEarlyStopResult& early5,
+    const TileEarlyStopResult& early6,
+    const newcode::Params& p) {
+  if (!p.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE) {
+    return 0;
+  }
+  if (early5.rows_passed < early6.rows_passed) {
+    return 5;
+  }
+  if (early6.rows_passed < early5.rows_passed) {
+    return 6;
+  }
+  if (p.LEVEL56_PRIORITY_MODE == newcode::Level56PriorityMode::Level6First) {
+    return 6;
+  }
+  if (p.LEVEL56_PRIORITY_MODE == newcode::Level56PriorityMode::Level5First) {
+    return 5;
+  }
+  throw std::invalid_argument("LEVEL56 shared priority mode is invalid");
+}
+
 inline std::vector<std::size_t> order_level56_candidates(
     const std::vector<Level56DispatchEntry>& entries,
     newcode::Level56PriorityMode mode,
-    std::size_t shared_invocation) {
+    std::size_t selected_level = 0) {
   std::vector<std::size_t> ordered;
   ordered.reserve(entries.size());
-  const bool fair_level6_first =
-      mode == newcode::Level56PriorityMode::Fair &&
-      (shared_invocation & 1u) != 0u;
 
   for (int priority = 0; priority <= 5; ++priority) {
     std::vector<std::size_t> level5;
@@ -175,6 +193,7 @@ inline std::vector<std::size_t> order_level56_candidates(
     for (std::size_t index = 0; index < entries.size(); ++index) {
       const auto& entry = entries[index];
       if (entry.early_stop_hit ||
+          (selected_level != 0 && entry.source_level != selected_level) ||
           level56_class_priority(entry.hybrid_class) != priority) {
         continue;
       }
@@ -186,28 +205,14 @@ inline std::vector<std::size_t> order_level56_candidates(
     std::sort(level5.begin(), level5.end(), by_local_row);
     std::sort(level6.begin(), level6.end(), by_local_row);
 
-    if (mode == newcode::Level56PriorityMode::Level5First) {
-      ordered.insert(ordered.end(), level5.begin(), level5.end());
-      ordered.insert(ordered.end(), level6.begin(), level6.end());
-    } else if (mode == newcode::Level56PriorityMode::Level6First) {
+    if (mode == newcode::Level56PriorityMode::Level6First) {
       ordered.insert(ordered.end(), level6.begin(), level6.end());
       ordered.insert(ordered.end(), level5.begin(), level5.end());
+    } else if (mode == newcode::Level56PriorityMode::Level5First) {
+      ordered.insert(ordered.end(), level5.begin(), level5.end());
+      ordered.insert(ordered.end(), level6.begin(), level6.end());
     } else {
-      std::size_t i5 = 0;
-      std::size_t i6 = 0;
-      bool take_level6 = fair_level6_first;
-      while (i5 < level5.size() || i6 < level6.size()) {
-        if (take_level6 && i6 < level6.size()) {
-          ordered.push_back(level6[i6++]);
-        } else if (!take_level6 && i5 < level5.size()) {
-          ordered.push_back(level5[i5++]);
-        } else if (i5 < level5.size()) {
-          ordered.push_back(level5[i5++]);
-        } else {
-          ordered.push_back(level6[i6++]);
-        }
-        take_level6 = !take_level6;
-      }
+      throw std::invalid_argument("LEVEL56 shared priority mode is invalid");
     }
   }
   return ordered;
@@ -215,14 +220,25 @@ inline std::vector<std::size_t> order_level56_candidates(
 
 inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
                                   const newcode::Params& p,
-                                  std::size_t shared_invocation) {
+                                  std::size_t selected_level = 0) {
   const auto ordered = order_level56_candidates(
-      *entries, p.LEVEL56_PRIORITY_MODE,
-      p.LEVEL56_FAIR_ALTERNATE_START ? shared_invocation : 0u);
+      *entries, p.LEVEL56_PRIORITY_MODE, selected_level);
+
+  // The unselected level is bypassed explicitly so it cannot consume shared
+  // HISO/SISO capacity, including rows that passed early-stop detection.
+  if (selected_level != 0) {
+    for (auto& entry : *entries) {
+      if (entry.source_level != selected_level) {
+        entry.final_action = Level56FinalAction::Unscheduled;
+      }
+    }
+  }
+
   std::size_t soft_total = 0;
   std::size_t flexible_total = 0;
   for (const auto& entry : *entries) {
-    if (!entry.early_stop_hit) {
+    if (!entry.early_stop_hit &&
+        (selected_level == 0 || entry.source_level == selected_level)) {
       ++soft_total;
       flexible_total += entry.eligibility == Level56Eligibility::HisoOrSiso;
     }
@@ -265,6 +281,13 @@ inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
   std::size_t final_hiso_count = 0;
   std::size_t final_siso_count = 0;
   for (const auto& entry : *entries) {
+    if (selected_level != 0 && entry.source_level != selected_level) {
+      if (entry.final_action != Level56FinalAction::Unscheduled) {
+        throw std::logic_error(
+            "LEVEL56 single-level mode did not bypass the unselected level");
+      }
+      continue;
+    }
     if (entry.early_stop_hit !=
         (entry.final_action == Level56FinalAction::EarlyStopAction)) {
       throw std::logic_error(
@@ -294,10 +317,9 @@ inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
 
 inline void route_level56_g1(std::vector<Level56DispatchEntry>* entries,
                              const newcode::Params& p,
-                             std::size_t shared_invocation) {
+                             std::size_t selected_level = 0) {
   const auto ordered = order_level56_candidates(
-      *entries, p.LEVEL56_PRIORITY_MODE,
-      p.LEVEL56_FAIR_ALTERNATE_START ? shared_invocation : 0u);
+      *entries, p.LEVEL56_PRIORITY_MODE, selected_level);
   int hiso_core = 0;
   int siso_core = 0;
   for (std::size_t index : ordered) {
@@ -377,6 +399,25 @@ void append_level56_entries(const TilePrepared<LLR>& prep,
     entry.eligibility = level56_hiso_eligible(row_class)
                             ? Level56Eligibility::HisoOrSiso
                             : Level56Eligibility::SisoOnly;
+    entries->push_back(entry);
+  }
+}
+
+template <typename LLR>
+void append_level56_bypassed_entries(
+    const TilePrepared<LLR>& prep,
+    std::size_t source_level,
+    std::vector<Level56DispatchEntry>* entries) {
+  for (std::size_t row = 0; row < prep.lin_matrix.rows(); ++row) {
+    Level56DispatchEntry entry;
+    entry.shared_row = entries->size();
+    entry.source_level = source_level;
+    entry.source_local_row = row;
+    entry.source_global_row = prep.row_global_lookup[row];
+    entry.early_stop_hit = false;
+    entry.hybrid_class = HybridRowClass::None;
+    entry.eligibility = Level56Eligibility::None;
+    entry.final_action = Level56FinalAction::Unscheduled;
     entries->push_back(entry);
   }
 }
@@ -532,18 +573,39 @@ Level56SharedResult<LLR> process_level56_shared(
                                    params6.CHASE_SBR, rows, tx_llr_ref);
   const auto early5 = detect_level56_early_stop(prep5, params5);
   const auto early6 = detect_level56_early_stop(prep6, params6);
+  const std::size_t selected_level = select_level56_decode_level(
+      early5.effective, early6.effective, params5);
 
   std::vector<Level56DispatchEntry> entries;
   entries.reserve(rows * 2u);
-  append_level56_entries(prep5, early5.effective, 5, &entries);
-  append_level56_entries(prep6, early6.effective, 6, &entries);
-  schedule_level56_rows(&entries, params5, shared_invocation);
-  route_level56_g1(&entries, params5, shared_invocation);
+  if (selected_level != 0 && selected_level != 5) {
+    append_level56_bypassed_entries(prep5, 5, &entries);
+  } else {
+    append_level56_entries(prep5, early5.effective, 5, &entries);
+  }
+  if (selected_level != 0 && selected_level != 6) {
+    append_level56_bypassed_entries(prep6, 6, &entries);
+  } else {
+    append_level56_entries(prep6, early6.effective, 6, &entries);
+  }
+  schedule_level56_rows(&entries, params5, selected_level);
+  route_level56_g1(&entries, params5, selected_level);
 
-  auto decoded5 = execute_level56_slice(
-      prep5, entries, 5, normalize_extrinsic, core_fn);
-  auto decoded6 = execute_level56_slice(
-      prep6, entries, 6, normalize_extrinsic, core_fn);
+  using SharedCoreLLR = typename TilePrepared<LLR>::CoreLLR;
+  chase::DecoderCoreResult<SharedCoreLLR> decoded5{
+      matrix::Matrix<float>(prep5.lin_matrix.rows(), prep5.lin_matrix.cols()),
+      std::vector<bool>(prep5.lin_matrix.rows(), false)};
+  if (selected_level == 0 || selected_level == 5) {
+    decoded5 = execute_level56_slice(
+        prep5, entries, 5, normalize_extrinsic, core_fn);
+  }
+  chase::DecoderCoreResult<SharedCoreLLR> decoded6{
+      matrix::Matrix<float>(prep6.lin_matrix.rows(), prep6.lin_matrix.cols()),
+      std::vector<bool>(prep6.lin_matrix.rows(), false)};
+  if (selected_level == 0 || selected_level == 6) {
+    decoded6 = execute_level56_slice(
+        prep6, entries, 6, normalize_extrinsic, core_fn);
+  }
   matrix::Matrix<LLR> tile_out5 = tile_in5;
   matrix::Matrix<LLR> tile_out6 = tile_in6;
   writeback_tile(prep5, decoded5, params5, tile_top5, false,

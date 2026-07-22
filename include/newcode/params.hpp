@@ -23,7 +23,6 @@ enum class HybridSisoBackfillMode : uint8_t {
 };
 
 enum class Level56PriorityMode : uint8_t {
-  Fair = 0,
   Level5First = 1,
   Level6First = 2
 };
@@ -130,8 +129,10 @@ struct Params {
   bool LEVEL56_SHARED_ENABLE = false;
   int LEVEL56_SHARED_HISO_ACTIVE = 32;
   int LEVEL56_SHARED_SISO_ACTIVE = 32;
-  Level56PriorityMode LEVEL56_PRIORITY_MODE = Level56PriorityMode::Fair;
-  bool LEVEL56_FAIR_ALTERNATE_START = true;
+  Level56PriorityMode LEVEL56_PRIORITY_MODE =
+      Level56PriorityMode::Level5First;
+  // 开启时根据 Level 5/6 的 early-stop 命中数，只解码命中较少的一级。
+  bool LEVEL56_SINGLE_LEVEL_SELECT_ENABLE = false;
 
   struct DebugTraceConfig {
     bool enable = false;

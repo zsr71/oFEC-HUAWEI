@@ -90,8 +90,8 @@ void check_full_siso_uses_no_hiso() {
   newcode::Params p;
   p.LEVEL56_SHARED_HISO_ACTIVE = 64;
   p.LEVEL56_SHARED_SISO_ACTIVE = 64;
-  newcode::detail::schedule_level56_rows(&entries, p, 0);
-  newcode::detail::route_level56_g1(&entries, p, 0);
+  newcode::detail::schedule_level56_rows(&entries, p);
+  newcode::detail::route_level56_g1(&entries, p);
   require(count_action(entries, Level56FinalAction::HisoDecode) == 0,
           "full SISO capacity must not reclaim HISO rows");
   require(count_action(entries, Level56FinalAction::SisoDecode) == 64,
@@ -104,8 +104,8 @@ void check_hiso_only_handles_siso_overflow() {
   newcode::Params p;
   p.LEVEL56_SHARED_HISO_ACTIVE = 8;
   p.LEVEL56_SHARED_SISO_ACTIVE = 48;
-  newcode::detail::schedule_level56_rows(&entries, p, 0);
-  newcode::detail::route_level56_g1(&entries, p, 0);
+  newcode::detail::schedule_level56_rows(&entries, p);
+  newcode::detail::route_level56_g1(&entries, p);
   require(count_action(entries, Level56FinalAction::HisoDecode) == 8,
           "HISO reclaim must be capped by HISO capacity");
   require(count_action(entries, Level56FinalAction::SisoDecode) == 48,
@@ -122,8 +122,8 @@ void check_siso_only_rows_never_use_hiso() {
   newcode::Params p;
   p.LEVEL56_SHARED_HISO_ACTIVE = 8;
   p.LEVEL56_SHARED_SISO_ACTIVE = 1;
-  newcode::detail::schedule_level56_rows(&entries, p, 0);
-  newcode::detail::route_level56_g1(&entries, p, 0);
+  newcode::detail::schedule_level56_rows(&entries, p);
+  newcode::detail::route_level56_g1(&entries, p);
   require(entries[0].final_action != Level56FinalAction::HisoDecode,
           "SisoOnly row must never be reclaimed to HISO");
   require_state_conservation(entries);
@@ -137,8 +137,8 @@ void check_early_stop_does_not_consume_shared_capacity() {
   newcode::Params p;
   p.LEVEL56_SHARED_HISO_ACTIVE = 0;
   p.LEVEL56_SHARED_SISO_ACTIVE = 1;
-  newcode::detail::schedule_level56_rows(&entries, p, 0);
-  newcode::detail::route_level56_g1(&entries, p, 0);
+  newcode::detail::schedule_level56_rows(&entries, p);
+  newcode::detail::route_level56_g1(&entries, p);
   require(entries[0].final_action == Level56FinalAction::EarlyStopAction,
           "early-stop row must keep its action through shared scheduling");
   require(entries[0].assigned_core == -1,
@@ -146,6 +146,58 @@ void check_early_stop_does_not_consume_shared_capacity() {
   require(count_action(entries, Level56FinalAction::SisoDecode) == 1,
           "early-stop row must not consume SISO capacity");
   require_state_conservation(entries);
+}
+
+void check_single_level_scheduler_bypasses_other_level() {
+  auto entries = make_entries(4);
+  newcode::Params p;
+  p.LEVEL56_SHARED_HISO_ACTIVE = 1;
+  p.LEVEL56_SHARED_SISO_ACTIVE = 1;
+  newcode::detail::schedule_level56_rows(&entries, p, 6);
+  newcode::detail::route_level56_g1(&entries, p, 6);
+
+  for (const auto& entry : entries) {
+    if (entry.source_level == 5) {
+      require(entry.final_action == Level56FinalAction::Unscheduled,
+              "single-level mode must bypass every unselected row");
+      require(entry.assigned_core == -1,
+              "bypassed Level 5 row must not be routed to a shared core");
+    }
+  }
+  require(count_action(entries, Level56FinalAction::HisoDecode) == 1,
+          "single-level mode must allocate HISO only to the selected level");
+  require(count_action(entries, Level56FinalAction::SisoDecode) == 1,
+          "single-level mode must allocate SISO only to the selected level");
+  require_state_conservation(entries);
+}
+
+void check_single_level_selection_uses_fewer_early_stops() {
+  newcode::TileEarlyStopResult early5;
+  newcode::TileEarlyStopResult early6;
+  newcode::Params p;
+  p.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE = true;
+
+  early5.rows_passed = 3;
+  early6.rows_passed = 7;
+  require(
+      newcode::detail::select_level56_decode_level(early5, early6, p) == 5,
+      "single-level selection must choose Level 5 when it has fewer early stops");
+
+  early5.rows_passed = 9;
+  early6.rows_passed = 2;
+  require(
+      newcode::detail::select_level56_decode_level(early5, early6, p) == 6,
+      "single-level selection must choose Level 6 when it has fewer early stops");
+
+  early5.rows_passed = 4;
+  early6.rows_passed = 4;
+  p.LEVEL56_PRIORITY_MODE = newcode::Level56PriorityMode::Level5First;
+  require(newcode::detail::select_level56_decode_level(early5, early6, p) == 5,
+          "Level5First tie-breaking must select Level 5");
+
+  p.LEVEL56_PRIORITY_MODE = newcode::Level56PriorityMode::Level6First;
+  require(newcode::detail::select_level56_decode_level(early5, early6, p) == 6,
+          "Level6First tie-breaking must select Level 6");
 }
 
 void check_common_parameter_validation() {
@@ -159,8 +211,19 @@ void check_common_parameter_validation() {
   p.HYBRID_USE_FAST_CLASSIFIER = true;
   newcode::detail::validate_level56_shared_config(p);
 
-  p.EARLY_STOP_ACTION_MODE_LIST = {1, 1, 1, 1, 1, 2};
+  auto invalid_priority = p;
+  invalid_priority.LEVEL56_PRIORITY_MODE =
+      static_cast<newcode::Level56PriorityMode>(0);
   bool rejected = false;
+  try {
+    newcode::detail::validate_level56_shared_config(invalid_priority);
+  } catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "removed priority value 0 must be rejected");
+
+  p.EARLY_STOP_ACTION_MODE_LIST = {1, 1, 1, 1, 1, 2};
+  rejected = false;
   try {
     newcode::detail::validate_level56_shared_config(p);
   } catch (const std::invalid_argument&) {
@@ -253,8 +316,8 @@ void check_level_priority_modes() {
     p.LEVEL56_PRIORITY_MODE = mode;
     p.LEVEL56_SHARED_HISO_ACTIVE = 1;
     p.LEVEL56_SHARED_SISO_ACTIVE = 7;
-    newcode::detail::schedule_level56_rows(&entries, p, 0);
-    newcode::detail::route_level56_g1(&entries, p, 0);
+    newcode::detail::schedule_level56_rows(&entries, p);
+    newcode::detail::route_level56_g1(&entries, p);
     const auto selected = std::find_if(
         entries.begin(), entries.end(), [](const auto& entry) {
           return entry.final_action == Level56FinalAction::HisoDecode;
@@ -312,28 +375,6 @@ void check_end_to_end_single_window() {
   }
 }
 
-void check_fair_alternates_start_level() {
-  for (std::size_t invocation : {0u, 1u}) {
-    auto entries = make_entries(4);
-    newcode::Params p;
-    p.LEVEL56_PRIORITY_MODE = newcode::Level56PriorityMode::Fair;
-    p.LEVEL56_FAIR_ALTERNATE_START = true;
-    p.LEVEL56_SHARED_HISO_ACTIVE = 1;
-    p.LEVEL56_SHARED_SISO_ACTIVE = 7;
-    newcode::detail::schedule_level56_rows(&entries, p, invocation);
-    newcode::detail::route_level56_g1(&entries, p, invocation);
-    const auto selected = std::find_if(
-        entries.begin(), entries.end(), [](const auto& entry) {
-          return entry.final_action == Level56FinalAction::HisoDecode;
-        });
-    const std::size_t expected_level = invocation == 0 ? 5u : 6u;
-    require(selected != entries.end() && selected->source_level == expected_level,
-            "fair mode did not alternate its start level");
-    require(selected->source_local_row == 0,
-            "fair mode must use ascending source_local_row");
-  }
-}
-
 }  // namespace
 
 int main() {
@@ -342,11 +383,12 @@ int main() {
     check_hiso_only_handles_siso_overflow();
     check_siso_only_rows_never_use_hiso();
     check_early_stop_does_not_consume_shared_capacity();
+    check_single_level_scheduler_bypasses_other_level();
+    check_single_level_selection_uses_fewer_early_stops();
     check_common_parameter_validation();
     check_per_level_siso_postprocessing();
     check_unscheduled_history_is_unchanged();
     check_level_priority_modes();
-    check_fair_alternates_start_level();
     check_end_to_end_single_window();
     std::cout << "LEVEL56 shared scheduler regression checks passed\n";
     return 0;

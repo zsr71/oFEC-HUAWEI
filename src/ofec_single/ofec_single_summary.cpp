@@ -182,8 +182,9 @@ void log_run_overview(const Config& cfg,
       << params.LEVEL56_SHARED_SISO_ACTIVE
       << ", priority_mode = "
       << static_cast<int>(params.LEVEL56_PRIORITY_MODE)
-      << ", alternate_start = "
-      << (params.LEVEL56_FAIR_ALTERNATE_START ? "ON" : "OFF") << "\n";
+      << ", single_level_select = "
+      << (params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE ? "ON" : "OFF")
+      << "\n";
   log << "[INFO] Dump quantized LLR = "
       << (cfg.dump_quantized_llr ? "ON" : "OFF");
   if (cfg.dump_quantized_llr) {

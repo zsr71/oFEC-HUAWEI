@@ -6,6 +6,7 @@
 
 - 输入准备和 64 行共享调度视图的建立；
 - early-stop 与 hybrid classify-only；
+- 可选的基于 early-stop 命中数的动态单级选择；
 - 跨级排序、HISO 回收和 SISO 分配；
 - HISO/SISO core 路由与执行；
 - 按来源拆回第五级和第六级；
@@ -25,7 +26,7 @@ src/rx/ofec/detail/ofec_tile_writeback.ipp
 
 ## 2. 一句话概括
 
-第五级和第六级仍分别准备各自的 32 行输入，但把两级共 64 行的分类结果、资源资格和调度状态放到一个共享表中，统一竞争一组 HISO/SISO 资源；执行时再按来源级别分别使用各自的 beta，执行后分别 normalize、乘各自的 alpha，并按各自地址映射写回。
+第五级和第六级仍分别准备各自的 32 行输入并分别完成 early-stop 检测。默认模式下，两级共 64 行的分类结果、资源资格和调度状态进入同一张共享表，统一竞争一组 HISO/SISO 资源；动态单级选择打开时，只允许 early-stop 命中较少的一级参与分类、MUX 和解码，未选中级的 32 行全部保持 `Unscheduled`。执行结果仍按来源级别使用各自的 beta、alpha 和地址映射完成后处理与写回。
 
 因此，共享和独立的边界如下：
 
@@ -34,16 +35,18 @@ src/rx/ofec/detail/ofec_tile_writeback.ipp
 | 从`work_llr`、`channel_llr` 取 tile | 分别进行                                                     |
 | `prepare_tile_inputs()`               | 分别进行                                                     |
 | early-stop 检测和 bind group            | 分别进行，bind 不跨级                                        |
-| hybrid classify-only 结果               | 合入同一张 64 行调度表                                       |
-| 分类优先级和跨级优先级                  | 统一处理                                                     |
-| HISO/SISO 容量                          | 两级共享                                                     |
-| core 编号分配                           | 两级统一编号                                                 |
-| HISO/SISO 实际执行                      | 按来源级别分别执行                                           |
+| 动态单级选择                            | 可选；比较两级 effective early-stop 命中数，选择命中较少者   |
+| hybrid classify-only 结果               | 默认两级合并；动态模式只分类选中级                           |
+| 64 行 dispatch 表                       | 始终保留两级各 32 个 entry；未选中级填 bypass entry          |
+| 分类优先级和跨级优先级                  | 对参与级统一处理                                             |
+| HISO/SISO 容量                          | 参与级共享；动态模式下只有选中级使用                         |
+| core 编号分配                           | 对参与级统一编号；未选中级保持 -1                            |
+| HISO/SISO 实际执行                      | 只对参与级按来源分别执行                                     |
 | SISO beta                               | 使用来源级别自己的 beta                                      |
-| normalize                               | 开启时，第五、六级分别统计和缩放，只包含本级已产出的 SISO 行 |
+| normalize                               | 开启时，各参与级分别统计和缩放，只包含本级已产出的 SISO 行   |
 | alpha 和量化                            | 使用来源级别自己的参数                                       |
 | 地址映射和 tile 写回                    | 分别进行                                                     |
-| `last_tile_history_accum`             | 只由第六级捕获，因为第六级是最后一个 soft tile               |
+| `last_tile_history_accum`             | 只由第六级的 produced 行捕获；L6 未选中时本次不更新           |
 
 ## 3. 启用条件和资源配置
 
@@ -54,8 +57,10 @@ LEVEL56_SHARED_ENABLE
 LEVEL56_SHARED_HISO_ACTIVE
 LEVEL56_SHARED_SISO_ACTIVE
 LEVEL56_PRIORITY_MODE
-LEVEL56_FAIR_ALTERNATE_START
+LEVEL56_SINGLE_LEVEL_SELECT_ENABLE
 ```
+
+`LEVEL56_SINGLE_LEVEL_SELECT_ENABLE=false` 保持原来的两级共同调度行为。设为 `true` 后，每个共享 invocation 都根据第五、六级本次 effective early-stop 命中数动态选择一级；它不是固定的 Level 5-only 或 Level 6-only 开关。
 
 启用后，当前实现要求：
 
@@ -111,7 +116,7 @@ decode 开始时置 0
 不在新窗口重新置 0
 ```
 
-该编号目前只影响 `Fair` 模式是否交替起始级。未来并行化时不要求依赖该编号记录执行顺序。
+该编号作为共享批次的 trace/统计标识写入结果，不参与动态单级选择、候选排序或 MUX 路由。未来并行化时不要求依赖该编号记录执行顺序。
 
 ## 5. 第五/六级共享内部总流程图
 
@@ -128,10 +133,15 @@ flowchart TD
     C5 --> D5[Level 5 独立 early-stop 和本级 bind group]
     C6 --> D6[Level 6 独立 early-stop 和本级 bind group]
 
-    D5 --> E[建立 64 行 dispatch 表: L5 32行在前, L6 32行在后]
-    D6 --> E
+    D5 --> DS{动态单级选择是否开启}
+    D6 --> DS
+    DS -- 否 --> E[两级均参与: 建立 64 行正常 dispatch 表]
+    DS -- 是 --> CMP[比较 L5/L6 effective early-stop 命中数]
+    CMP --> PICK[选择命中较少的一级; 相等时 Level6First 选 L6, 其余选 L5]
+    PICK --> E1[选中级建立正常 entry; 未选中级建立 32 行 bypass entry]
 
-    E --> F{该行 early-stop 命中?}
+    E --> F{参与调度的行 early-stop 命中?}
+    E1 --> F
     F -- 是 --> G[final_action = EarlyStopAction]
     F -- 否 --> H[hybrid classify-only]
     H --> I{分类结果}
@@ -139,23 +149,31 @@ flowchart TD
     I -- Suspicious / HardFail --> K[eligibility = SisoOnly]
     I -- Clean --> X[抛出错误: Clean 应已被 early-stop 处理]
 
-    G --> L[64 行统一排序和资源调度]
+    G --> L[对参与级 entry 统一排序和资源调度]
     J --> L
     K --> L
+    E1 --> U[未选中级 32 行全部 Unscheduled]
 
-    L --> M[先按 SISO 溢出量选择需要回收的 HISO 行]
+    L --> M[只对参与调度的级按 SISO 溢出量选择 HISO 行]
     M --> N[其余可解码行按顺序分配 SISO]
     N --> O[容量外的行保持 Unscheduled]
     O --> P[G=1 路由: HISO/SISO 分别连续分配 core id]
+    U --> P
 
     P --> Q5[按 source_level 取回 Level 5 的 32 行]
     P --> Q6[按 source_level 取回 Level 6 的 32 行]
 
-    Q5 --> R5[使用 params5 执行 EarlyStop/HISO/SISO]
-    Q6 --> R6[使用 params6 执行 EarlyStop/HISO/SISO]
+    Q5 --> R5{L5 是否被选中或单级选择关闭}
+    Q6 --> R6{L6 是否被选中或单级选择关闭}
+    R5 -- 是 --> X5[使用 params5 执行 EarlyStop/HISO/SISO]
+    R5 -- 否 --> Y5[跳过 L5 slice; produced 全 false]
+    R6 -- 是 --> X6[使用 params6 执行 EarlyStop/HISO/SISO]
+    R6 -- 否 --> Y6[跳过 L6 slice; produced 全 false]
 
-    R5 --> S5[若开启 normalize: 只处理 L5 已产出的 SisoDecode 行]
-    R6 --> S6[若开启 normalize: 只处理 L6 已产出的 SisoDecode 行]
+    X5 --> S5[若开启 normalize: 只处理 L5 已产出的 SisoDecode 行]
+    X6 --> S6[若开启 normalize: 只处理 L6 已产出的 SisoDecode 行]
+    Y5 --> U5
+    Y6 --> U6
 
     S5 --> T5[所有 L5 produced 行乘 alpha5 并量化]
     S6 --> T6[所有 L6 produced 行乘 alpha6 并量化]
@@ -221,6 +239,18 @@ entries[32..63] 来自 Level 6 local row 0..31
 
 `source_level` 和 `source_local_row` 从建立以后一直保留到执行和写回，确保两级共享资源后仍能恢复来源语义。
 
+动态单级选择打开时，64 个 entry 的数量和来源索引保持不变，但未选中级不再调用普通的 `append_level56_entries()`，而是调用 `append_level56_bypassed_entries()` 建立 32 个旁路条目：
+
+```text
+early_stop_hit = false
+hybrid_class   = None
+eligibility    = None
+final_action   = Unscheduled
+assigned_core  = -1
+```
+
+因此未选中级仍可出现在调试和统计所需的 64 行 dispatch 表中，但不会进入后续分类或资源竞争。
+
 ## 7. Early-stop：每级独立判断
 
 第五级和第六级分别调用 `detect_level56_early_stop()`。处理顺序是：
@@ -239,7 +269,7 @@ L5[0..3], L5[4..7], ..., L5[28..31]
 L6[0..3], L6[4..7], ..., L6[28..31]
 ```
 
-early-stop 命中的行直接设置：
+在默认两级共同调度模式下，或者在动态模式的选中级中，early-stop 命中的行直接设置：
 
 ```text
 early_stop_hit = true
@@ -248,9 +278,34 @@ final_action = EarlyStopAction
 
 这些行不再进入 hybrid 分类，不参与 HISO/SISO 容量竞争，也不分配共享 core。
 
+### 7.1 基于 early-stop 命中数的动态单级选择
+
+当 `LEVEL56_SINGLE_LEVEL_SELECT_ENABLE=true` 时，两级完成 effective early-stop 计算后，调用 `select_level56_decode_level()`。选择规则为：
+
+```text
+effective_hits5 = early5.effective.rows_passed
+effective_hits6 = early6.effective.rows_passed
+
+effective_hits5 < effective_hits6 -> 选择 Level 5
+effective_hits6 < effective_hits5 -> 选择 Level 6
+```
+
+也就是选择 early-stop 命中较少、剩余待解码行更多的一级。这里使用 effective 结果而不是 raw 结果，因此 condition mode 1 的 group binding 会影响最终级别选择。
+
+两级命中数相等时，规则固定为：
+
+| `LEVEL56_PRIORITY_MODE` | 相等时选择规则 |
+| ----------------------- | -------------- |
+| `Level5First`           | 选择 Level 5   |
+| `Level6First`           | 选择 Level 6   |
+
+选择发生在 hybrid classify-only 之前。选中级按正常 entry 构造和后续流程运行；未选中级直接构造 bypass entry，其 early-stop 检测结果只用于本次级别选择和统计，不执行对应的 `EarlyStopAction`。
+
+这个功能不会取消选择前的输入准备和 early-stop 检测：当前实现仍会准备并检查两级各 32 行。它减少的是未选中级后续的 hybrid 分类、HISO/SISO 竞争、MUX 路由和 decoder 执行。
+
 ## 8. Hybrid classify-only 与资源资格
 
-对每个未 early-stop 的行，代码从对应 `prep.lin_matrix` 取出 256 个 `Lin`，调用 classify-only classifier。该阶段只分类，不翻 bit、不执行最终 hard decode，也不生成可写回输出。
+对每个参与调度且未 early-stop 的行，代码从对应 `prep.lin_matrix` 取出 256 个 `Lin`，调用 classify-only classifier。动态单级选择打开时，未选中级不执行本步骤。该阶段只分类，不翻 bit、不执行最终 hard decode，也不生成可写回输出。
 
 当前分类到资源资格的映射是：
 
@@ -269,7 +324,7 @@ final_action = EarlyStopAction
 
 ## 9. 统一排序规则
 
-调度前先生成 64 行候选顺序。排序有两层，先比较分类，再比较第五/六级优先级。
+调度前先生成候选顺序。默认模式下候选来自两级；动态单级选择打开时，`order_level56_candidates()` 会根据 `selected_level` 排除未选中级，只有选中级进入候选顺序。排序仍有两层，先比较分类，再比较第五/六级优先级；单级模式下第二层自然只剩选中级内部的 local row 顺序。
 
 第一层分类顺序固定为：
 
@@ -288,31 +343,19 @@ ParityOnly
 | --------------- | ------------------------------------------------ |
 | `Level5First` | 所有 L5 行在前，再放所有 L6 行                   |
 | `Level6First` | 所有 L6 行在前，再放所有 L5 行                   |
-| `Fair`        | L5/L6 交替取一行；起始级由配置和 invocation 决定 |
 
 无论使用哪种跨级模式，同一级、同一分类内部始终按 `source_local_row` 从小到大排列。
 
-`Fair` 模式的起始规则如下：
-
-```text
-LEVEL56_FAIR_ALTERNATE_START = false:
-    每个共享批次都从 Level 5 开始交替
-
-LEVEL56_FAIR_ALTERNATE_START = true:
-    偶数 shared_invocation 从 Level 5 开始
-    奇数 shared_invocation 从 Level 6 开始
-```
-
-该起始级会应用到本次 invocation 的每个分类组。某一级在某个分类中没有候选时，调度器直接取另一级，不保留空槽。
+某一级在某个分类中没有候选时，调度器直接处理另一级，不保留空槽。
 
 ## 10. SISO 优先和 HISO 回收算法
 
-当前算法的核心语义是：所有未 early-stop 行默认优先考虑 SISO，HISO 只接管 SISO 容量装不下的溢出行，并且只能接管 `HisoOrSiso` 行。
+当前算法的核心语义是：所有参与调度且未 early-stop 的行默认优先考虑 SISO，HISO 只接管 SISO 容量装不下的溢出行，并且只能接管 `HisoOrSiso` 行。动态单级模式下，参与调度的集合仅包含选中级。
 
 先统计：
 
 ```text
-soft_total     = 所有未 early-stop 行数
+soft_total     = 所有参与调度且未 early-stop 的行数
 flexible_total = 其中 eligibility == HisoOrSiso 的行数
 siso_capacity  = LEVEL56_SHARED_SISO_ACTIVE
 hiso_capacity  = LEVEL56_SHARED_HISO_ACTIVE
@@ -330,9 +373,20 @@ reclaim_count  = min(reclaim_needed, flexible_total, hiso_capacity)
 1. 按统一候选顺序扫描，把最前面的 `reclaim_count` 个 `HisoOrSiso` 行标记为 `HisoDecode`。
 2. 再按同一顺序扫描，把尚未分配且允许 SISO 的行依次标记为 `SisoDecode`，直到 SISO 容量用完；其余行保持 `Unscheduled`。
 
+动态单级模式下，scheduler 在上述两轮前还会强制确认：
+
+```text
+entry.source_level != selected_level
+    -> final_action = Unscheduled
+    -> 不计入 soft_total / flexible_total
+    -> 不出现在 ordered 候选列表
+```
+
+因此未选中级的 32 行不会占用任何 HISO/SISO 容量，也不会因为选中级没有用满容量而被补入。
+
 ```mermaid
 flowchart TD
-    A[统计全部未早停行 soft_total] --> B[计算 SISO 容量缺口 reclaim_needed]
+    A[统计参与级未早停行 soft_total] --> B[计算 SISO 容量缺口 reclaim_needed]
     B --> C[受 flexible_total 和 HISO 容量限制得到 reclaim_count]
     C --> D{reclaim_count 大于 0?}
     D -- 否 --> E[不使用 HISO]
@@ -348,7 +402,7 @@ flowchart TD
 
 ### 10.1 SISO 容量为 64 的行为
 
-两级总共最多 64 行，其中 early-stop 行还不占用 SISO。因此配置：
+默认模式下两级总共最多有 64 个参与行；动态单级模式下最多只有选中级的 32 个参与行。early-stop 行不占用 SISO，因此无论哪种模式，配置：
 
 ```text
 LEVEL56_SHARED_SISO_ACTIVE = 64
@@ -378,20 +432,32 @@ reclaim_count = 0
     SisoDecode -> 分配 SISO core 0, 1, 2, ...
 ```
 
-HISO 和 SISO 各自维护独立的 core 编号。`EarlyStopAction` 和 `Unscheduled` 不进入 MUX，`assigned_core` 保持 `-1`。
+HISO 和 SISO 各自维护独立的 core 编号。`EarlyStopAction` 和 `Unscheduled` 不进入 MUX，`assigned_core` 保持 `-1`。动态单级模式下，路由函数使用同一个 `selected_level` 再次过滤候选，因此未选中级不会被分配 HISO core 或 SISO core。
 
 调度阶段已经保证使用量不超过共享容量，所以 G=1 路由只做一次 code-to-core 编号映射，不再改变优先级和最终动作，也没有路由失败后的二次调度。
 
-## 12. 按来源执行：第五级和第六级分别跑一个 slice
+调度结束时还有一条单级模式不变量检查：未选中级每个 entry 的 `final_action` 必须仍为 `Unscheduled`，否则立即抛出逻辑错误。实际共享入口每次都新建 dispatch 表，旁路 entry 的 `assigned_core` 初值为 `-1`，路由阶段不会访问它们。
 
-完成统一调度和路由后，代码分别调用：
+## 12. 按来源执行：只运行参与级的 slice
+
+完成统一调度和路由后，是否调用本级 `execute_level56_slice()` 由 `selected_level` 决定：
 
 ```text
-execute_level56_slice(prep5, entries, source_level=5, ...)
-execute_level56_slice(prep6, entries, source_level=6, ...)
+selected_level == 0：单级选择关闭，执行 Level 5 和 Level 6 两个 slice
+selected_level == 5：只执行 Level 5 slice，跳过 Level 6 slice
+selected_level == 6：只执行 Level 6 slice，跳过 Level 5 slice
 ```
 
-每个 slice 都创建一张本级 `32 x 256` 的结果矩阵和 32 个 `produced_rows` 标志，只处理 `source_level` 与本级相同的 entry。
+`selected_level=0` 不是一个实际级别，而是“维持原来的两级共同执行”标记。被执行的每个 slice 都创建一张本级 `32 x 256` 结果矩阵和 32 个 `produced_rows` 标志，只处理 `source_level` 与本级相同的 entry。
+
+对于未选中级，代码不调用 `execute_level56_slice()`，而是保留入口处预先构造的空 decoder result：
+
+```text
+lout          = 32 x 256 空结果矩阵
+produced_rows = 32 个 false
+```
+
+所以未选中级既不执行 early-stop action 或 hybrid hard-finish，也不调用 soft decoder core。空结果只用于保持后面的统一写回接口。
 
 ### 12.1 四种 final action 的执行行为
 
@@ -401,6 +467,8 @@ execute_level56_slice(prep6, entries, source_level=6, ...)
 | `HisoDecode`      | 按`hybrid_class` 执行对应 hard-finish                | HISO            | 成功后为 true；失败抛出异常                                  |
 | `SisoDecode`      | 将本级该行状态设为`NeedSiso`，交给 soft decoder core | SISO            | 只有 soft core 实际产出后才为 true                           |
 | `Unscheduled`     | 不执行，不清零，不复制新结果                           | 否              | false                                                        |
+
+动态单级选择打开时，未选中级的 32 行全部属于最后一种：始终为 `Unscheduled`，不会转成 `NeedSiso`，不会进入 HISO 执行，也不会获得 HISO/SISO core。
 
 ### 12.2 HISO 行
 
@@ -428,7 +496,7 @@ SisoDecode 行 -> NeedSiso
 
 ## 13. 分级 normalize、alpha 和量化
 
-第五级和第六级执行完成后，各自在自己的 `32 x 256` 结果上调用后处理。顺序固定为：
+参与执行的第五级和/或第六级在自己的 `32 x 256` 结果上完成后处理。顺序固定为：
 
 ```text
 如果 normalize_extrinsic=true：
@@ -467,6 +535,8 @@ Level 6 produced 行乘 ALPHA_LIST[5]
 
 这一步不只作用于 SISO 行，也作用于本级已产出的 early-stop 和 HISO 行。最后再按当前 LLR 类型执行量化或裁剪。
 
+未选中级因为没有任何 `produced=true` 行，不参与 normalize 统计，也没有行执行有效的 alpha 缩放或量化。换言之，单级模式下这些后处理只对选中级产生实际作用。
+
 ## 14. 分级地址写回和历史信息
 
 两个输出 tile 都先复制对应输入：
@@ -476,7 +546,7 @@ tile_out5 = tile_in5
 tile_out6 = tile_in6
 ```
 
-随后分别调用 `writeback_tile()`：
+随后仍分别调用 `writeback_tile()`：
 
 ```text
 Level 5: writeback_tile(prep5, decoded5, params5, top5,
@@ -487,6 +557,12 @@ Level 6: writeback_tile(prep6, decoded6, params6, top6,
 ```
 
 写回使用每级 `TilePrepared` 中自己的 `row_local_lookup`、`row_global_lookup` 和 tile top 地址，把 256 位线性输出重新映射到本级二维 tile。
+
+这里“两级都调用写回”不等于“两级都产生新解码结果”。未选中级传入的是全 `produced=false` 的空 decoder result，因此 `writeback_tile()` 不覆盖该级的任何位置，最终严格保持：
+
+```text
+unselected tile_out == unselected tile_in
+```
 
 ### 14.1 `produced=false` 的隐式传播
 
@@ -508,13 +584,17 @@ Level 6: writeback_tile(prep6, decoded6, params6, top6,
 
 ### 14.2 为什么只由第六级捕获 history
 
-共享配置要求第五、六级都是 soft tile，并且第六级是窗口内最后一个 soft tile。为保持原有逐 tile 路径的最终 history 语义：
+共享配置要求第五、六级都是 soft tile，并且第六级是窗口内最后一个 soft tile。默认两级共同执行时，为保持原有逐 tile 路径的最终 history 语义：
 
 - 第五级结果正常写回自己的 `tile_out5`，但不捕获 `last_tile_history_accum`；
 - 第六级结果写回 `tile_out6`，同时对 produced 行捕获最后一级 history；
 - 外层再把第五级、随后第六级的 `tile_out` 写回全局 `work_llr`。
 
 整帧 decode 完成所有窗口后，最终输出仍按原流程由 `channel_llr + last_tile_history_llr` 合成。
+
+动态单级模式下需要特别注意当前行为：若 Level 6 未被选中，它的空 decoder result 中 `produced_rows` 全为 false，因此本次共享 invocation 不会通过 Level 6 写回更新 `last_tile_history_accum`。Level 5 即使被选中也仍使用 `capture_last_tile_history=false`，不会代替 Level 6 捕获 history。
+
+无论选择哪一级，Level 5 和 Level 6 的输入 tile 及 `TilePrepared` 都已在选择前完成物化；未选中级只是不进行选择后的分类、调度、MUX 和 decoder 执行。
 
 ## 15. 行状态守恒
 
@@ -531,8 +611,9 @@ Unscheduled
 
 ```mermaid
 stateDiagram-v2
-    [*] --> EarlyStopAction: early-stop hit
-    [*] --> Classified: not early-stop
+    [*] --> Unscheduled: dynamic 模式下级别未选中
+    [*] --> EarlyStopAction: 参与级 early-stop hit
+    [*] --> Classified: 参与级未 early-stop
     Classified --> HisoDecode: HisoOrSiso 且被回收至 HISO
     Classified --> SisoDecode: 可走 SISO 且容量可用
     Classified --> Unscheduled: 没有可用的合法容量
@@ -544,10 +625,13 @@ stateDiagram-v2
 
 调度器还会检查：
 
-- early-stop 命中与 `EarlyStopAction` 一一对应；
+- 对参与级，early-stop 命中与 `EarlyStopAction` 一一对应；
+- 对未选中级，32 行全部保持 `Unscheduled` 且 `assigned_core=-1`；
 - HISO 不接收无 HISO 资格的行；
 - SISO 不接收无 SISO 资格的行；
-- 两级合计 HISO/SISO 数量不超过共享容量。
+- 所有参与级合计 HISO/SISO 数量不超过共享容量。
+
+未选中级的 effective early-stop flags 仍在级别选择前真实计算，并保存在本级 early-stop 结果和统计中；但为了让 dispatch 表明确表达“该级完全旁路”，其 32 个 bypass entry 会刻意写成 `early_stop_hit=false`。因此，只有参与级需要满足 dispatch entry 中 `early_stop_hit` 与 `EarlyStopAction` 的一一对应关系。
 
 ## 16. 一个容量示例
 
@@ -580,6 +664,28 @@ Unscheduled                                      -> 0 行
 
 若 HISO capacity 改为 4，则只有 4 行被 HISO 回收，SISO 仍最多处理 48 行，最终有 4 行 `Unscheduled`。具体落在哪一级、哪些 local row，由分类优先级、`LEVEL56_PRIORITY_MODE` 和本级 local row 顺序共同决定。
 
+### 16.1 动态单级选择示例
+
+假设打开 `LEVEL56_SINGLE_LEVEL_SELECT_ENABLE`，某次共享 invocation 的 effective early-stop 结果为：
+
+```text
+Level 5 effective early-stop hits = 6
+Level 6 effective early-stop hits = 11
+```
+
+因为 Level 5 命中较少，本次选择 Level 5：
+
+```text
+selected_level = 5
+Level 5：按正常流程处理 6 个 EarlyStopAction 和其余 26 个分类候选
+Level 6：32 行全部 Unscheduled，assigned_core 全为 -1
+资源范围：只有 Level 5 的候选竞争 shared HISO=24 / shared SISO=24
+执行范围：只调用 execute_level56_slice(Level 5)
+输出结果：Level 6 tile_out 保持等于 tile_in
+```
+
+如果两级都是 8 个 effective hit，则按 `LEVEL56_PRIORITY_MODE` 决胜：`Level6First` 选择 Level 6，`Level5First` 选择 Level 5。动态单级选择的平局处理不使用 `shared_invocation`。
+
 ## 17. 代码调用关系
 
 ```text
@@ -591,11 +697,16 @@ ofec_decode_llr_impl
             -> prepare_tile_inputs(L5)
             -> prepare_tile_inputs(L6)
             -> detect_level56_early_stop(L5/L6)
-            -> append_level56_entries(L5/L6)
-            -> schedule_level56_rows
-            -> route_level56_g1
-            -> execute_level56_slice(L5)
-            -> execute_level56_slice(L6)
+            -> select_level56_decode_level
+                 -> 开关关闭: selected_level=0
+                 -> 开关打开: 根据 effective hit 数选择 L5 或 L6
+            -> 参与级 append_level56_entries
+            -> 未选中级 append_level56_bypassed_entries
+               （selected_level=0 时两级都走正常 append）
+            -> schedule_level56_rows(selected_level)
+            -> route_level56_g1(selected_level)
+            -> 只对参与级 execute_level56_slice
+               （selected_level=0 时执行 L5 和 L6）
             -> writeback_tile(L5, capture_history=false)
             -> writeback_tile(L6, capture_history=true)
             -> build_level56_tile_result(L5/L6)
@@ -604,15 +715,17 @@ ofec_decode_llr_impl
 
 ## 18. 当前实现的关键结论
 
-1. 第五级和第六级共享的是 64 行统一优先级、HISO/SISO 总容量和 core 编号，不共享一张物理 decoder 输入矩阵。
-2. 两级输入在任一级写回之前分别准备，第六级不依赖第五级本次即时写回。
-3. clean 行由 early-stop 提前处理，classify-only 再返回 `Clean` 会被视为实现或配置错误。
-4. 固定分类优先级为 `ParityOnly -> OneMain -> OneMainPlusParity -> TwoMain -> Suspicious -> HardFail`。
-5. 同一分类、同一级内部固定按 `source_local_row` 从小到大排序。
-6. SISO 是默认路径；HISO 只接管 SISO 溢出，而且只接管 `HisoOrSiso` 行。
-7. `Shared SISO=64` 时 `reclaim_count=0`，不会使用 HISO。
-8. SISO 执行按来源分别使用 beta；开启 normalize 时，两级分别 normalize 自己已产出的 SISO 行。
-9. 每级所有 produced 行再乘本级 alpha、量化，并按本级地址映射写回。
-10. `Unscheduled` 通过 `produced=false` 保持输入和 history，不需要额外处理。
-11. 第五级不捕获最后一级 history，第六级捕获 produced 行的 history。
-12. 主 decode 中 `shared_invocation` 跨窗口全局递增，只用于当前串行 `Fair` 起始级交替。
+1. 开关关闭时，第五级和第六级共享 64 行统一优先级、HISO/SISO 总容量和 core 编号；它们不共享一张物理 decoder 输入矩阵。
+2. 开关打开时，每次比较两级 effective early-stop 命中数，选择命中较少的一级；相等时由跨级优先级模式决定。
+3. 未选中级的 32 行全部为 `Unscheduled`，不参与 classify-only、HISO/SISO 容量竞争和 MUX，不获得 core，也不执行 decoder slice。
+4. 两级输入准备和 early-stop 检测都发生在级别选择前，因此当前功能减少的是选择后的计算与 MUX 压力，不减少最前面的两级输入物化。
+5. clean 行由 early-stop 提前处理，classify-only 再返回 `Clean` 会被视为实现或配置错误。
+6. 固定分类优先级为 `ParityOnly -> OneMain -> OneMainPlusParity -> TwoMain -> Suspicious -> HardFail`。
+7. 同一分类、同一级内部固定按 `source_local_row` 从小到大排序。
+8. SISO 是默认路径；HISO 只接管 SISO 溢出，而且只接管 `HisoOrSiso` 行。
+9. `Shared SISO=64` 时 `reclaim_count=0`，不会使用 HISO。
+10. SISO 执行按来源分别使用 beta；开启 normalize 时，各参与级分别 normalize 自己已产出的 SISO 行。
+11. 每级所有 produced 行再乘本级 alpha、量化，并按本级地址映射写回；未选中级因全 `produced=false` 而保持 `tile_out == tile_in`。
+12. 第五级不捕获最后一级 history；第六级只捕获其 produced 行的 history。若第六级未选中，本次 invocation 不更新 `last_tile_history_accum`。
+13. 默认 `LEVEL56_SINGLE_LEVEL_SELECT_ENABLE=false`，原来的两级共同调度和执行行为保持不变。
+14. 主 decode 中 `shared_invocation` 跨窗口全局递增，只作为 trace/统计中的共享批次编号，不参与级别选择、候选排序或 MUX 路由。

@@ -214,7 +214,8 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.LEVEL56_SHARED_HISO_ACTIVE = cfg.level56_shared_hiso_active;
   params.LEVEL56_SHARED_SISO_ACTIVE = cfg.level56_shared_siso_active;
   params.LEVEL56_PRIORITY_MODE = cfg.level56_priority_mode;
-  params.LEVEL56_FAIR_ALTERNATE_START = cfg.level56_fair_alternate_start;
+  params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE =
+      cfg.level56_single_level_select_enable;
   if (params.LEVEL56_SHARED_HISO_ACTIVE < 0 ||
       params.LEVEL56_SHARED_HISO_ACTIVE > 64 ||
       params.LEVEL56_SHARED_SISO_ACTIVE < 0 ||
