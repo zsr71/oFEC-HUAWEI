@@ -171,6 +171,65 @@ void check_single_level_scheduler_bypasses_other_level() {
   require_state_conservation(entries);
 }
 
+void check_single_level_preserves_unselected_early_stop_actions() {
+  auto entries = make_entries(4);
+  entries[0].early_stop_hit = true;
+  entries[0].eligibility = Level56Eligibility::None;
+  entries[0].final_action = Level56FinalAction::EarlyStopAction;
+
+  newcode::Params p;
+  p.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE = true;
+  p.LEVEL56_SHARED_HISO_ACTIVE = 1;
+  p.LEVEL56_SHARED_SISO_ACTIVE = 1;
+  newcode::detail::schedule_level56_rows(&entries, p, 6);
+  newcode::detail::route_level56_g1(&entries, p, 6);
+
+  require(entries[0].final_action == Level56FinalAction::EarlyStopAction,
+          "unselected early-stop hit must retain its action");
+  require(entries[0].assigned_core == -1,
+          "unselected early-stop action must not consume a shared core");
+  for (std::size_t index = 1; index < 4; ++index) {
+    require(entries[index].final_action == Level56FinalAction::Unscheduled,
+            "unselected non-hit row must remain unscheduled");
+  }
+  require(count_action(entries, Level56FinalAction::HisoDecode) == 1,
+          "preserved early-stop action must not consume HISO capacity");
+  require(count_action(entries, Level56FinalAction::SisoDecode) == 1,
+          "preserved early-stop action must not consume SISO capacity");
+  require_state_conservation(entries);
+}
+
+void check_bypassed_slice_executes_only_preserved_early_stop_actions() {
+  newcode::detail::TilePrepared<float> prep;
+  prep.lin_matrix = matrix::Matrix<float>(2, newcode::Params::BCH_N);
+  prep.lch_matrix = matrix::Matrix<float>(2, newcode::Params::BCH_N);
+  prep.row_local_lookup = {0, 1};
+  prep.row_global_lookup = {0, 1};
+  prep.params_for_core.EARLY_STOP_ACTION_MODE = 1;
+  prep.params_for_core.EARLY_STOP_ACTION_SIGN_BETA = 3.0f;
+
+  newcode::TileEarlyStopResult early_stop;
+  early_stop.row_passed_flags = {true, false};
+  std::vector<Level56DispatchEntry> entries;
+  newcode::detail::append_level56_bypassed_entries(
+      prep, early_stop, true, 5, &entries);
+
+  require(entries.size() == 2 && entries[0].early_stop_hit &&
+              entries[0].final_action == Level56FinalAction::EarlyStopAction,
+          "bypassed slice must preserve the detected early-stop hit");
+  require(!entries[1].early_stop_hit &&
+              entries[1].final_action == Level56FinalAction::Unscheduled,
+          "bypassed slice must leave a non-hit row unscheduled");
+
+  observed_core_betas.clear();
+  const auto decoded = newcode::detail::execute_level56_slice(
+      prep, entries, 5, false, &controlled_soft_core);
+  require(decoded.produced_rows == std::vector<bool>({true, false}),
+          "only the preserved early-stop row may produce output");
+  require(observed_core_betas.empty(),
+          "unselected early-stop execution must not call the SISO core");
+}
+
 void check_single_level_selection_uses_fewer_early_stops() {
   newcode::TileEarlyStopResult early5;
   newcode::TileEarlyStopResult early6;
@@ -384,6 +443,8 @@ int main() {
     check_siso_only_rows_never_use_hiso();
     check_early_stop_does_not_consume_shared_capacity();
     check_single_level_scheduler_bypasses_other_level();
+    check_single_level_preserves_unselected_early_stop_actions();
+    check_bypassed_slice_executes_only_preserved_early_stop_actions();
     check_single_level_selection_uses_fewer_early_stops();
     check_common_parameter_validation();
     check_per_level_siso_postprocessing();

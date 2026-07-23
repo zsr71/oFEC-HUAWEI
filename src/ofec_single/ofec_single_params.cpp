@@ -216,6 +216,8 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.LEVEL56_PRIORITY_MODE = cfg.level56_priority_mode;
   params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE =
       cfg.level56_single_level_select_enable;
+  params.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE =
+      cfg.level56_unselected_early_stop_action_enable;
   if (params.LEVEL56_SHARED_HISO_ACTIVE < 0 ||
       params.LEVEL56_SHARED_HISO_ACTIVE > 64 ||
       params.LEVEL56_SHARED_SISO_ACTIVE < 0 ||

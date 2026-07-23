@@ -224,11 +224,15 @@ inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
   const auto ordered = order_level56_candidates(
       *entries, p.LEVEL56_PRIORITY_MODE, selected_level);
 
-  // The unselected level is bypassed explicitly so it cannot consume shared
-  // HISO/SISO capacity, including rows that passed early-stop detection.
+  // The unselected level cannot consume shared HISO/SISO capacity. An
+  // explicitly enabled early-stop action is preserved because it uses neither.
   if (selected_level != 0) {
     for (auto& entry : *entries) {
-      if (entry.source_level != selected_level) {
+      const bool preserve_early_stop_action =
+          p.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE &&
+          entry.early_stop_hit;
+      if (entry.source_level != selected_level &&
+          !preserve_early_stop_action) {
         entry.final_action = Level56FinalAction::Unscheduled;
       }
     }
@@ -282,7 +286,12 @@ inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
   std::size_t final_siso_count = 0;
   for (const auto& entry : *entries) {
     if (selected_level != 0 && entry.source_level != selected_level) {
-      if (entry.final_action != Level56FinalAction::Unscheduled) {
+      const auto expected_action =
+          p.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE &&
+                  entry.early_stop_hit
+              ? Level56FinalAction::EarlyStopAction
+              : Level56FinalAction::Unscheduled;
+      if (entry.final_action != expected_action) {
         throw std::logic_error(
             "LEVEL56 single-level mode did not bypass the unselected level");
       }
@@ -406,6 +415,8 @@ void append_level56_entries(const TilePrepared<LLR>& prep,
 template <typename LLR>
 void append_level56_bypassed_entries(
     const TilePrepared<LLR>& prep,
+    const TileEarlyStopResult& early_stop,
+    bool preserve_early_stop_action,
     std::size_t source_level,
     std::vector<Level56DispatchEntry>* entries) {
   for (std::size_t row = 0; row < prep.lin_matrix.rows(); ++row) {
@@ -414,10 +425,15 @@ void append_level56_bypassed_entries(
     entry.source_level = source_level;
     entry.source_local_row = row;
     entry.source_global_row = prep.row_global_lookup[row];
-    entry.early_stop_hit = false;
+    entry.early_stop_hit =
+        preserve_early_stop_action &&
+        row < early_stop.row_passed_flags.size() &&
+        early_stop.row_passed_flags[row];
     entry.hybrid_class = HybridRowClass::None;
     entry.eligibility = Level56Eligibility::None;
-    entry.final_action = Level56FinalAction::Unscheduled;
+    entry.final_action = entry.early_stop_hit
+                             ? Level56FinalAction::EarlyStopAction
+                             : Level56FinalAction::Unscheduled;
     entries->push_back(entry);
   }
 }
@@ -440,7 +456,8 @@ execute_level56_slice(
   std::vector<bool> normalize_rows(rows, false);
 
   for (const auto& entry : entries) {
-    if (entry.source_level != source_level) {
+    if (entry.source_level != source_level ||
+        entry.final_action == Level56FinalAction::Unscheduled) {
       continue;
     }
     const std::size_t row = entry.source_local_row;
@@ -578,13 +595,19 @@ Level56SharedResult<LLR> process_level56_shared(
 
   std::vector<Level56DispatchEntry> entries;
   entries.reserve(rows * 2u);
+  const bool preserve_unselected_early_stop_action =
+      params5.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE;
   if (selected_level != 0 && selected_level != 5) {
-    append_level56_bypassed_entries(prep5, 5, &entries);
+    append_level56_bypassed_entries(
+        prep5, early5.effective, preserve_unselected_early_stop_action,
+        5, &entries);
   } else {
     append_level56_entries(prep5, early5.effective, 5, &entries);
   }
   if (selected_level != 0 && selected_level != 6) {
-    append_level56_bypassed_entries(prep6, 6, &entries);
+    append_level56_bypassed_entries(
+        prep6, early6.effective, preserve_unselected_early_stop_action,
+        6, &entries);
   } else {
     append_level56_entries(prep6, early6.effective, 6, &entries);
   }
@@ -595,14 +618,16 @@ Level56SharedResult<LLR> process_level56_shared(
   chase::DecoderCoreResult<SharedCoreLLR> decoded5{
       matrix::Matrix<float>(prep5.lin_matrix.rows(), prep5.lin_matrix.cols()),
       std::vector<bool>(prep5.lin_matrix.rows(), false)};
-  if (selected_level == 0 || selected_level == 5) {
+  if (selected_level == 0 || selected_level == 5 ||
+      preserve_unselected_early_stop_action) {
     decoded5 = execute_level56_slice(
         prep5, entries, 5, normalize_extrinsic, core_fn);
   }
   chase::DecoderCoreResult<SharedCoreLLR> decoded6{
       matrix::Matrix<float>(prep6.lin_matrix.rows(), prep6.lin_matrix.cols()),
       std::vector<bool>(prep6.lin_matrix.rows(), false)};
-  if (selected_level == 0 || selected_level == 6) {
+  if (selected_level == 0 || selected_level == 6 ||
+      preserve_unselected_early_stop_action) {
     decoded6 = execute_level56_slice(
         prep6, entries, 6, normalize_extrinsic, core_fn);
   }

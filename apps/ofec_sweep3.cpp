@@ -91,6 +91,7 @@ static constexpr int kLevel56SharedSisoActive = 24;                 // 第五/�
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
     newcode::Level56PriorityMode::Level5First;
 static constexpr bool kLevel56SingleLevelSelectEnable = false; // true=按 early-stop 命中数动态只解一级
+static constexpr bool kLevel56UnselectedEarlyStopActionEnable = false; // true=未选中级仍执行 early-stop action
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
     {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
      {0.428571,0.447738,0.482782,0.528162,0.581902,0.642857}, // 每个 tile 的 alpha 显式列表
@@ -841,6 +842,8 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.LEVEL56_PRIORITY_MODE = kLevel56PriorityMode;
   config.base_params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE =
       kLevel56SingleLevelSelectEnable;
+  config.base_params.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE =
+      kLevel56UnselectedEarlyStopActionEnable;
   if (!kHybridEnableList.empty() &&
       kHybridEnableList.size() != kTilesPerWindow) {
     throw std::invalid_argument(

@@ -133,6 +133,8 @@ struct Params {
       Level56PriorityMode::Level5First;
   // 开启时根据 Level 5/6 的 early-stop 命中数，只解码命中较少的一级。
   bool LEVEL56_SINGLE_LEVEL_SELECT_ENABLE = false;
+  // 单级选择时，允许未选中级的 early-stop 命中行执行动作和写回。
+  bool LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE = false;
 
   struct DebugTraceConfig {
     bool enable = false;

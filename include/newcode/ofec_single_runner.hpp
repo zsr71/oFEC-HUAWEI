@@ -68,6 +68,7 @@ struct Config {
   newcode::Level56PriorityMode level56_priority_mode =
       newcode::Level56PriorityMode::Level5First;
   bool level56_single_level_select_enable = false;
+  bool level56_unselected_early_stop_action_enable = false;
   std::string interleaver_name;
   std::string decoder_name;
   bool generate_random_bits = true;
