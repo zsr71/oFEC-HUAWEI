@@ -67,6 +67,8 @@ struct Config {
   int level56_shared_siso_active = 32;
   newcode::Level56PriorityMode level56_priority_mode =
       newcode::Level56PriorityMode::Level5First;
+  newcode::Level56ScheduleMode level56_schedule_mode =
+      newcode::Level56ScheduleMode::GlobalPriority;
   bool level56_single_level_select_enable = false;
   bool level56_unselected_early_stop_action_enable = false;
   std::string interleaver_name;

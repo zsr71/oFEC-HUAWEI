@@ -67,6 +67,100 @@ std::vector<Level56DispatchEntry> make_entries(std::size_t rows_per_level) {
   return entries;
 }
 
+newcode::Params make_grouped_params() {
+  newcode::Params p;
+  p.LEVEL56_SHARED_ENABLE = true;
+  p.LEVEL56_SHARED_HISO_ACTIVE = 8;
+  p.LEVEL56_SHARED_SISO_ACTIVE = 8;
+  p.LEVEL56_PRIORITY_MODE = newcode::Level56PriorityMode::Level5First;
+  p.LEVEL56_SCHEDULE_MODE =
+      newcode::Level56ScheduleMode::Group4LoadSortedMultiround;
+  p.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE = false;
+  p.HYBRID_CLASSIFIER_MODE =
+      newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;
+  return p;
+}
+
+std::vector<Level56DispatchEntry> make_all_early_stop_grouped_entries() {
+  auto entries = make_entries(32);
+  for (auto& entry : entries) {
+    entry.early_stop_hit = true;
+    entry.hybrid_class = newcode::detail::HybridRowClass::None;
+    entry.eligibility = Level56Eligibility::None;
+    entry.final_action = Level56FinalAction::EarlyStopAction;
+  }
+  return entries;
+}
+
+void activate_grouped_row(
+    std::vector<Level56DispatchEntry>* entries,
+    std::size_t shared_row,
+    newcode::detail::HybridRowClass row_class,
+    Level56Eligibility eligibility = Level56Eligibility::HisoOrSiso) {
+  auto& entry = entries->at(shared_row);
+  entry.early_stop_hit = false;
+  entry.hybrid_class = row_class;
+  entry.eligibility = eligibility;
+  entry.final_action = Level56FinalAction::Unscheduled;
+}
+
+void activate_group_prefix(
+    std::vector<Level56DispatchEntry>* entries,
+    std::size_t group,
+    std::size_t count,
+    newcode::detail::HybridRowClass row_class =
+        newcode::detail::HybridRowClass::ParityOnly,
+    Level56Eligibility eligibility = Level56Eligibility::HisoOrSiso) {
+  for (std::size_t position = 0; position < count; ++position) {
+    activate_grouped_row(entries, group * 4u + position, row_class,
+                         eligibility);
+  }
+}
+
+int grouped_entry_count(const std::vector<Level56DispatchEntry>& entries) {
+  int max_slot = -1;
+  for (const auto& entry : entries) {
+    max_slot = std::max(max_slot, entry.assigned_entry_slot);
+  }
+  return max_slot + 1;
+}
+
+int group_for_slot(const std::vector<Level56DispatchEntry>& entries,
+                   int slot) {
+  int group = -1;
+  for (const auto& entry : entries) {
+    if (entry.assigned_entry_slot != slot) {
+      continue;
+    }
+    const int entry_group = static_cast<int>(entry.shared_row / 4u);
+    require(group == -1 || group == entry_group,
+            "one entry slot must not select rows from multiple groups");
+    group = entry_group;
+  }
+  return group;
+}
+
+void require_grouped_plan_invariants(
+    const std::vector<Level56DispatchEntry>& entries) {
+  require(grouped_entry_count(entries) <= 8,
+          "grouped scheduler must use at most eight entry slots");
+  for (const auto& entry : entries) {
+    require(!(entry.planned_hiso && entry.planned_siso),
+            "one row must not be reserved by both paths");
+    if (entry.planned_hiso || entry.planned_siso) {
+      require(entry.assigned_entry_slot >= 0 &&
+                  entry.assigned_core == entry.assigned_entry_slot,
+              "planned row core must equal its entry slot");
+      require(!entry.remaining_for_schedule,
+              "planned row must be removed from later rounds");
+    }
+  }
+  for (int slot = 0; slot < grouped_entry_count(entries); ++slot) {
+    require(group_for_slot(entries, slot) >= 0,
+            "every consumed entry slot must select at least one row");
+  }
+}
+
 std::size_t count_action(const std::vector<Level56DispatchEntry>& entries,
                          Level56FinalAction action) {
   return static_cast<std::size_t>(std::count_if(
@@ -281,6 +375,26 @@ void check_common_parameter_validation() {
   }
   require(rejected, "removed priority value 0 must be rejected");
 
+  auto grouped = p;
+  grouped.LEVEL56_SHARED_HISO_ACTIVE = 8;
+  grouped.LEVEL56_SHARED_SISO_ACTIVE = 8;
+  grouped.LEVEL56_SCHEDULE_MODE =
+      newcode::Level56ScheduleMode::Group4LoadSortedMultiround;
+  grouped.HYBRID_CLASSIFIER_MODE =
+      newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;
+  newcode::detail::validate_level56_shared_config(grouped);
+
+  auto invalid_grouped_capacity = grouped;
+  invalid_grouped_capacity.LEVEL56_SHARED_SISO_ACTIVE = 7;
+  rejected = false;
+  try {
+    newcode::detail::validate_level56_shared_config(
+        invalid_grouped_capacity);
+  } catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "grouped mode must reject capacity other than 8/8");
+
   p.EARLY_STOP_ACTION_MODE_LIST = {1, 1, 1, 1, 1, 2};
   rejected = false;
   try {
@@ -388,6 +502,146 @@ void check_level_priority_modes() {
   }
 }
 
+void check_grouped_k0_uses_no_entries() {
+  auto entries = make_all_early_stop_grouped_entries();
+  const auto p = make_grouped_params();
+  newcode::detail::schedule_level56_rows(&entries, p);
+  newcode::detail::route_level56_g1(&entries, p);
+
+  require(grouped_entry_count(entries) == 0,
+          "K=0 must not consume an entry slot");
+  require(count_action(entries, Level56FinalAction::EarlyStopAction) == 64,
+          "K=0 must preserve all EarlyStopAction rows");
+  require_grouped_plan_invariants(entries);
+}
+
+void check_grouped_k_greater_than_8_selects_top_8() {
+  auto entries = make_all_early_stop_grouped_entries();
+  activate_group_prefix(&entries, 0, 4);
+  for (std::size_t group = 1; group <= 8; ++group) {
+    activate_group_prefix(&entries, group, 1);
+  }
+  const auto p = make_grouped_params();
+  newcode::detail::schedule_level56_rows(&entries, p);
+  newcode::detail::route_level56_g1(&entries, p);
+
+  require(grouped_entry_count(entries) == 8,
+          "K>8 must consume exactly eight entry slots");
+  for (int slot = 0; slot < 8; ++slot) {
+    require(group_for_slot(entries, slot) == slot,
+            "K>8 load ties must prefer the smaller group index");
+  }
+  require(entries[32].final_action == Level56FinalAction::Unscheduled,
+          "the ninth tied group must remain unscheduled");
+  require(entries[32].source_level == 6,
+          "the excluded tied group must be the later Level 6 group");
+  require_grouped_plan_invariants(entries);
+}
+
+void check_grouped_k8_runs_once_per_group() {
+  auto entries = make_all_early_stop_grouped_entries();
+  for (std::size_t group = 0; group < 8; ++group) {
+    activate_group_prefix(&entries, group, 4);
+  }
+  const auto p = make_grouped_params();
+  newcode::detail::schedule_level56_rows(&entries, p);
+
+  require(grouped_entry_count(entries) == 8,
+          "K=8 must consume exactly eight entry slots");
+  require(count_action(entries, Level56FinalAction::SisoDecode) == 8 &&
+              count_action(entries, Level56FinalAction::HisoDecode) == 8,
+          "K=8 must produce at most one SISO and HISO output per group");
+  require(count_action(entries, Level56FinalAction::Unscheduled) == 16,
+          "K=8 must not start a second scheduling round");
+  require_grouped_plan_invariants(entries);
+}
+
+void check_grouped_k6_uses_6_plus_2_entries() {
+  auto entries = make_all_early_stop_grouped_entries();
+  for (std::size_t group = 0; group < 6; ++group) {
+    activate_group_prefix(&entries, group, 4);
+  }
+  const auto p = make_grouped_params();
+  newcode::detail::schedule_level56_rows(&entries, p);
+
+  require(grouped_entry_count(entries) == 8,
+          "K=6 must use six first-round and two second-round entries");
+  require(group_for_slot(entries, 6) == 0 && group_for_slot(entries, 7) == 1,
+          "second round must break equal remaining loads by group index");
+  for (std::size_t row = 0; row < 8; ++row) {
+    require(entries[row].final_action != Level56FinalAction::Unscheduled,
+            "the two selected second-round groups must finish all four rows");
+  }
+  require_grouped_plan_invariants(entries);
+}
+
+void check_grouped_siso_only_multiround_reentry() {
+  auto entries = make_all_early_stop_grouped_entries();
+  activate_group_prefix(&entries, 0, 4,
+                        newcode::detail::HybridRowClass::HardFail,
+                        Level56Eligibility::SisoOnly);
+  activate_group_prefix(&entries, 1, 4,
+                        newcode::detail::HybridRowClass::HardFail,
+                        Level56Eligibility::SisoOnly);
+  const auto p = make_grouped_params();
+  newcode::detail::schedule_level56_rows(&entries, p);
+
+  require(grouped_entry_count(entries) == 8,
+          "two all-SisoOnly groups must be allowed to re-enter four rounds");
+  require(count_action(entries, Level56FinalAction::SisoDecode) == 8 &&
+              count_action(entries, Level56FinalAction::HisoDecode) == 0,
+          "SisoOnly rows must use only the SISO path");
+  for (int slot = 0; slot < 8; ++slot) {
+    require(group_for_slot(entries, slot) == slot % 2,
+            "equal remaining SisoOnly loads must preserve group-index order");
+  }
+  require_grouped_plan_invariants(entries);
+}
+
+void check_grouped_intra_group_arbitration() {
+  auto entries = make_all_early_stop_grouped_entries();
+  activate_grouped_row(&entries, 0,
+                       newcode::detail::HybridRowClass::ParityOnly);
+  activate_grouped_row(&entries, 1,
+                       newcode::detail::HybridRowClass::OneMain);
+  activate_grouped_row(&entries, 2,
+                       newcode::detail::HybridRowClass::HardFail,
+                       Level56Eligibility::SisoOnly);
+  activate_grouped_row(&entries, 3,
+                       newcode::detail::HybridRowClass::TwoMain);
+  const auto p = make_grouped_params();
+  newcode::detail::schedule_level56_rows(&entries, p);
+
+  require(entries[2].final_action == Level56FinalAction::SisoDecode,
+          "SisoOnly HardFail must take SISO before flexible rows");
+  require(entries[3].final_action == Level56FinalAction::HisoDecode,
+          "TwoMain must be the highest-priority remaining flexible row");
+  require(entries[1].final_action == Level56FinalAction::SisoDecode &&
+              entries[0].final_action == Level56FinalAction::HisoDecode,
+          "later round must schedule remaining flexible rows hardest first");
+  require(entries[2].assigned_entry_slot == 0 &&
+              entries[3].assigned_entry_slot == 0 &&
+              entries[1].assigned_entry_slot == 1 &&
+              entries[0].assigned_entry_slot == 1,
+          "one group must re-enter with a new entry slot");
+  require_grouped_plan_invariants(entries);
+}
+
+void check_grouped_single_flexible_row_uses_siso() {
+  auto entries = make_all_early_stop_grouped_entries();
+  activate_grouped_row(&entries, 36,
+                       newcode::detail::HybridRowClass::TwoMain);
+  const auto p = make_grouped_params();
+  newcode::detail::schedule_level56_rows(&entries, p);
+
+  require(entries[36].final_action == Level56FinalAction::SisoDecode &&
+              entries[36].planned_siso && !entries[36].planned_hiso,
+          "a single flexible row must select SISO before HISO");
+  require(group_for_slot(entries, 0) == 9,
+          "the selected row must remain inside its fixed Level 6 group");
+  require_grouped_plan_invariants(entries);
+}
+
 void check_end_to_end_single_window() {
   newcode::Params p;
   p.CHASE_L = 2;
@@ -434,6 +688,54 @@ void check_end_to_end_single_window() {
   }
 }
 
+void check_grouped_end_to_end_single_window() {
+  newcode::Params p;
+  p.CHASE_L = 2;
+  p.CHASE_NTEST = 4;
+  p.EARLY_STOP_ENABLE_LIST = {1, 1, 1, 1, 1, 1};
+  p.EARLY_STOP_ACTION_SIGN_BETA_LIST = {1, 1, 1, 1, 1, 1};
+  p.HARD_TILE_LIST = {0, 0, 0, 0, 0, 0};
+  p.HYBRID_ENABLE_LIST = {0, 0, 0, 0, 1, 1};
+  p.HYBRID_HARD_LLR_MAG_LIST = {4, 4, 4, 4, 4, 4};
+  p.HYBRID_CLASSIFIER_MODE =
+      newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;
+  p.HYBRID_USE_FAST_CLASSIFIER = true;
+  p.ALPHA_LIST = {1, 1, 1, 1, 0.8f, 0.9f};
+  p.beta_list = {1, 1, 1, 1, 1.2f, 1.4f};
+  p.SISO_ACTIVE_LIST = {32, 32, 32, 32};
+  p.HIHO_ACTIVE_LIST = {32, 32, 32, 32};
+  p.LEVEL56_SHARED_ENABLE = true;
+  p.LEVEL56_SHARED_HISO_ACTIVE = 8;
+  p.LEVEL56_SHARED_SISO_ACTIVE = 8;
+  p.LEVEL56_SCHEDULE_MODE =
+      newcode::Level56ScheduleMode::Group4LoadSortedMultiround;
+
+  matrix::Matrix<float> llr(p.win_height_rows(),
+                            newcode::Params::NUM_SUBBLOCK_COLS *
+                                newcode::Params::BITS_PER_SUBBLOCK_DIM);
+  for (std::size_t row = 0; row < llr.rows(); ++row) {
+    for (std::size_t col = 0; col < llr.cols(); ++col) {
+      const int code = static_cast<int>((row * 19u + col * 11u) % 29u) - 14;
+      llr[row][col] = static_cast<float>(code) * 0.3f +
+                      ((row + col) & 1u ? 0.05f : -0.05f);
+    }
+  }
+
+  std::vector<newcode::TileEarlyStopCounter> stats;
+  const auto decoded = newcode::ofec_decode_llr_plain(
+      llr, p, &stats, true, nullptr);
+  require(decoded.rows() == llr.rows() && decoded.cols() == llr.cols(),
+          "grouped end-to-end decode changed the matrix shape");
+  require(stats.size() == 6 && stats[4].total == 1 && stats[5].total == 1,
+          "grouped end-to-end decode did not process Level 5/6 once");
+  for (std::size_t row = 0; row < decoded.rows(); ++row) {
+    for (std::size_t col = 0; col < decoded.cols(); ++col) {
+      require(std::isfinite(decoded[row][col]),
+              "grouped end-to-end decode produced a non-finite LLR");
+    }
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -450,7 +752,15 @@ int main() {
     check_per_level_siso_postprocessing();
     check_unscheduled_history_is_unchanged();
     check_level_priority_modes();
+    check_grouped_k0_uses_no_entries();
+    check_grouped_k_greater_than_8_selects_top_8();
+    check_grouped_k8_runs_once_per_group();
+    check_grouped_k6_uses_6_plus_2_entries();
+    check_grouped_siso_only_multiround_reentry();
+    check_grouped_intra_group_arbitration();
+    check_grouped_single_flexible_row_uses_siso();
     check_end_to_end_single_window();
+    check_grouped_end_to_end_single_window();
     std::cout << "LEVEL56 shared scheduler regression checks passed\n";
     return 0;
   } catch (const std::exception& ex) {

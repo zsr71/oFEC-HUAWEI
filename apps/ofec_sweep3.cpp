@@ -85,11 +85,13 @@ static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
 static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
     newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority;  // Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只归一化 soft rows，false=保持兼容行为
-static constexpr bool kLevel56SharedEnable = true;                  // true=第五/六级共享 HISO/SISO
-static constexpr int kLevel56SharedHisoActive = 24;                 // 第五/六级共享 HISO 容量
-static constexpr int kLevel56SharedSisoActive = 24;                 // 第五/六级共享 SISO 容量
+static constexpr bool kLevel56SharedEnable = true;                   // true=第五/六级共享 HISO/SISO
+static constexpr int kLevel56SharedHisoActive = 8;                 // 第五/六级共享 HISO 容量
+static constexpr int kLevel56SharedSisoActive = 8;                 // 第五/六级共享 SISO 容量
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
-    newcode::Level56PriorityMode::Level5First;
+    newcode::Level56PriorityMode::Level5First; // Level5First=同优先级时 Level 5 优先；Level6First=Level 6 优先
+static constexpr newcode::Level56ScheduleMode kLevel56ScheduleMode =
+    newcode::Level56ScheduleMode::Group4LoadSortedMultiround; // GlobalPriority=全局优先级；Group4LoadSortedMultiround=64 code 固定分为 16 组、按组负载排序并多轮调度
 static constexpr bool kLevel56SingleLevelSelectEnable = false; // true=按 early-stop 命中数动态只解一级
 static constexpr bool kLevel56UnselectedEarlyStopActionEnable = false; // true=未选中级仍执行 early-stop action
 static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
@@ -276,7 +278,7 @@ void ensure_csv_header_sweep3(const std::string& csv_path) {
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
           "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_bypass_scheme,"
           "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_siso_backfill_mode,hybrid_normalize_soft_only,"
-          "level56_shared_enable,level56_shared_hiso_active,level56_shared_siso_active,level56_priority_mode,"
+          "level56_shared_enable,level56_shared_hiso_active,level56_shared_siso_active,level56_priority_mode,level56_schedule_mode,"
           "early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
@@ -332,6 +334,7 @@ void write_csv_row_sweep3(std::ostream& csv,
       << kLevel56SharedHisoActive << ','
       << kLevel56SharedSisoActive << ','
       << static_cast<int>(kLevel56PriorityMode) << ','
+      << static_cast<int>(kLevel56ScheduleMode) << ','
       << point.scenario.early_stop_condition_mode << ','
       << point.scenario.early_stop_action_mode << ','
       << point.scenario.early_stop_bind_group_size << ','
@@ -840,6 +843,7 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.LEVEL56_SHARED_HISO_ACTIVE = kLevel56SharedHisoActive;
   config.base_params.LEVEL56_SHARED_SISO_ACTIVE = kLevel56SharedSisoActive;
   config.base_params.LEVEL56_PRIORITY_MODE = kLevel56PriorityMode;
+  config.base_params.LEVEL56_SCHEDULE_MODE = kLevel56ScheduleMode;
   config.base_params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE =
       kLevel56SingleLevelSelectEnable;
   config.base_params.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE =

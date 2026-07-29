@@ -214,6 +214,7 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.LEVEL56_SHARED_HISO_ACTIVE = cfg.level56_shared_hiso_active;
   params.LEVEL56_SHARED_SISO_ACTIVE = cfg.level56_shared_siso_active;
   params.LEVEL56_PRIORITY_MODE = cfg.level56_priority_mode;
+  params.LEVEL56_SCHEDULE_MODE = cfg.level56_schedule_mode;
   params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE =
       cfg.level56_single_level_select_enable;
   params.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE =
@@ -224,6 +225,33 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       params.LEVEL56_SHARED_SISO_ACTIVE > 64) {
     log << "[ERROR] LEVEL56 shared HISO/SISO 容量必须在 [0,64]\n";
     return std::nullopt;
+  }
+  if (params.LEVEL56_SCHEDULE_MODE ==
+      newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
+    if (!params.LEVEL56_SHARED_ENABLE) {
+      log << "[ERROR] LEVEL56 分组多轮调度要求开启第五/六级共享\n";
+      return std::nullopt;
+    }
+    if (params.LEVEL56_SHARED_HISO_ACTIVE != 8 ||
+        params.LEVEL56_SHARED_SISO_ACTIVE != 8) {
+      log << "[ERROR] LEVEL56 分组多轮调度要求 HISO/SISO 容量为 8/8\n";
+      return std::nullopt;
+    }
+    if (params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE) {
+      log << "[ERROR] LEVEL56 分组多轮调度要求关闭单级选择\n";
+      return std::nullopt;
+    }
+    if (params.LEVEL56_PRIORITY_MODE !=
+        newcode::Level56PriorityMode::Level5First) {
+      log << "[ERROR] LEVEL56 分组多轮调度要求使用 Level5First 同负载仲裁\n";
+      return std::nullopt;
+    }
+    if (params.HYBRID_CLASSIFIER_MODE !=
+        newcode::HybridClassifierMode::FriendS1S3WithS0Classifier) {
+      log << "[ERROR] LEVEL56 分组多轮调度要求使用 "
+             "FriendS1S3WithS0Classifier\n";
+      return std::nullopt;
+    }
   }
   if (!params.HYBRID_ENABLE_LIST.empty() &&
       params.HYBRID_ENABLE_LIST.size() != tiles) {

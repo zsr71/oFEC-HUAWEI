@@ -182,6 +182,8 @@ void log_run_overview(const Config& cfg,
       << params.LEVEL56_SHARED_SISO_ACTIVE
       << ", priority_mode = "
       << static_cast<int>(params.LEVEL56_PRIORITY_MODE)
+      << ", schedule_mode = "
+      << static_cast<int>(params.LEVEL56_SCHEDULE_MODE)
       << ", single_level_select = "
       << (params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE ? "ON" : "OFF")
       << ", unselected_early_stop_action = "

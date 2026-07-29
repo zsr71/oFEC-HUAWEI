@@ -32,7 +32,11 @@ struct Level56DispatchEntry {
   bool early_stop_hit = false;
   HybridRowClass hybrid_class = HybridRowClass::None;
   Level56Eligibility eligibility = Level56Eligibility::None;
+  bool planned_hiso = false;
+  bool planned_siso = false;
+  bool remaining_for_schedule = false;
   Level56FinalAction final_action = Level56FinalAction::Unscheduled;
+  int assigned_entry_slot = -1;
   int assigned_core = -1;
 };
 
@@ -84,6 +88,37 @@ inline void validate_level56_shared_config(const newcode::Params& p) {
     default:
       throw std::invalid_argument(
           "LEVEL56 shared priority mode is invalid");
+  }
+  switch (p.LEVEL56_SCHEDULE_MODE) {
+    case newcode::Level56ScheduleMode::GlobalPriority:
+    case newcode::Level56ScheduleMode::Group4LoadSortedMultiround:
+      break;
+    default:
+      throw std::invalid_argument(
+          "LEVEL56 shared schedule mode is invalid");
+  }
+
+  if (p.LEVEL56_SCHEDULE_MODE ==
+      newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
+    if (p.LEVEL56_SHARED_HISO_ACTIVE != 8 ||
+        p.LEVEL56_SHARED_SISO_ACTIVE != 8) {
+      throw std::invalid_argument(
+          "LEVEL56 grouped multiround mode requires HISO/SISO capacity 8/8");
+    }
+    if (p.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE) {
+      throw std::invalid_argument(
+          "LEVEL56 grouped multiround mode requires single-level selection OFF");
+    }
+    if (p.LEVEL56_PRIORITY_MODE != newcode::Level56PriorityMode::Level5First) {
+      throw std::invalid_argument(
+          "LEVEL56 grouped multiround mode requires Level5First tie-breaking");
+    }
+    if (effective_hybrid_classifier_mode(p) !=
+        newcode::HybridClassifierMode::FriendS1S3WithS0Classifier) {
+      throw std::invalid_argument(
+          "LEVEL56 grouped multiround mode requires "
+          "FriendS1S3WithS0Classifier");
+    }
   }
 
   const auto same_int = [&](const std::vector<int>& values, int fallback) {
@@ -218,9 +253,17 @@ inline std::vector<std::size_t> order_level56_candidates(
   return ordered;
 }
 
-inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
-                                  const newcode::Params& p,
-                                  std::size_t selected_level = 0) {
+inline void schedule_level56_rows_global_priority(
+    std::vector<Level56DispatchEntry>* entries,
+    const newcode::Params& p,
+    std::size_t selected_level = 0) {
+  for (auto& entry : *entries) {
+    entry.planned_hiso = false;
+    entry.planned_siso = false;
+    entry.remaining_for_schedule = !entry.early_stop_hit;
+    entry.assigned_entry_slot = -1;
+    entry.assigned_core = -1;
+  }
   const auto ordered = order_level56_candidates(
       *entries, p.LEVEL56_PRIORITY_MODE, selected_level);
 
@@ -284,7 +327,7 @@ inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
 
   std::size_t final_hiso_count = 0;
   std::size_t final_siso_count = 0;
-  for (const auto& entry : *entries) {
+  for (auto& entry : *entries) {
     if (selected_level != 0 && entry.source_level != selected_level) {
       const auto expected_action =
           p.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE &&
@@ -308,6 +351,8 @@ inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
         throw std::logic_error(
             "LEVEL56 scheduler assigned an ineligible row to HISO");
       }
+      entry.planned_hiso = true;
+      entry.remaining_for_schedule = false;
       ++final_hiso_count;
     } else if (entry.final_action == Level56FinalAction::SisoDecode) {
       if (entry.eligibility != Level56Eligibility::SisoOnly &&
@@ -315,6 +360,8 @@ inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
         throw std::logic_error(
             "LEVEL56 scheduler assigned an ineligible row to SISO");
       }
+      entry.planned_siso = true;
+      entry.remaining_for_schedule = false;
       ++final_siso_count;
     }
   }
@@ -324,9 +371,282 @@ inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
   }
 }
 
-inline void route_level56_g1(std::vector<Level56DispatchEntry>* entries,
-                             const newcode::Params& p,
-                             std::size_t selected_level = 0) {
+constexpr std::size_t kLevel56GroupedCodeCount = 64;
+constexpr std::size_t kLevel56GroupedGroupCount = 16;
+constexpr std::size_t kLevel56CodesPerGroup = 4;
+constexpr std::size_t kLevel56MaxGroupEntries = 8;
+
+inline int level56_group_flexible_priority(HybridRowClass row_class) {
+  switch (row_class) {
+    case HybridRowClass::TwoMain:
+      return 0;
+    case HybridRowClass::OneMainPlusParity:
+      return 1;
+    case HybridRowClass::OneMain:
+      return 2;
+    case HybridRowClass::ParityOnly:
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+inline std::size_t level56_group_remaining_count(
+    const std::vector<Level56DispatchEntry>& entries,
+    std::size_t group_index) {
+  const std::size_t begin = group_index * kLevel56CodesPerGroup;
+  const std::size_t end = begin + kLevel56CodesPerGroup;
+  return static_cast<std::size_t>(std::count_if(
+      entries.begin() + static_cast<std::ptrdiff_t>(begin),
+      entries.begin() + static_cast<std::ptrdiff_t>(end),
+      [](const auto& entry) { return entry.remaining_for_schedule; }));
+}
+
+inline void validate_level56_grouped_entries(
+    const std::vector<Level56DispatchEntry>& entries) {
+  if (entries.size() != kLevel56GroupedCodeCount) {
+    throw std::invalid_argument(
+        "LEVEL56 grouped multiround mode requires exactly 64 shared rows");
+  }
+  for (std::size_t index = 0; index < entries.size(); ++index) {
+    const auto& entry = entries[index];
+    const std::size_t expected_level = index < 32 ? 5u : 6u;
+    const std::size_t expected_local_row = index % 32u;
+    if (entry.shared_row != index || entry.source_level != expected_level ||
+        entry.source_local_row != expected_local_row) {
+      throw std::invalid_argument(
+          "LEVEL56 grouped multiround mode requires code 1-32 = Level 5 "
+          "row 1-32 and code 33-64 = Level 6 row 1-32");
+    }
+  }
+}
+
+inline void plan_level56_group_entry(
+    std::vector<Level56DispatchEntry>* entries,
+    std::size_t group_index,
+    int entry_slot) {
+  const std::size_t begin = group_index * kLevel56CodesPerGroup;
+  const std::size_t end = begin + kLevel56CodesPerGroup;
+  std::vector<std::size_t> siso_only;
+  std::vector<std::size_t> flexible;
+
+  for (std::size_t index = begin; index < end; ++index) {
+    const auto& entry = (*entries)[index];
+    if (!entry.remaining_for_schedule) {
+      continue;
+    }
+    if (entry.eligibility == Level56Eligibility::SisoOnly) {
+      if (entry.hybrid_class != HybridRowClass::HardFail) {
+        throw std::logic_error(
+            "LEVEL56 grouped scheduler received non-HardFail SisoOnly row");
+      }
+      siso_only.push_back(index);
+    } else if (entry.eligibility == Level56Eligibility::HisoOrSiso) {
+      if (level56_group_flexible_priority(entry.hybrid_class) >= 4) {
+        throw std::logic_error(
+            "LEVEL56 grouped scheduler received unsupported flexible class");
+      }
+      flexible.push_back(index);
+    } else {
+      throw std::logic_error(
+          "LEVEL56 grouped scheduler received an ineligible remaining row");
+    }
+  }
+
+  const auto by_group_position = [](std::size_t lhs, std::size_t rhs) {
+    return lhs < rhs;
+  };
+  std::sort(siso_only.begin(), siso_only.end(), by_group_position);
+  std::sort(flexible.begin(), flexible.end(), [&](std::size_t lhs,
+                                                  std::size_t rhs) {
+    const int lhs_priority =
+        level56_group_flexible_priority((*entries)[lhs].hybrid_class);
+    const int rhs_priority =
+        level56_group_flexible_priority((*entries)[rhs].hybrid_class);
+    return lhs_priority != rhs_priority ? lhs_priority < rhs_priority
+                                        : lhs < rhs;
+  });
+
+  std::optional<std::size_t> siso_index;
+  if (!siso_only.empty()) {
+    siso_index = siso_only.front();
+  } else if (!flexible.empty()) {
+    siso_index = flexible.front();
+    flexible.erase(flexible.begin());
+  }
+
+  const std::optional<std::size_t> hiso_index =
+      flexible.empty() ? std::nullopt
+                       : std::optional<std::size_t>(flexible.front());
+
+  if (!siso_index && !hiso_index) {
+    throw std::logic_error(
+        "LEVEL56 grouped scheduler selected a group without a candidate");
+  }
+
+  if (siso_index) {
+    auto& entry = (*entries)[*siso_index];
+    entry.planned_siso = true;
+    entry.remaining_for_schedule = false;
+    entry.final_action = Level56FinalAction::SisoDecode;
+    entry.assigned_entry_slot = entry_slot;
+    entry.assigned_core = entry_slot;
+  }
+  if (hiso_index) {
+    auto& entry = (*entries)[*hiso_index];
+    entry.planned_hiso = true;
+    entry.remaining_for_schedule = false;
+    entry.final_action = Level56FinalAction::HisoDecode;
+    entry.assigned_entry_slot = entry_slot;
+    entry.assigned_core = entry_slot;
+  }
+}
+
+inline void schedule_level56_rows_group4_load_sorted_multiround(
+    std::vector<Level56DispatchEntry>* entries,
+    const newcode::Params& p,
+    std::size_t selected_level = 0) {
+  if (!p.LEVEL56_SHARED_ENABLE) {
+    throw std::invalid_argument(
+        "LEVEL56 grouped multiround mode requires shared mode ON");
+  }
+  if (selected_level != 0 || p.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE) {
+    throw std::invalid_argument(
+        "LEVEL56 grouped multiround mode does not support single-level selection");
+  }
+  if (p.LEVEL56_SHARED_HISO_ACTIVE != 8 ||
+      p.LEVEL56_SHARED_SISO_ACTIVE != 8) {
+    throw std::invalid_argument(
+        "LEVEL56 grouped multiround mode requires HISO/SISO capacity 8/8");
+  }
+  if (p.LEVEL56_PRIORITY_MODE != newcode::Level56PriorityMode::Level5First) {
+    throw std::invalid_argument(
+        "LEVEL56 grouped multiround mode requires Level5First tie-breaking");
+  }
+  if (effective_hybrid_classifier_mode(p) !=
+      newcode::HybridClassifierMode::FriendS1S3WithS0Classifier) {
+    throw std::invalid_argument(
+        "LEVEL56 grouped multiround mode requires "
+        "FriendS1S3WithS0Classifier");
+  }
+  validate_level56_grouped_entries(*entries);
+
+  for (auto& entry : *entries) {
+    entry.planned_hiso = false;
+    entry.planned_siso = false;
+    entry.remaining_for_schedule = !entry.early_stop_hit;
+    entry.final_action = entry.early_stop_hit
+                             ? Level56FinalAction::EarlyStopAction
+                             : Level56FinalAction::Unscheduled;
+    entry.assigned_entry_slot = -1;
+    entry.assigned_core = -1;
+  }
+
+  std::array<std::size_t, kLevel56GroupedGroupCount> initial_counts{};
+  std::vector<std::size_t> initial_nonzero_groups;
+  for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
+    initial_counts[group] = level56_group_remaining_count(*entries, group);
+    if (initial_counts[group] > 0) {
+      initial_nonzero_groups.push_back(group);
+    }
+  }
+
+  const auto sort_groups_by_count = [](std::vector<std::size_t>* groups,
+                                       const auto& counts) {
+    std::sort(groups->begin(), groups->end(), [&](std::size_t lhs,
+                                                  std::size_t rhs) {
+      return counts[lhs] != counts[rhs] ? counts[lhs] > counts[rhs]
+                                        : lhs < rhs;
+    });
+  };
+
+  int used_group_entries = 0;
+  const auto plan_groups = [&](const std::vector<std::size_t>& groups,
+                               std::size_t count) {
+    for (std::size_t i = 0; i < count; ++i) {
+      plan_level56_group_entry(entries, groups[i], used_group_entries);
+      ++used_group_entries;
+    }
+  };
+
+  const std::size_t initial_nonzero_count = initial_nonzero_groups.size();
+  if (initial_nonzero_count > kLevel56MaxGroupEntries) {
+    sort_groups_by_count(&initial_nonzero_groups, initial_counts);
+    plan_groups(initial_nonzero_groups, kLevel56MaxGroupEntries);
+  } else if (initial_nonzero_count > 0) {
+    plan_groups(initial_nonzero_groups, initial_nonzero_count);
+
+    while (initial_nonzero_count < kLevel56MaxGroupEntries &&
+           used_group_entries < static_cast<int>(kLevel56MaxGroupEntries)) {
+      std::array<std::size_t, kLevel56GroupedGroupCount> remaining_counts{};
+      std::vector<std::size_t> remaining_groups;
+      for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
+        remaining_counts[group] = level56_group_remaining_count(*entries, group);
+        if (remaining_counts[group] > 0) {
+          remaining_groups.push_back(group);
+        }
+      }
+      if (remaining_groups.empty()) {
+        break;
+      }
+      sort_groups_by_count(&remaining_groups, remaining_counts);
+      const std::size_t available_entries =
+          kLevel56MaxGroupEntries -
+          static_cast<std::size_t>(used_group_entries);
+      plan_groups(remaining_groups,
+                  std::min(available_entries, remaining_groups.size()));
+    }
+  }
+
+  std::size_t planned_hiso = 0;
+  std::size_t planned_siso = 0;
+  for (const auto& entry : *entries) {
+    if (entry.early_stop_hit !=
+        (entry.final_action == Level56FinalAction::EarlyStopAction)) {
+      throw std::logic_error(
+          "LEVEL56 grouped scheduler violated early-stop action conservation");
+    }
+    if (entry.planned_hiso && entry.planned_siso) {
+      throw std::logic_error(
+          "LEVEL56 grouped scheduler reserved one row twice");
+    }
+    if (entry.planned_hiso || entry.planned_siso) {
+      if (entry.assigned_entry_slot < 0 ||
+          entry.assigned_entry_slot >=
+              static_cast<int>(kLevel56MaxGroupEntries) ||
+          entry.assigned_core != entry.assigned_entry_slot ||
+          entry.remaining_for_schedule) {
+        throw std::logic_error(
+            "LEVEL56 grouped scheduler produced an invalid entry-slot route");
+      }
+    }
+    planned_hiso += entry.planned_hiso;
+    planned_siso += entry.planned_siso;
+  }
+  if (used_group_entries > static_cast<int>(kLevel56MaxGroupEntries) ||
+      planned_hiso > kLevel56MaxGroupEntries ||
+      planned_siso > kLevel56MaxGroupEntries) {
+    throw std::logic_error(
+        "LEVEL56 grouped scheduler exceeded the eight-entry budget");
+  }
+}
+
+inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
+                                  const newcode::Params& p,
+                                  std::size_t selected_level = 0) {
+  if (p.LEVEL56_SCHEDULE_MODE ==
+      newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
+    schedule_level56_rows_group4_load_sorted_multiround(
+        entries, p, selected_level);
+    return;
+  }
+  schedule_level56_rows_global_priority(entries, p, selected_level);
+}
+
+inline void route_level56_g1_global_priority(
+    std::vector<Level56DispatchEntry>* entries,
+    const newcode::Params& p,
+    std::size_t selected_level = 0) {
   const auto ordered = order_level56_candidates(
       *entries, p.LEVEL56_PRIORITY_MODE, selected_level);
   int hiso_core = 0;
@@ -343,6 +663,24 @@ inline void route_level56_g1(std::vector<Level56DispatchEntry>* entries,
       siso_core > p.LEVEL56_SHARED_SISO_ACTIVE) {
     throw std::logic_error("LEVEL56 G=1 routing exceeded shared capacity");
   }
+}
+
+inline void route_level56_g1(std::vector<Level56DispatchEntry>* entries,
+                             const newcode::Params& p,
+                             std::size_t selected_level = 0) {
+  if (p.LEVEL56_SCHEDULE_MODE ==
+      newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
+    for (const auto& entry : *entries) {
+      if ((entry.planned_hiso || entry.planned_siso) &&
+          (entry.assigned_entry_slot < 0 ||
+           entry.assigned_core != entry.assigned_entry_slot)) {
+        throw std::logic_error(
+            "LEVEL56 grouped routing lost its entry-slot assignment");
+      }
+    }
+    return;
+  }
+  route_level56_g1_global_priority(entries, p, selected_level);
 }
 
 template <typename LLR>
