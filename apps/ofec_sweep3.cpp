@@ -25,41 +25,37 @@ namespace {
 
 // ======== 用户可调参数区域 ========
 
-// 发端参数：交织 / 比特源 / 调制入口
-static constexpr const char* kInterleaverName = "identity"; // 交织器名称，identity 表示不交织
-static constexpr unsigned kBitsPerSymbol = 1;               // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
-static constexpr bool kGenerateRandomBits = true;           // true=发送随机信息比特，false=发送全 0 比特
-static constexpr int kBitgenSeed = 618911;                // 基础比特种子；每个 chunk 会在此基础上派生
+// 基础发射与信道参数
+static constexpr const char* kInterleaverName = "identity";  // 交织器名称，identity 表示不交织
+static constexpr unsigned kBitsPerSymbol = 1;                  // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
+static constexpr bool kGenerateRandomBits = true;              // true=发送随机信息比特，false=发送全 0 比特
+static constexpr int kBitgenSeed = 618911;                     // 基础比特种子；每个 chunk 会在此基础上派生
+static constexpr float kEbN0Start = 3.05f;                     // 扫描起始 Eb/N0（dB）
+static constexpr float kEbN0End = 3.13f;                       // 扫描结束 Eb/N0（dB）
+static constexpr int kEbN0Points = 9;                          // Eb/N0 采样点数；含首尾端点
+static constexpr int kChannelSeed = 1701;                      // 基础信道种子；每个 chunk 会在此基础上派生
+static constexpr std::size_t kLlrBits = 6;                     // LLR 位宽：16=浮点，2~15=qfloat
+static constexpr float kQuantClipRatio = 0.5f;                 // 动态 clip 比例，0 表示禁用自适应 clip
 
-// 信道参数：噪声强度 / 信道随机性
-static constexpr float kEbN0Start = 3.05f;   // 扫描起始 Eb/N0（dB）
-static constexpr float kEbN0End = 3.13f;     // 扫描结束 Eb/N0（dB）
-static constexpr int kEbN0Points = 9;        // Eb/N0 采样点数；含首尾端点
-static constexpr int kChannelSeed = 1701; // 基础信道种子；每个 chunk 会在此基础上派生
-
-// 量化参数：只影响 LLR 量化口径
-static constexpr std::size_t kLlrBits = 6;      // LLR 位宽：16=浮点，2~15=qfloat
-static constexpr float kQuantClipRatio = 0.5f;  // 动态 clip 比例，0 表示禁用自适应 clip
-
-// 低 BER 聚合参数：每点多 chunk 聚合，直到达到停止条件
-static constexpr std::size_t kTilesPerWindow = 6;               // 本 app 使用的 TILES_PER_WIN；需与显式 alpha/beta 列表长度一致
+// Monte Carlo 聚合与并发控制
+static constexpr std::size_t kTilesPerWindow = 6;               // 需与显式 alpha/beta 列表长度一致；新 Level 5/6 共享模式要求为 6
 static constexpr std::size_t kChunkNumInfoBits = 16 * 132 * 16 * 111; // 每个 Monte Carlo chunk 的输入信息比特数
-static constexpr std::size_t kTargetPostErrors = 5000;            // 单个 Eb/N0 点累计到这么多 post-FEC 错误后即可停止
-static constexpr std::size_t kMaxPostFecTotalBits = 50e8;        // 单个 Eb/N0 点允许累计比较的最大 post-FEC 比特数
+static constexpr std::size_t kTargetPostErrors = 5000;          // 单个 Eb/N0 点累计到这么多 post-FEC 错误后即可停止
+static constexpr std::size_t kMaxPostFecTotalBits = 50e8;       // 单个 Eb/N0 点允许累计比较的最大 post-FEC 比特数
 static constexpr unsigned kMaxTotalWorkers = 0;                 // 全局同时运行 chunk 数上限；0=自动使用 NTHREADS/机器可用 worker
 static constexpr unsigned kMaxInflightChunksPerPoint = 16;      // 单个 Eb/N0 点的基础挂起 chunk 上限；0=不额外限制
 static constexpr bool kEnableDynamicInflightPerPoint = true;    // true=剩余 Eb/N0 点变少时动态提高单点挂起上限
 static constexpr unsigned kMaxDynamicInflightChunksPerPoint = 0; // 动态单点挂起上限封顶；0=不封顶，最多到全局 worker
-static constexpr double kProgressReportIntervalSeconds = 15.0;   // 进度快照输出周期；<=0 表示关闭周期性汇总
-static constexpr bool kEnableZeroErrorUpperBound = false;        // true=零错时使用上置信界提前停止
-static constexpr double kTargetBerUpperBound = 1e-8;            // 零错上界目标：若上界已低于此值则提前停止
-static constexpr double kConfidenceLevel = 0.95;                // 零错上界使用的置信水平，例如 0.95 表示 95%
+static constexpr double kProgressReportIntervalSeconds = 15.0;  // 进度快照输出周期；<=0 表示关闭周期性汇总
+static constexpr bool kEnableZeroErrorUpperBound = false;       // true=零错时使用上置信界提前停止
+static constexpr double kTargetBerUpperBound = 1e-8;             // 零错上界目标：若上界已低于此值则提前停止
+static constexpr double kConfidenceLevel = 0.95;                 // 零错上界使用的置信水平，例如 0.95 表示 95%
 
-// 解码参数：decoder 选择、Chase 参数、alpha/beta、MUX 调度
-static constexpr const char* kDecoderName = "chase_baseline";        // 默认 decoder 名称
-static const std::vector<const char*> kDecoderNameCandidates = {};   // decoder 扫描候选；空表示不扫 decoder 维度
-static constexpr bool kNormalizeExtrinsic = false;                   // 是否对 decoder 输出 extrinsic 做归一化
-static constexpr bool kNormalizeKnownPrefixTail = false;             // 是否对 known-prefix 后的尾部 LLR 做归一化
+// Decoder 与 Chase 扫描参数
+static constexpr const char* kDecoderName = "chase_baseline";       // 默认 decoder 名称
+static const std::vector<const char*> kDecoderNameCandidates = {};  // decoder 扫描候选；空表示不扫 decoder 维度
+static constexpr bool kNormalizeExtrinsic = false;                  // 是否对 decoder 输出 extrinsic 做归一化
+static constexpr bool kNormalizeKnownPrefixTail = false;            // 是否对 known-prefix 后的尾部 LLR 做归一化
 static const std::vector<int> kChaseLCandidates = {6};              // Chase L 扫描候选
 static constexpr int kChaseNTest = 64;                              // 默认 Chase NTEST；若不单独扫则等于实际使用值
 static const std::vector<int> kChaseNTestCandidates = {};           // Chase NTEST 扫描候选；空表示不单独扫描
@@ -67,39 +63,39 @@ static constexpr int kChaseTopkKeep = 8;                            // top-k/pru
 static const std::vector<int> kChaseTopkKeepCandidates = {};        // top-k 保留数扫描候选
 static constexpr int kChaseGroupMinimaBits = 4;                     // group-minima decoder 的分组 bit 数
 static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4}; // group-minima 分组 bit 数扫描候选
-static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 8, 4}; // 每个 tile 的 SISO 预算；共享模式下后两项不参与独立 MUX
-static const std::vector<int> kHiHoActiveList = {32, 32, 32, 32, 8, 4}; // 每个 tile 的 HIHO 预算；共享模式下后两项不参与独立 MUX
+
+// Level 1-4 常规 MUX 参数；Level 5/6 共享模式开启后，末两项不参与独立 MUX 分配
+static const std::vector<int> kSisoActiveList = {32, 32, 32, 32, 8, 4}; // 每个 tile 的 SISO 预算
+static const std::vector<int> kHiHoActiveList = {32, 32, 32, 32, 8, 4}; // 每个 tile 的 HISO 预算
 static constexpr int kMuxGroupG = 1;                                // MUX 分组粒度；1=全局池化
-static constexpr int kMuxSchedulingMode = 0;                        // MUX 调度模式：0=legacy，1=按 early-stop 细节排序
+static constexpr int kMuxSchedulingMode = 0;                        // 0=legacy，1=按 early-stop 细节排序
 static const std::vector<int> kMuxSchedulingModeCandidates = {};    // MUX 调度模式扫描候选
-static constexpr int kMuxPriorityRule = 0;                          // 新 MUX 的优先级规则：0=更差优先，1=更接近通过优先
+static constexpr int kMuxPriorityRule = 0;                          // 0=更差优先，1=更接近通过优先
 static const std::vector<int> kMuxPriorityRuleCandidates = {};      // MUX 优先级规则扫描候选
 static constexpr bool kMuxEnableReconfig = false;                   // 是否启用 reconfig MUX 调度
-static constexpr int kMuxBypassScheme = 1;                          // 旁路边方案编号：仅在 reconfig 打开时真正参与调度
+static constexpr int kMuxBypassScheme = 1;                          // 旁路边方案编号；仅在 reconfig 打开时参与调度
+
+// Hybrid 前置分类与 hard-finish 参数
 static constexpr bool kHybridEnable = true;                         // true=启用方案三软硬混合前置分流
-static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 1, 1}; // 按 tile 覆盖 hybrid 开关：空=沿用 kHybridEnable
-static constexpr float kHybridHardLlrMag = 99.0f;                    // hybrid hard-finish 默认输出 |LLR| 幅度
-static const std::vector<float> kHybridHardLlrMagList = {}; // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度
+static const std::vector<int> kHybridEnableList = {0, 0, 0, 0, 1, 1}; // 按 tile 覆盖 hybrid 开关；空=沿用 kHybridEnable
+static constexpr float kHybridHardLlrMag = 99.0f;                   // hybrid hard-finish 默认输出 |LLR| 幅度
+static const std::vector<float> kHybridHardLlrMagList = {};         // 按 tile 覆盖 hybrid hard-finish |LLR| 幅度
 static constexpr newcode::HybridClassifierMode kHybridClassifierMode =
     newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;      // LegacyHardDecode / RepoFastClassifier / FriendS1S3Classifier / FriendS1S3WithS0Classifier
 static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
     newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority;  // Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只归一化 soft rows，false=保持兼容行为
-static constexpr bool kLevel56SharedEnable = true;                   // true=第五/六级共享 HISO/SISO
-static constexpr int kLevel56SharedHisoActive = 8;                 // 第五/六级共享 HISO 容量
-static constexpr int kLevel56SharedSisoActive = 8;                 // 第五/六级共享 SISO 容量
+
+// Level 5/6 共享：四行分组、负载排序与多轮 MUX 调度
+static constexpr bool kLevel56SharedEnable = true;                  // true=第五/六级共享 HISO/SISO
+static constexpr int kLevel56SharedHisoActive = 8;                  // 新分组方案固定使用 8 个共享 HISO entry slot
+static constexpr int kLevel56SharedSisoActive = 8;                  // 新分组方案固定使用 8 个共享 SISO entry slot
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
-    newcode::Level56PriorityMode::Level5First; // Level5First=同优先级时 Level 5 优先；Level6First=Level 6 优先
+    newcode::Level56PriorityMode::Level5First; // Level5First=组负载相同时 Level 5 优先；Level6First=Level 6 优先
 static constexpr newcode::Level56ScheduleMode kLevel56ScheduleMode =
-    newcode::Level56ScheduleMode::Group4LoadSortedMultiround; // GlobalPriority=全局优先级；Group4LoadSortedMultiround=64 code 固定分为 16 组、按组负载排序并多轮调度
-static constexpr bool kLevel56SingleLevelSelectEnable = false; // true=按 early-stop 命中数动态只解一级
-static constexpr bool kLevel56UnselectedEarlyStopActionEnable = false; // true=未选中级仍执行 early-stop action
-static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
-    {"custom_label",                                             // 该组显式 alpha/beta 的标签，会进入场景名
-     {0.428571,0.447738,0.482782,0.528162,0.581902,0.642857}, // 每个 tile 的 alpha 显式列表
-     {2.857143,6.179301,12.253626,20.119585,29.434408,40.000000}, // 每个 tile 的普通 beta 显式列表
-     {99.857143,99.179301,99.253626,99.119585,99,99}},    // 每个 tile 的 early-stop 专用 beta 显式列表
-};
+    newcode::Level56ScheduleMode::Group4LoadSortedMultiround; // GlobalPriority=旧全局优先级；Group4LoadSortedMultiround=16 个四行组按负载排序并多轮调度
+static constexpr bool kLevel56SingleLevelSelectEnable = false; // 新分组多轮模式必须关闭；true=按 early-stop 命中数动态只解一级
+static constexpr bool kLevel56UnselectedEarlyStopActionEnable = false; // 仅 single-level selection 开启时有效
 
 // 早停参数：总开关 -> 条件 -> 条件细参 -> 动作 -> 动作细参
 static constexpr bool kEnableEarlyStop = true;                      // 早停总开关
@@ -123,6 +119,14 @@ static constexpr float kEarlyStopActionHardLlrMag = 1.0f;           // 动作3�
 static const std::vector<float> kEarlyStopActionBetaStartCandidates = {}; // early-stop 专用 beta 起点扫描候选
 static const std::vector<float> kEarlyStopActionBetaStepCandidates = {};  // early-stop 专用 beta 步长扫描候选
 static const std::vector<float> kEarlyStopActionHardLlrMagCandidates = {}; // 动作3 hard LLR 幅度扫描候选
+
+// 显式 alpha/beta 场景；每个列表长度必须等于 kTilesPerWindow
+static const std::vector<ofec_sweep::ExplicitAlphaBetaPattern> kExplicitAlphaBetaSets = {
+    {"custom_label",  // 该组显式 alpha/beta 的标签，会进入场景名
+     {0.428571, 0.447738, 0.482782, 0.528162, 0.581902, 0.642857},
+     {2.857143, 6.179301, 12.253626, 20.119585, 29.434408, 40.000000},
+     {99.857143, 99.179301, 99.253626, 99.119585, 99, 99}},
+};
 
 // Debug 参数：控制日志与 decoder trace
 static constexpr bool kQuietConsole = false;           // true=减少控制台输出
