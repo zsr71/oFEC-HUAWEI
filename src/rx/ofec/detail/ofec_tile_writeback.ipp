@@ -160,18 +160,25 @@ void writeback_tile(const TilePrepared<LLR>& prep,
         (*tile_out)[rr_idx_local][cc_idx_local] = extrinsic_llr;
       }
 
-      if (row_produced && capture_last_tile_history && last_tile_history_accum) {
+      if (capture_last_tile_history && last_tile_history_accum) {
         if (rr_global >= 0 && cc_global >= 0) {
           const size_t rr_idx_global = static_cast<size_t>(rr_global);
           const size_t cc_idx_global = static_cast<size_t>(cc_global);
-          float extrinsic_llr_last_tile=lout_row[static_cast<size_t>(k)]/p.ALPHA;
           if (rr_idx_global < last_tile_history_accum->rows() &&
               cc_idx_global < last_tile_history_accum->cols()) {
-            // 历史值记录的是“新 extrinsic + 旧 prior”的组合，
-            // 供后续硬判 tile 或窗口最终输出合成使用。
-            const CoreLLR combined = Adapter::combine(extrinsic_llr, prior_llr);
-            (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
-                history_value(combined, extrinsic_llr_last_tile, prior_llr);
+            if (row_produced) {
+              const float extrinsic_llr_last_tile =
+                  lout_row[static_cast<size_t>(k)] / p.ALPHA;
+              // 已调度行保存“新 extrinsic + 旧 prior”。
+              const CoreLLR combined =
+                  Adapter::combine(extrinsic_llr, prior_llr);
+              (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
+                  history_value(combined, extrinsic_llr_last_tile, prior_llr);
+            } else {
+              // 未调度行没有新 extrinsic，但最终 history 必须透传当前 prior。
+              (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
+                  qfloat::llr_to_float(prior_llr);
+            }
           }
         }
       }

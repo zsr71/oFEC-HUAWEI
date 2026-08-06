@@ -38,6 +38,19 @@ const char* hybrid_siso_backfill_mode_name(newcode::HybridSisoBackfillMode mode)
   return "unknown";
 }
 
+const char* level56_early_stop_group_update_mode_name(
+    newcode::Level56EarlyStopGroupUpdateMode mode) {
+  switch (mode) {
+    case newcode::Level56EarlyStopGroupUpdateMode::AllGroups:
+      return "all_groups";
+    case newcode::Level56EarlyStopGroupUpdateMode::EnteredGroupsOnly:
+      return "entered_groups_only";
+    case newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries:
+      return "fill_idle_entries";
+  }
+  return "unknown";
+}
+
 std::string format_compact_int_list(const std::vector<int>& values) {
   std::ostringstream oss;
   oss << "[";
@@ -184,6 +197,9 @@ void log_run_overview(const Config& cfg,
       << static_cast<int>(params.LEVEL56_PRIORITY_MODE)
       << ", schedule_mode = "
       << static_cast<int>(params.LEVEL56_SCHEDULE_MODE)
+      << ", early_stop_group_update_mode = "
+      << level56_early_stop_group_update_mode_name(
+             params.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE)
       << ", single_level_select = "
       << (params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE ? "ON" : "OFF")
       << ", unselected_early_stop_action = "

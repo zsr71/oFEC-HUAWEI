@@ -91,6 +91,9 @@ static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
     newcode::Level56PriorityMode::Level5First; // Level5First=同优先级时 Level 5 优先；Level6First=Level 6 优先
 static constexpr newcode::Level56ScheduleMode kLevel56ScheduleMode =
     newcode::Level56ScheduleMode::Group4LoadSortedMultiround; // GlobalPriority=全局优先级；Group4LoadSortedMultiround=64 code 固定分为 16 组、按组负载排序并多轮调度
+static constexpr newcode::Level56EarlyStopGroupUpdateMode
+    kLevel56EarlyStopGroupUpdateMode =
+        newcode::Level56EarlyStopGroupUpdateMode::AllGroups;
 static constexpr bool kLevel56SingleLevelSelectEnable = false; // true=按 early-stop 命中数动态只解一级
 static constexpr bool kLevel56UnselectedEarlyStopActionEnable = true; // true=未选中级仍执行 early-stop action
 static constexpr bool kDumpLevel56ScheduleStats = true; // true=导出每次共享调用的轮次与 code 级调度统计
@@ -213,6 +216,7 @@ int main() {
     .level56_shared_siso_active = kLevel56SharedSisoActive,
     .level56_priority_mode = kLevel56PriorityMode,
     .level56_schedule_mode = kLevel56ScheduleMode,
+    .level56_early_stop_group_update_mode = kLevel56EarlyStopGroupUpdateMode,
     .level56_single_level_select_enable = kLevel56SingleLevelSelectEnable,
     .level56_unselected_early_stop_action_enable =
         kLevel56UnselectedEarlyStopActionEnable,

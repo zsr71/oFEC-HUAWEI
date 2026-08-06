@@ -69,6 +69,8 @@ struct Config {
       newcode::Level56PriorityMode::Level5First;
   newcode::Level56ScheduleMode level56_schedule_mode =
       newcode::Level56ScheduleMode::GlobalPriority;
+  newcode::Level56EarlyStopGroupUpdateMode level56_early_stop_group_update_mode =
+      newcode::Level56EarlyStopGroupUpdateMode::AllGroups;
   bool level56_single_level_select_enable = false;
   bool level56_unselected_early_stop_action_enable = false;
   bool dump_level56_schedule_stats = false;

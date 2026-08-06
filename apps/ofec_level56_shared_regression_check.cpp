@@ -454,7 +454,7 @@ void check_per_level_siso_postprocessing() {
           "Level 5/6 SISO outputs must use their source alpha values");
 }
 
-void check_unscheduled_history_is_unchanged() {
+void check_unscheduled_last_tile_history_passes_through_prior() {
   newcode::detail::TilePrepared<float> prep;
   prep.lin_matrix = matrix::Matrix<float>(1, newcode::Params::BCH_N);
   prep.lch_matrix = matrix::Matrix<float>(1, newcode::Params::BCH_N);
@@ -464,19 +464,49 @@ void check_unscheduled_history_is_unchanged() {
       matrix::Matrix<float>(1, newcode::Params::BCH_N), {false}};
   matrix::Matrix<float> tile_out(352, 128);
   matrix::Matrix<float> history(704, 128);
-  for (std::size_t row = 0; row < history.rows(); ++row) {
-    for (std::size_t col = 0; col < history.cols(); ++col) {
-      history[row][col] = 7.0f;
+  for (std::size_t row = 0; row < tile_out.rows(); ++row) {
+    for (std::size_t col = 0; col < tile_out.cols(); ++col) {
+      tile_out[row][col] = 3.0f;
     }
+  }
+  for (std::size_t row = 0; row < history.rows(); ++row) {
+    std::fill(history[row].begin(), history[row].end(), 7.0f);
   }
 
   newcode::Params p;
   newcode::detail::writeback_tile(
       prep, decoded, p, 0, true, &tile_out, &history);
+  std::size_t passthrough_count = 0;
   for (std::size_t row = 0; row < history.rows(); ++row) {
     for (std::size_t col = 0; col < history.cols(); ++col) {
-      require(history[row][col] == 7.0f,
-              "produced=false row must not update last-tile history");
+      if (history[row][col] == 3.0f) {
+        ++passthrough_count;
+      } else {
+        require(history[row][col] == 7.0f,
+                "last-tile passthrough changed an unrelated history cell");
+      }
+    }
+  }
+  require(passthrough_count == 128,
+          "an unscheduled last-tile row must pass all 128 prior values to history");
+  for (std::size_t row = 0; row < tile_out.rows(); ++row) {
+    for (std::size_t col = 0; col < tile_out.cols(); ++col) {
+      require(tile_out[row][col] == 3.0f,
+              "history passthrough must not modify an unscheduled tile row");
+    }
+  }
+
+  matrix::Matrix<float> non_last_history(704, 128);
+  for (std::size_t row = 0; row < non_last_history.rows(); ++row) {
+    std::fill(non_last_history[row].begin(), non_last_history[row].end(),
+              7.0f);
+  }
+  newcode::detail::writeback_tile(
+      prep, decoded, p, 0, false, &tile_out, &non_last_history);
+  for (std::size_t row = 0; row < non_last_history.rows(); ++row) {
+    for (std::size_t col = 0; col < non_last_history.cols(); ++col) {
+      require(non_last_history[row][col] == 7.0f,
+              "a non-last tile must not update history");
     }
   }
 }
@@ -962,7 +992,7 @@ int main() {
     check_single_level_selection_uses_fewer_early_stops();
     check_common_parameter_validation();
     check_per_level_siso_postprocessing();
-    check_unscheduled_history_is_unchanged();
+    check_unscheduled_last_tile_history_passes_through_prior();
     check_level_priority_modes();
     check_grouped_k0_uses_no_entries();
     check_grouped_k0_suppresses_early_stop_without_entries();

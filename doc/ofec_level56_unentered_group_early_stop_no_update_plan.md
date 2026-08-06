@@ -4,7 +4,7 @@
 
 本文描述 Level 5/6 `Group4LoadSortedMultiround` 调度下，EarlyStop 行是否更新外信息的三种可切换模式，以及最终代码实现。
 
-本功能只通过 `apps/ofec_sweep3.cpp` 中的一个常量切换模式。一次 sweep 只运行所选模式，不增加 scenario 维度，也不自动展开三份实验。
+本功能可通过 `apps/ofec_sweep3.cpp` 或 `apps/ofec_single.cpp` 中的一个常量切换模式。一次运行只使用所选模式；sweep 不增加 scenario 维度，也不自动展开三份实验。
 
 ## 2. 调度背景
 
@@ -196,16 +196,16 @@ assigned_core = -1
 
 ## 8. 执行和写回
 
-不允许更新的 EarlyStop 行被设置为 `Unscheduled`。现有执行路径会跳过 `Unscheduled`，其 `produced_rows[row]` 保持 `false`。
+不允许更新的 EarlyStop 行被设置为 `Unscheduled`。执行路径会跳过 `Unscheduled`，其 `produced_rows[row]` 保持 `false`。
 
-现有 `writeback_tile()` 仅写回 `produced=true` 的行，因此无需修改：
+普通 tile 输出仅写回 `produced=true` 的行。对于捕获最终 history 的最后一个 tile，`produced=false` 的行不产生新 extrinsic，但会把当前 prior 透传到 `last_tile_history_accum`，避免最终 history 保留旧窗口值或初始 0：
 
 ```text
 不执行 EarlyStop action
 不乘 ALPHA
 不重新量化
 不覆盖 tile_out
-不更新 Level 6 history
+Level 6 history = 当前 prior
 ```
 
 EarlyStop action 1-8、Chase、HISO/SISO core 和 Level 1-4 均不修改。
@@ -242,21 +242,39 @@ entered_groups_only
 fill_idle_entries
 ```
 
-## 10. 修改范围
+## 10. `ofec_single` 切换方式
+
+`ofec_single` 使用相同的枚举参数，切换位置为：
+
+```cpp
+static constexpr newcode::Level56EarlyStopGroupUpdateMode
+    kLevel56EarlyStopGroupUpdateMode =
+        newcode::Level56EarlyStopGroupUpdateMode::AllGroups;
+```
+
+该值经 `ofec_single::Config` 传入 `Params`，运行摘要使用
+`all_groups`、`entered_groups_only` 或 `fill_idle_entries` 打印实际模式。
+`ofec_single` 默认使用 `AllGroups`，保持原有单次调试行为。
+
+## 11. 修改范围
 
 本功能只修改：
 
 ```text
 include/newcode/params.hpp
+include/newcode/ofec_single_runner.hpp
 src/rx/ofec/detail/ofec_level56_shared.ipp
 apps/ofec_sweep3.cpp
+apps/ofec_single.cpp
 apps/ofec_level56_shared_regression_check.cpp
+src/ofec_single/ofec_single_params.cpp
+src/ofec_single/ofec_single_summary.cpp
 doc/ofec_level56_unentered_group_early_stop_no_update_plan.md
 ```
 
 不修改公共 sweep scenario 生成逻辑，不让一个运行自动展开三种模式。
 
-## 11. 回归验收
+## 12. 回归验收
 
 回归测试覆盖：
 
