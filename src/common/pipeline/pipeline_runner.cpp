@@ -131,6 +131,23 @@ std::vector<HybridClassCount> collect_hybrid_class_counts(
   return counts;
 }
 
+std::vector<Level56ScheduleSample> collect_level56_schedule_samples(
+    const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::size_t total_samples = 0;
+  for (const auto& counter : counters) {
+    total_samples += counter.level56_schedule_samples.size();
+  }
+  std::vector<Level56ScheduleSample> samples;
+  samples.reserve(total_samples);
+  for (const auto& counter : counters) {
+    samples.insert(samples.end(),
+                   counter.level56_schedule_samples.begin(),
+                   counter.level56_schedule_samples.end());
+  }
+  return samples;
+}
+
 std::vector<std::size_t> collect_need_siso_before_mux_counts(
     const std::vector<TileEarlyStopCounter>& counters)
 {
@@ -449,6 +466,8 @@ PipelineResult run_pipeline(const Params& params,
       collect_tile_early_stop_group_bind_debug_samples(decode_result.tile_stats);
   result.hybrid_class_counts =
       collect_hybrid_class_counts(decode_result.tile_stats);
+  result.level56_schedule_samples =
+      collect_level56_schedule_samples(decode_result.tile_stats);
   result.tile_hard_finish_count =
       collect_hard_finish_counts(decode_result.tile_stats);
   result.tile_hard_finish_pct =

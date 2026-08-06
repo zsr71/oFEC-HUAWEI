@@ -1,0 +1,10 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333', 'secondaryColor': '#ffffff', 'tertiaryColor': '#ffffff'}}}%%
+flowchart LR
+    codes["组内待译码 code"] --> siso["SISO 优先服务<br/>SISO 专用 code"]
+    siso --> rank["其余 code<br/>按难度排序"]
+    rank --> sisoout["SISO MUX<br/>选择 1 个 code"]
+    rank --> hisoout["HISO MUX<br/>从剩余 code 选择 1 个不同 code"]
+    sisoout --> final1["SISO 译码输出"]
+    hisoout --> final2["HISO 译码输出"]
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class siso,sisoout,hisoout key;

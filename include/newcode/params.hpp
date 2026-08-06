@@ -32,6 +32,12 @@ enum class Level56ScheduleMode : uint8_t {
   Group4LoadSortedMultiround = 1
 };
 
+enum class Level56EarlyStopGroupUpdateMode : uint8_t {
+  AllGroups = 0,
+  EnteredGroupsOnly = 1,
+  FillIdleEntries = 2
+};
+
 struct Params {
   // ===== 编码结构常量（与 oFEC 布局一致） =====
   static constexpr size_t NUM_SUBBLOCK_COLS     = 8;   // 每行包含的子块数量
@@ -138,6 +144,10 @@ struct Params {
       Level56PriorityMode::Level5First;
   Level56ScheduleMode LEVEL56_SCHEDULE_MODE =
       Level56ScheduleMode::GlobalPriority;
+  bool LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE = false;
+  // Group4 多轮调度中，哪些组允许执行 early-stop 动作。
+  Level56EarlyStopGroupUpdateMode LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      Level56EarlyStopGroupUpdateMode::AllGroups;
   // 开启时根据 Level 5/6 的 early-stop 命中数，只解码命中较少的一级。
   bool LEVEL56_SINGLE_LEVEL_SELECT_ENABLE = false;
   // 单级选择时，允许未选中级的 early-stop 命中行执行动作和写回。

@@ -50,6 +50,8 @@ struct Level56SharedResult {
   TileProcessResult<LLR> level5;
   TileProcessResult<LLR> level6;
   std::vector<Level56DispatchEntry> dispatch;
+  bool has_schedule_sample = false;
+  Level56ScheduleSample schedule_sample;
 };
 
 inline int pick_level56_int(const std::vector<int>& values,
@@ -96,6 +98,15 @@ inline void validate_level56_shared_config(const newcode::Params& p) {
     default:
       throw std::invalid_argument(
           "LEVEL56 shared schedule mode is invalid");
+  }
+  switch (p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE) {
+    case newcode::Level56EarlyStopGroupUpdateMode::AllGroups:
+    case newcode::Level56EarlyStopGroupUpdateMode::EnteredGroupsOnly:
+    case newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries:
+      break;
+    default:
+      throw std::invalid_argument(
+          "LEVEL56 early-stop group update mode is invalid");
   }
 
   if (p.LEVEL56_SCHEDULE_MODE ==
@@ -505,7 +516,8 @@ inline void plan_level56_group_entry(
 inline void schedule_level56_rows_group4_load_sorted_multiround(
     std::vector<Level56DispatchEntry>* entries,
     const newcode::Params& p,
-    std::size_t selected_level = 0) {
+    std::size_t selected_level,
+    Level56ScheduleSample* sample) {
   if (!p.LEVEL56_SHARED_ENABLE) {
     throw std::invalid_argument(
         "LEVEL56 grouped multiround mode requires shared mode ON");
@@ -531,6 +543,10 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
   }
   validate_level56_grouped_entries(*entries);
 
+  if (sample) {
+    *sample = Level56ScheduleSample{};
+  }
+
   for (auto& entry : *entries) {
     entry.planned_hiso = false;
     entry.planned_siso = false;
@@ -551,6 +567,11 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     }
   }
 
+  if (sample) {
+    sample->initial_counts = initial_counts;
+    sample->initial_nonzero_groups = initial_nonzero_groups.size();
+  }
+
   const auto sort_groups_by_count = [](std::vector<std::size_t>* groups,
                                        const auto& counts) {
     std::sort(groups->begin(), groups->end(), [&](std::size_t lhs,
@@ -561,19 +582,54 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
   };
 
   int used_group_entries = 0;
+  std::array<bool, kLevel56GroupedGroupCount> group_entered{};
   const auto plan_groups = [&](const std::vector<std::size_t>& groups,
                                std::size_t count) {
+    Level56ScheduleRoundSample round;
+    if (sample) {
+      round.round_index = sample->rounds.size();
+      round.used_entries_before = static_cast<std::size_t>(used_group_entries);
+      for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
+        round.remaining_before[group] =
+            level56_group_remaining_count(*entries, group);
+      }
+      round.selected_groups.assign(groups.begin(), groups.begin() +
+                                                    static_cast<std::ptrdiff_t>(count));
+    }
     for (std::size_t i = 0; i < count; ++i) {
       plan_level56_group_entry(entries, groups[i], used_group_entries);
+      group_entered[groups[i]] = true;
+      if (sample) {
+        ++sample->group_entry_counts[groups[i]];
+      }
       ++used_group_entries;
+    }
+    if (sample) {
+      round.used_entries_after = static_cast<std::size_t>(used_group_entries);
+      for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
+        round.remaining_after[group] =
+            level56_group_remaining_count(*entries, group);
+      }
+      sample->rounds.push_back(std::move(round));
     }
   };
 
   const std::size_t initial_nonzero_count = initial_nonzero_groups.size();
   if (initial_nonzero_count > kLevel56MaxGroupEntries) {
+    if (sample) {
+      sample->branch = Level56ScheduleBranch::KGreaterThan8;
+    }
     sort_groups_by_count(&initial_nonzero_groups, initial_counts);
     plan_groups(initial_nonzero_groups, kLevel56MaxGroupEntries);
+  } else if (initial_nonzero_count == kLevel56MaxGroupEntries) {
+    if (sample) {
+      sample->branch = Level56ScheduleBranch::KEqual8;
+    }
+    plan_groups(initial_nonzero_groups, initial_nonzero_count);
   } else if (initial_nonzero_count > 0) {
+    if (sample) {
+      sample->branch = Level56ScheduleBranch::KLessThan8;
+    }
     plan_groups(initial_nonzero_groups, initial_nonzero_count);
 
     while (initial_nonzero_count < kLevel56MaxGroupEntries &&
@@ -596,12 +652,77 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
       plan_groups(remaining_groups,
                   std::min(available_entries, remaining_groups.size()));
     }
+  } else if (sample) {
+    sample->branch = Level56ScheduleBranch::K0;
+  }
+
+  if (p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE ==
+          newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries &&
+      used_group_entries < static_cast<int>(kLevel56MaxGroupEntries)) {
+    Level56ScheduleRoundSample round;
+    if (sample) {
+      round.round_index = sample->rounds.size();
+      round.used_entries_before = static_cast<std::size_t>(used_group_entries);
+      for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
+        round.remaining_before[group] =
+            level56_group_remaining_count(*entries, group);
+      }
+    }
+    for (std::size_t group = 0;
+         group < kLevel56GroupedGroupCount &&
+         used_group_entries < static_cast<int>(kLevel56MaxGroupEntries);
+         ++group) {
+      if (group_entered[group]) {
+        continue;
+      }
+      group_entered[group] = true;
+      ++used_group_entries;
+      if (sample) {
+        round.selected_groups.push_back(group);
+        ++sample->group_entry_counts[group];
+      }
+    }
+    if (sample && !round.selected_groups.empty()) {
+      round.used_entries_after = static_cast<std::size_t>(used_group_entries);
+      for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
+        round.remaining_after[group] =
+            level56_group_remaining_count(*entries, group);
+      }
+      sample->rounds.push_back(std::move(round));
+    }
+  }
+
+  if (p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE !=
+      newcode::Level56EarlyStopGroupUpdateMode::AllGroups) {
+    for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
+      if (group_entered[group]) {
+        continue;
+      }
+      const std::size_t begin = group * kLevel56CodesPerGroup;
+      const std::size_t end = begin + kLevel56CodesPerGroup;
+      for (std::size_t index = begin; index < end; ++index) {
+        auto& entry = (*entries)[index];
+        if (!entry.early_stop_hit) {
+          continue;
+        }
+        entry.final_action = Level56FinalAction::Unscheduled;
+        entry.remaining_for_schedule = false;
+        entry.assigned_entry_slot = -1;
+        entry.assigned_core = -1;
+      }
+    }
   }
 
   std::size_t planned_hiso = 0;
   std::size_t planned_siso = 0;
   for (const auto& entry : *entries) {
-    if (entry.early_stop_hit !=
+    const std::size_t group = entry.shared_row / kLevel56CodesPerGroup;
+    const bool early_stop_action_expected =
+        entry.early_stop_hit &&
+        (p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE ==
+             newcode::Level56EarlyStopGroupUpdateMode::AllGroups ||
+         group_entered[group]);
+    if (early_stop_action_expected !=
         (entry.final_action == Level56FinalAction::EarlyStopAction)) {
       throw std::logic_error(
           "LEVEL56 grouped scheduler violated early-stop action conservation");
@@ -629,15 +750,41 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     throw std::logic_error(
         "LEVEL56 grouped scheduler exceeded the eight-entry budget");
   }
+
+  if (sample) {
+    sample->total_group_entries = static_cast<std::size_t>(used_group_entries);
+    sample->planned_hiso_count = planned_hiso;
+    sample->planned_siso_count = planned_siso;
+    sample->codes.reserve(entries->size());
+    for (const auto& entry : *entries) {
+      sample->codes.push_back(Level56ScheduleCodeSample{
+          .code_index = entry.shared_row,
+          .source_level = entry.source_level,
+          .source_local_row = entry.source_local_row,
+          .group_index = entry.shared_row / kLevel56CodesPerGroup,
+          .position_in_group = entry.shared_row % kLevel56CodesPerGroup,
+          .early_stop_hit = entry.early_stop_hit,
+          .hybrid_class = static_cast<uint8_t>(entry.hybrid_class),
+          .resource_eligibility = static_cast<uint8_t>(entry.eligibility),
+          .planned_hiso = entry.planned_hiso,
+          .planned_siso = entry.planned_siso,
+          .remaining_for_schedule = entry.remaining_for_schedule,
+          .final_action = static_cast<uint8_t>(entry.final_action),
+          .assigned_entry_slot = entry.assigned_entry_slot,
+          .assigned_core = entry.assigned_core,
+      });
+    }
+  }
 }
 
 inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
                                   const newcode::Params& p,
-                                  std::size_t selected_level = 0) {
+                                  std::size_t selected_level = 0,
+                                  Level56ScheduleSample* sample = nullptr) {
   if (p.LEVEL56_SCHEDULE_MODE ==
       newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
     schedule_level56_rows_group4_load_sorted_multiround(
-        entries, p, selected_level);
+        entries, p, selected_level, sample);
     return;
   }
   schedule_level56_rows_global_priority(entries, p, selected_level);
@@ -949,7 +1096,13 @@ Level56SharedResult<LLR> process_level56_shared(
   } else {
     append_level56_entries(prep6, early6.effective, 6, &entries);
   }
-  schedule_level56_rows(&entries, params5, selected_level);
+  Level56ScheduleSample schedule_sample;
+  Level56ScheduleSample* schedule_sample_ptr =
+      params5.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE
+          ? &schedule_sample
+          : nullptr;
+  schedule_level56_rows(
+      &entries, params5, selected_level, schedule_sample_ptr);
   route_level56_g1(&entries, params5, selected_level);
 
   using SharedCoreLLR = typename TilePrepared<LLR>::CoreLLR;
@@ -984,6 +1137,11 @@ Level56SharedResult<LLR> process_level56_shared(
       tile_in6, early6.raw, early6.effective, entries, 6, shared_invocation,
       params6, std::move(tile_out6));
   result.dispatch = std::move(entries);
+  if (schedule_sample_ptr) {
+    schedule_sample.invocation = shared_invocation;
+    result.has_schedule_sample = true;
+    result.schedule_sample = std::move(schedule_sample);
+  }
   return result;
 }
 

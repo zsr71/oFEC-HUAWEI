@@ -1,0 +1,9 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333', 'secondaryColor': '#ffffff', 'tertiaryColor': '#ffffff'}}}%%
+flowchart TD
+    load["统计组负载<br/>计算 K"] --> decide{"K？"}
+    decide -->|K = 0| stop["全部 EarlyStop<br/>直接结束"]
+    decide -->|K > 8| overload["选择前 8 个<br/>高负载组"]
+    decide -->|K = 8| equal["全部 8 个<br/>非空组"]
+    decide -->|0 < K < 8| multi["全部非空组进入<br/>再进行多轮调度"]
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class decide,multi key;

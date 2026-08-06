@@ -188,6 +188,8 @@ void log_run_overview(const Config& cfg,
       << (params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE ? "ON" : "OFF")
       << ", unselected_early_stop_action = "
       << (params.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE ? "ON" : "OFF")
+      << ", schedule_observability = "
+      << (params.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE ? "ON" : "OFF")
       << "\n";
   log << "[INFO] Dump quantized LLR = "
       << (cfg.dump_quantized_llr ? "ON" : "OFF");

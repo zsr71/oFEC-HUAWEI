@@ -94,6 +94,9 @@ static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
     newcode::Level56PriorityMode::Level5First; // Level5First=组负载相同时 Level 5 优先；Level6First=Level 6 优先
 static constexpr newcode::Level56ScheduleMode kLevel56ScheduleMode =
     newcode::Level56ScheduleMode::Group4LoadSortedMultiround; // GlobalPriority=旧全局优先级；Group4LoadSortedMultiround=16 个四行组按负载排序并多轮调度
+static constexpr newcode::Level56EarlyStopGroupUpdateMode
+    kLevel56EarlyStopGroupUpdateMode =
+        newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries;
 static constexpr bool kLevel56SingleLevelSelectEnable = false; // 新分组多轮模式必须关闭；true=按 early-stop 命中数动态只解一级
 static constexpr bool kLevel56UnselectedEarlyStopActionEnable = false; // 仅 single-level selection 开启时有效
 
@@ -225,6 +228,19 @@ const char* hybrid_classifier_mode_name(newcode::HybridClassifierMode mode) {
   return "unknown";
 }
 
+const char* level56_early_stop_group_update_mode_name(
+    newcode::Level56EarlyStopGroupUpdateMode mode) {
+  switch (mode) {
+    case newcode::Level56EarlyStopGroupUpdateMode::AllGroups:
+      return "all_groups";
+    case newcode::Level56EarlyStopGroupUpdateMode::EnteredGroupsOnly:
+      return "entered_groups_only";
+    case newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries:
+      return "fill_idle_entries";
+  }
+  return "unknown";
+}
+
 const char* hybrid_siso_backfill_mode_name(newcode::HybridSisoBackfillMode mode) {
   switch (mode) {
     case newcode::HybridSisoBackfillMode::Disabled:
@@ -282,7 +298,7 @@ void ensure_csv_header_sweep3(const std::string& csv_path) {
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
           "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_bypass_scheme,"
           "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_siso_backfill_mode,hybrid_normalize_soft_only,"
-          "level56_shared_enable,level56_shared_hiso_active,level56_shared_siso_active,level56_priority_mode,level56_schedule_mode,"
+          "level56_shared_enable,level56_shared_hiso_active,level56_shared_siso_active,level56_priority_mode,level56_schedule_mode,level56_early_stop_group_update_mode,"
           "early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
@@ -339,6 +355,9 @@ void write_csv_row_sweep3(std::ostream& csv,
       << kLevel56SharedSisoActive << ','
       << static_cast<int>(kLevel56PriorityMode) << ','
       << static_cast<int>(kLevel56ScheduleMode) << ','
+      << level56_early_stop_group_update_mode_name(
+             kLevel56EarlyStopGroupUpdateMode)
+      << ','
       << point.scenario.early_stop_condition_mode << ','
       << point.scenario.early_stop_action_mode << ','
       << point.scenario.early_stop_bind_group_size << ','
@@ -848,6 +867,8 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.LEVEL56_SHARED_SISO_ACTIVE = kLevel56SharedSisoActive;
   config.base_params.LEVEL56_PRIORITY_MODE = kLevel56PriorityMode;
   config.base_params.LEVEL56_SCHEDULE_MODE = kLevel56ScheduleMode;
+  config.base_params.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      kLevel56EarlyStopGroupUpdateMode;
   config.base_params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE =
       kLevel56SingleLevelSelectEnable;
   config.base_params.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE =

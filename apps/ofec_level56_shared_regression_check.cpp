@@ -75,6 +75,7 @@ newcode::Params make_grouped_params() {
   p.LEVEL56_PRIORITY_MODE = newcode::Level56PriorityMode::Level5First;
   p.LEVEL56_SCHEDULE_MODE =
       newcode::Level56ScheduleMode::Group4LoadSortedMultiround;
+  p.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE = true;
   p.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE = false;
   p.HYBRID_CLASSIFIER_MODE =
       newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;
@@ -515,6 +516,43 @@ void check_grouped_k0_uses_no_entries() {
   require_grouped_plan_invariants(entries);
 }
 
+void check_grouped_k0_suppresses_early_stop_without_entries() {
+  auto entries = make_all_early_stop_grouped_entries();
+  auto p = make_grouped_params();
+  p.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE = false;
+  p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::EnteredGroupsOnly;
+  newcode::detail::schedule_level56_rows(&entries, p);
+
+  require(grouped_entry_count(entries) == 0,
+          "K=0 suppression mode must not consume an entry slot");
+  require(count_action(entries, Level56FinalAction::EarlyStopAction) == 0 &&
+              count_action(entries, Level56FinalAction::Unscheduled) == 64,
+          "K=0 suppression mode must leave all early-stop rows unchanged");
+  for (const auto& entry : entries) {
+    require(entry.early_stop_hit && !entry.planned_hiso &&
+                !entry.planned_siso && entry.assigned_entry_slot == -1 &&
+                entry.assigned_core == -1,
+            "suppressed K=0 early-stop row retained a planned route");
+  }
+
+  newcode::detail::TilePrepared<float> prep;
+  prep.lin_matrix = matrix::Matrix<float>(32, newcode::Params::BCH_N);
+  prep.lch_matrix = matrix::Matrix<float>(32, newcode::Params::BCH_N);
+  observed_core_betas.clear();
+  const auto decoded = newcode::detail::execute_level56_slice(
+      prep, entries, 5, false, &controlled_soft_core);
+  require(std::none_of(decoded.produced_rows.begin(),
+                       decoded.produced_rows.end(),
+                       [](bool produced) { return produced; }),
+          "suppressed early-stop rows must not produce decoder output");
+  require(observed_core_betas.empty(),
+          "suppressed early-stop rows must not call the SISO core");
+
+  require_grouped_plan_invariants(entries);
+  require_state_conservation(entries);
+}
+
 void check_grouped_k_greater_than_8_selects_top_8() {
   auto entries = make_all_early_stop_grouped_entries();
   activate_group_prefix(&entries, 0, 4);
@@ -535,7 +573,166 @@ void check_grouped_k_greater_than_8_selects_top_8() {
           "the ninth tied group must remain unscheduled");
   require(entries[32].source_level == 6,
           "the excluded tied group must be the later Level 6 group");
+  require(entries[33].final_action == Level56FinalAction::EarlyStopAction,
+          "default mode must preserve early-stop actions in an unentered group");
   require_grouped_plan_invariants(entries);
+}
+
+void check_grouped_k_greater_than_8_suppresses_unentered_group_early_stop() {
+  auto entries = make_all_early_stop_grouped_entries();
+  activate_group_prefix(&entries, 0, 4);
+  for (std::size_t group = 1; group <= 8; ++group) {
+    activate_group_prefix(&entries, group, 1);
+  }
+  auto p = make_grouped_params();
+  p.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE = false;
+  p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::EnteredGroupsOnly;
+  newcode::detail::schedule_level56_rows(&entries, p);
+  newcode::detail::route_level56_g1(&entries, p);
+
+  require(grouped_entry_count(entries) == 8,
+          "suppression mode must not change the eight-entry schedule");
+  for (int slot = 0; slot < 8; ++slot) {
+    require(group_for_slot(entries, slot) == slot,
+            "suppression mode changed grouped load ordering");
+  }
+  require(entries[5].early_stop_hit &&
+              entries[5].final_action == Level56FinalAction::EarlyStopAction,
+          "an entered group must preserve its early-stop actions");
+  require(entries[32].final_action == Level56FinalAction::Unscheduled,
+          "the unplanned non-early-stop row must remain unscheduled");
+  for (std::size_t row = 33; row < 36; ++row) {
+    require(entries[row].early_stop_hit &&
+                entries[row].final_action == Level56FinalAction::Unscheduled &&
+                !entries[row].planned_hiso && !entries[row].planned_siso &&
+                entries[row].assigned_entry_slot == -1 &&
+                entries[row].assigned_core == -1,
+            "an unentered group's early-stop row was not suppressed");
+  }
+  require_grouped_plan_invariants(entries);
+  require_state_conservation(entries);
+}
+
+void check_grouped_fill_idle_entries_k0_selects_first_8_groups() {
+  auto entries = make_all_early_stop_grouped_entries();
+  auto p = make_grouped_params();
+  p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries;
+  newcode::Level56ScheduleSample sample;
+  newcode::detail::schedule_level56_rows(&entries, p, 0, &sample);
+
+  require(grouped_entry_count(entries) == 0,
+          "K=0 fill mode must not create HISO/SISO plans");
+  require(sample.total_group_entries == 8,
+          "K=0 fill mode must consume eight supplemental group entries");
+  require(sample.rounds.size() == 1 &&
+              sample.rounds[0].selected_groups.size() == 8,
+          "K=0 fill mode must record one eight-group supplemental round");
+  for (std::size_t group = 0; group < 16; ++group) {
+    const bool expected_entered = group < 8;
+    require(sample.group_entry_counts[group] ==
+                static_cast<std::size_t>(expected_entered),
+            "K=0 fill mode selected the wrong supplemental group");
+    for (std::size_t position = 0; position < 4; ++position) {
+      const auto& entry = entries[group * 4 + position];
+      require(entry.final_action ==
+                  (expected_entered ? Level56FinalAction::EarlyStopAction
+                                    : Level56FinalAction::Unscheduled),
+              "K=0 fill mode applied the wrong early-stop action policy");
+      require(!entry.planned_hiso && !entry.planned_siso &&
+                  entry.assigned_entry_slot == -1 && entry.assigned_core == -1,
+              "a supplemental early-stop entry must not reserve a core");
+    }
+  }
+
+  auto entries_without_observability =
+      make_all_early_stop_grouped_entries();
+  p.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE = false;
+  newcode::detail::schedule_level56_rows(&entries_without_observability, p);
+  for (std::size_t index = 0; index < entries.size(); ++index) {
+    require(entries_without_observability[index].final_action ==
+                entries[index].final_action,
+            "fill mode must not depend on schedule observability");
+  }
+  require_grouped_plan_invariants(entries);
+  require_state_conservation(entries);
+}
+
+void check_grouped_fill_idle_entries_uses_ordinary_6_plus_2_supplemental() {
+  auto entries = make_all_early_stop_grouped_entries();
+  activate_group_prefix(&entries, 0, 3);
+  activate_group_prefix(&entries, 1, 3);
+  activate_group_prefix(&entries, 2, 2);
+  activate_group_prefix(&entries, 3, 2);
+  auto p = make_grouped_params();
+  p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries;
+  newcode::Level56ScheduleSample sample;
+  newcode::detail::schedule_level56_rows(&entries, p, 0, &sample);
+
+  require(grouped_entry_count(entries) == 6,
+          "fill mode changed the six-entry ordinary HISO/SISO schedule");
+  require(sample.total_group_entries == 8,
+          "fill mode must use the two idle entries after ordinary scheduling");
+  require(sample.group_entry_counts[0] == 2 &&
+              sample.group_entry_counts[1] == 2 &&
+              sample.group_entry_counts[2] == 1 &&
+              sample.group_entry_counts[3] == 1 &&
+              sample.group_entry_counts[4] == 1 &&
+              sample.group_entry_counts[5] == 1,
+          "fill mode must select the lowest-index previously unentered groups");
+  for (std::size_t row = 16; row < 24; ++row) {
+    require(entries[row].early_stop_hit &&
+                entries[row].final_action ==
+                    Level56FinalAction::EarlyStopAction,
+            "supplemental groups 4 and 5 must update early-stop rows");
+  }
+  for (std::size_t row = 24; row < 64; ++row) {
+    require(entries[row].early_stop_hit &&
+                entries[row].final_action == Level56FinalAction::Unscheduled,
+            "groups after the two supplemental selections must not update");
+  }
+  require(sample.rounds.size() == 3 &&
+              sample.rounds.back().selected_groups ==
+                  std::vector<std::size_t>({4, 5}),
+          "supplemental round must visit groups 4 and 5 in index order");
+  require_grouped_plan_invariants(entries);
+  require_state_conservation(entries);
+}
+
+void check_grouped_fill_idle_entries_does_not_change_full_schedule() {
+  auto entered_only_entries = make_all_early_stop_grouped_entries();
+  auto fill_entries = make_all_early_stop_grouped_entries();
+  for (std::size_t group = 0; group < 8; ++group) {
+    activate_group_prefix(&entered_only_entries, group, 1);
+    activate_group_prefix(&fill_entries, group, 1);
+  }
+
+  auto entered_only_params = make_grouped_params();
+  entered_only_params.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::EnteredGroupsOnly;
+  auto fill_params = entered_only_params;
+  fill_params.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries;
+  newcode::Level56ScheduleSample fill_sample;
+  newcode::detail::schedule_level56_rows(
+      &entered_only_entries, entered_only_params);
+  newcode::detail::schedule_level56_rows(
+      &fill_entries, fill_params, 0, &fill_sample);
+
+  require(fill_sample.total_group_entries == 8 &&
+              fill_sample.rounds.size() == 1,
+          "fill mode must not append supplemental entries after eight ordinary entries");
+  for (std::size_t index = 0; index < fill_entries.size(); ++index) {
+    require(fill_entries[index].final_action ==
+                entered_only_entries[index].final_action &&
+                fill_entries[index].assigned_entry_slot ==
+                    entered_only_entries[index].assigned_entry_slot,
+            "fill mode must match entered-only mode when all entries are used");
+  }
+  require_grouped_plan_invariants(fill_entries);
+  require_state_conservation(fill_entries);
 }
 
 void check_grouped_k8_runs_once_per_group() {
@@ -709,6 +906,7 @@ void check_grouped_end_to_end_single_window() {
   p.LEVEL56_SHARED_SISO_ACTIVE = 8;
   p.LEVEL56_SCHEDULE_MODE =
       newcode::Level56ScheduleMode::Group4LoadSortedMultiround;
+  p.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE = true;
 
   matrix::Matrix<float> llr(p.win_height_rows(),
                             newcode::Params::NUM_SUBBLOCK_COLS *
@@ -728,6 +926,20 @@ void check_grouped_end_to_end_single_window() {
           "grouped end-to-end decode changed the matrix shape");
   require(stats.size() == 6 && stats[4].total == 1 && stats[5].total == 1,
           "grouped end-to-end decode did not process Level 5/6 once");
+  require(stats[4].level56_schedule_samples.size() == 1,
+          "grouped end-to-end decode did not return a schedule sample");
+  const auto& schedule = stats[4].level56_schedule_samples.front();
+  require(schedule.codes.size() == 64,
+          "grouped schedule sample must contain all 64 code rows");
+  require(schedule.total_group_entries <= 8 &&
+              schedule.planned_hiso_count <= 8 &&
+              schedule.planned_siso_count <= 8,
+          "grouped schedule sample exceeded the shared resource budget");
+  if (!schedule.rounds.empty()) {
+    require(schedule.rounds.back().used_entries_after ==
+                schedule.total_group_entries,
+            "grouped schedule rounds lost the final entry count");
+  }
   for (std::size_t row = 0; row < decoded.rows(); ++row) {
     for (std::size_t col = 0; col < decoded.cols(); ++col) {
       require(std::isfinite(decoded[row][col]),
@@ -753,7 +965,12 @@ int main() {
     check_unscheduled_history_is_unchanged();
     check_level_priority_modes();
     check_grouped_k0_uses_no_entries();
+    check_grouped_k0_suppresses_early_stop_without_entries();
     check_grouped_k_greater_than_8_selects_top_8();
+    check_grouped_k_greater_than_8_suppresses_unentered_group_early_stop();
+    check_grouped_fill_idle_entries_k0_selects_first_8_groups();
+    check_grouped_fill_idle_entries_uses_ordinary_6_plus_2_supplemental();
+    check_grouped_fill_idle_entries_does_not_change_full_schedule();
     check_grouped_k8_runs_once_per_group();
     check_grouped_k6_uses_6_plus_2_entries();
     check_grouped_siso_only_multiround_reentry();

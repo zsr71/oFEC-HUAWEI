@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -9,6 +10,52 @@
 #include "newcode/ofec/hybrid/hybrid_classifier.hpp"
 
 namespace newcode {
+
+enum class Level56ScheduleBranch : uint8_t {
+  K0 = 0,
+  KLessThan8,
+  KEqual8,
+  KGreaterThan8
+};
+
+struct Level56ScheduleRoundSample {
+  std::size_t round_index = 0;
+  std::array<std::size_t, 16> remaining_before{};
+  std::vector<std::size_t> selected_groups;
+  std::array<std::size_t, 16> remaining_after{};
+  std::size_t used_entries_before = 0;
+  std::size_t used_entries_after = 0;
+};
+
+struct Level56ScheduleCodeSample {
+  std::size_t code_index = 0;
+  std::size_t source_level = 0;
+  std::size_t source_local_row = 0;
+  std::size_t group_index = 0;
+  std::size_t position_in_group = 0;
+  bool early_stop_hit = false;
+  uint8_t hybrid_class = 0;
+  uint8_t resource_eligibility = 0;
+  bool planned_hiso = false;
+  bool planned_siso = false;
+  bool remaining_for_schedule = false;
+  uint8_t final_action = 0;
+  int assigned_entry_slot = -1;
+  int assigned_core = -1;
+};
+
+struct Level56ScheduleSample {
+  std::size_t invocation = 0;
+  std::array<std::size_t, 16> initial_counts{};
+  std::size_t initial_nonzero_groups = 0;
+  Level56ScheduleBranch branch = Level56ScheduleBranch::K0;
+  std::vector<Level56ScheduleRoundSample> rounds;
+  std::array<std::size_t, 16> group_entry_counts{};
+  std::size_t total_group_entries = 0;
+  std::size_t planned_hiso_count = 0;
+  std::size_t planned_siso_count = 0;
+  std::vector<Level56ScheduleCodeSample> codes;
+};
 
 struct HybridClassCount {
   std::size_t invocation = 0;
@@ -61,6 +108,7 @@ struct TileEarlyStopCounter {
   std::vector<TileEarlyStopSample> samples;
   std::vector<TileEarlyStopGroupBindDebugSample> group_bind_debug_samples;
   std::vector<HybridClassCount> hybrid_class_counts;
+  std::vector<Level56ScheduleSample> level56_schedule_samples;
 };
 
 template <typename LLR>

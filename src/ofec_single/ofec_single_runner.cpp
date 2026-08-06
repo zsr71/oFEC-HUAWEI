@@ -2,6 +2,7 @@
 #include "newcode/io/dualwriter.hpp"
 #include "newcode/io/prepare_log_file.hpp"
 
+#include <array>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
@@ -21,6 +22,83 @@ std::string make_run_id() {
   std::ostringstream oss;
   oss << std::put_time(&tm, "%Y%m%d_%H%M%S");
   return oss.str();
+}
+
+template <typename Range>
+std::string join_numbers(const Range& values, char separator = '|') {
+  std::ostringstream oss;
+  bool first = true;
+  for (const auto value : values) {
+    if (!first) {
+      oss << separator;
+    }
+    first = false;
+    oss << value;
+  }
+  return oss.str();
+}
+
+template <typename Range>
+std::string join_one_based(const Range& values, char separator = '|') {
+  std::ostringstream oss;
+  bool first = true;
+  for (const auto value : values) {
+    if (!first) {
+      oss << separator;
+    }
+    first = false;
+    oss << (value + 1u);
+  }
+  return oss.str();
+}
+
+const char* level56_branch_name(newcode::Level56ScheduleBranch branch) {
+  switch (branch) {
+    case newcode::Level56ScheduleBranch::K0:
+      return "K0";
+    case newcode::Level56ScheduleBranch::KLessThan8:
+      return "K_LT_8";
+    case newcode::Level56ScheduleBranch::KEqual8:
+      return "K_EQ_8";
+    case newcode::Level56ScheduleBranch::KGreaterThan8:
+      return "K_GT_8";
+  }
+  return "UNKNOWN";
+}
+
+const char* level56_hybrid_class_name(uint8_t value) {
+  switch (value) {
+    case 0: return "None";
+    case 1: return "BchHardDecoded";
+    case 2: return "Clean";
+    case 3: return "ParityOnly";
+    case 4: return "OneMain";
+    case 5: return "OneMainPlusParity";
+    case 6: return "TwoMain";
+    case 7: return "Suspicious";
+    case 8: return "HardFail";
+    default: return "Unknown";
+  }
+}
+
+const char* level56_eligibility_name(uint8_t value) {
+  switch (value) {
+    case 0: return "None";
+    case 1: return "HisoOnly";
+    case 2: return "SisoOnly";
+    case 3: return "HisoOrSiso";
+    default: return "Unknown";
+  }
+}
+
+const char* level56_action_name(uint8_t value) {
+  switch (value) {
+    case 0: return "EarlyStopAction";
+    case 1: return "HisoDecode";
+    case 2: return "SisoDecode";
+    case 3: return "Unscheduled";
+    default: return "Unknown";
+  }
 }
 
 void dump_tile_early_stop_samples_csv(
@@ -68,6 +146,142 @@ void dump_tile_early_stop_group_bind_debug_samples_csv(
   }
 }
 
+void dump_level56_schedule_rounds_csv(
+    const std::vector<newcode::Level56ScheduleSample>& samples,
+    const std::filesystem::path& output_path,
+    const std::string& run_id,
+    const std::string& label) {
+  const auto parent = output_path.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent);
+  }
+  std::ofstream out(output_path);
+  out << "run_id,label,invocation,K,branch,round_index,used_entries_before,"
+         "used_entries_after,initial_counts,remaining_before,selected_groups_1based,"
+         "remaining_after,group_entry_counts,total_group_entries,planned_hiso,"
+         "planned_siso,idle_hiso_capacity,idle_siso_capacity\n";
+  for (const auto& sample : samples) {
+    const auto write_row = [&](long round_index,
+                               std::size_t used_before,
+                               std::size_t used_after,
+                               const auto& remaining_before,
+                               const auto& selected_groups,
+                               const auto& remaining_after) {
+      out << run_id << ',' << label << ',' << sample.invocation << ','
+          << sample.initial_nonzero_groups << ','
+          << level56_branch_name(sample.branch) << ',' << round_index << ','
+          << used_before << ',' << used_after << ','
+          << '"' << join_numbers(sample.initial_counts) << "\",\""
+          << join_numbers(remaining_before) << "\",\""
+          << join_one_based(selected_groups) << "\",\""
+          << join_numbers(remaining_after) << "\",\""
+          << join_numbers(sample.group_entry_counts) << "\","
+          << sample.total_group_entries << ','
+          << sample.planned_hiso_count << ','
+          << sample.planned_siso_count << ','
+          << (8u - sample.planned_hiso_count) << ','
+          << (8u - sample.planned_siso_count) << '\n';
+    };
+    if (sample.rounds.empty()) {
+      const std::vector<std::size_t> no_groups;
+      write_row(-1, 0, 0, sample.initial_counts, no_groups,
+                sample.initial_counts);
+      continue;
+    }
+    for (const auto& round : sample.rounds) {
+      write_row(static_cast<long>(round.round_index + 1u),
+                round.used_entries_before, round.used_entries_after,
+                round.remaining_before, round.selected_groups,
+                round.remaining_after);
+    }
+  }
+}
+
+void dump_level56_schedule_codes_csv(
+    const std::vector<newcode::Level56ScheduleSample>& samples,
+    const std::filesystem::path& output_path,
+    const std::string& run_id,
+    const std::string& label) {
+  const auto parent = output_path.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent);
+  }
+  std::ofstream out(output_path);
+  out << "run_id,label,invocation,code,source_level,source_row,group,"
+         "position_in_group,early_stop_hit,hybrid_class,resource_eligibility,"
+         "planned_hiso,planned_siso,remaining_for_schedule,final_action,"
+         "assigned_entry_slot,assigned_core\n";
+  for (const auto& sample : samples) {
+    for (const auto& code : sample.codes) {
+      out << run_id << ',' << label << ',' << sample.invocation << ','
+          << (code.code_index + 1u) << ',' << code.source_level << ','
+          << (code.source_local_row + 1u) << ',' << (code.group_index + 1u)
+          << ',' << (code.position_in_group + 1u) << ','
+          << code.early_stop_hit << ','
+          << level56_hybrid_class_name(code.hybrid_class) << ','
+          << level56_eligibility_name(code.resource_eligibility) << ','
+          << code.planned_hiso << ',' << code.planned_siso << ','
+          << code.remaining_for_schedule << ','
+          << level56_action_name(code.final_action) << ','
+          << code.assigned_entry_slot << ',' << code.assigned_core << '\n';
+    }
+  }
+}
+
+void log_level56_schedule_summary(
+    const std::vector<newcode::Level56ScheduleSample>& samples,
+    io::DualWriter& log) {
+  std::array<std::size_t, 4> branch_counts{};
+  std::array<std::size_t, 16> group_entries{};
+  std::array<std::array<std::size_t, 4>, 2> level_actions{};
+  std::array<std::array<std::size_t, 4>, 9> class_actions{};
+  std::size_t total_entries = 0;
+  std::size_t total_hiso = 0;
+  std::size_t total_siso = 0;
+  for (const auto& sample : samples) {
+    ++branch_counts[static_cast<std::size_t>(sample.branch)];
+    total_entries += sample.total_group_entries;
+    total_hiso += sample.planned_hiso_count;
+    total_siso += sample.planned_siso_count;
+    for (std::size_t group = 0; group < group_entries.size(); ++group) {
+      group_entries[group] += sample.group_entry_counts[group];
+    }
+    for (const auto& code : sample.codes) {
+      if ((code.source_level == 5 || code.source_level == 6) &&
+          code.final_action < 4) {
+        ++level_actions[code.source_level - 5u][code.final_action];
+      }
+      if (code.hybrid_class < class_actions.size() &&
+          code.final_action < class_actions.front().size()) {
+        ++class_actions[code.hybrid_class][code.final_action];
+      }
+    }
+  }
+  log << "[RESULT] Level56 schedule calls/branches(K0,K<8,K=8,K>8) = "
+      << samples.size() << "/[" << branch_counts[0] << ", "
+      << branch_counts[1] << ", " << branch_counts[2] << ", "
+      << branch_counts[3] << "]\n";
+  log << "[RESULT] Level56 entry/HISO/SISO/idle-HISO/idle-SISO totals = "
+      << total_entries << '/' << total_hiso << '/' << total_siso << '/'
+      << (samples.size() * 8u - total_hiso) << '/'
+      << (samples.size() * 8u - total_siso) << "\n";
+  log << "[RESULT] Level56 per-group entry counts = ["
+      << join_numbers(group_entries, ',') << "]\n";
+  log << "[RESULT] Level5 actions(EarlyStop,HISO,SISO,Unscheduled) = ["
+      << join_numbers(level_actions[0], ',') << "]\n";
+  log << "[RESULT] Level6 actions(EarlyStop,HISO,SISO,Unscheduled) = ["
+      << join_numbers(level_actions[1], ',') << "]\n";
+  for (const uint8_t row_class : {uint8_t{3}, uint8_t{4}, uint8_t{5},
+                                  uint8_t{6}, uint8_t{8}}) {
+    log << "[RESULT] Level56 class "
+        << level56_hybrid_class_name(row_class)
+        << " actions(HISO,SISO,Unscheduled) = ["
+        << class_actions[row_class][1] << ','
+        << class_actions[row_class][2] << ','
+        << class_actions[row_class][3] << "]\n";
+  }
+}
+
 }  // namespace
 
 namespace ofec_single {
@@ -111,6 +325,29 @@ int run_ofec_single(const Config& config) {
         config.label);
     log << "[INFO] tile early-stop group-bind debug samples saved to "
         << output_path.string() << "\n";
+  }
+  if (config.dump_level56_schedule_stats) {
+    std::filesystem::path rounds_path =
+        config.level56_schedule_rounds_output_path;
+    if (rounds_path.empty()) {
+      rounds_path = std::filesystem::path("data/level56_schedule") /
+                    (config.label + "_level56_schedule_rounds.csv");
+    }
+    std::filesystem::path codes_path =
+        config.level56_schedule_codes_output_path;
+    if (codes_path.empty()) {
+      codes_path = std::filesystem::path("data/level56_schedule") /
+                   (config.label + "_level56_schedule_codes.csv");
+    }
+    dump_level56_schedule_rounds_csv(
+        result.level56_schedule_samples, rounds_path, run_id, config.label);
+    dump_level56_schedule_codes_csv(
+        result.level56_schedule_samples, codes_path, run_id, config.label);
+    log_level56_schedule_summary(result.level56_schedule_samples, log);
+    log << "[INFO] Level56 schedule rounds saved to "
+        << rounds_path.string() << "\n";
+    log << "[INFO] Level56 schedule codes saved to "
+        << codes_path.string() << "\n";
   }
   detail::log_pipeline_results(result, log);
   log << "[INFO] log saved at " << log_path << "\n";

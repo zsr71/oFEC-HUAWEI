@@ -210,6 +210,10 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
               last_tile_history_accum);
           update_tile_stats(kLevel5TileIndex, shared.level5);
           update_tile_stats(kLevel6TileIndex, shared.level6);
+          if (tile_stats && shared.has_schedule_sample) {
+            (*tile_stats)[kLevel5TileIndex].level56_schedule_samples.push_back(
+                std::move(shared.schedule_sample));
+          }
           write_tile_to_work(kLevel5TileIndex, top5, shared.level5.tile_out);
           write_tile_to_work(kLevel6TileIndex, top6, shared.level6.tile_out);
           ++t;

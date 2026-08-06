@@ -1,0 +1,9 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333', 'secondaryColor': '#ffffff', 'tertiaryColor': '#ffffff'}}}%%
+flowchart LR
+    input["Level 5 / 6<br/>64 个 code"] --> early["EarlyStop<br/>预判"]
+    early --> hybrid["Hybrid<br/>分类"]
+    hybrid --> grouping["固定分组<br/>统计负载"]
+    grouping --> schedule["排序与<br/>资源调度"]
+    schedule --> output["HISO / SISO<br/>译码输出"]
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class early,schedule key;

@@ -71,6 +71,9 @@ struct Config {
       newcode::Level56ScheduleMode::GlobalPriority;
   bool level56_single_level_select_enable = false;
   bool level56_unselected_early_stop_action_enable = false;
+  bool dump_level56_schedule_stats = false;
+  std::string level56_schedule_rounds_output_path;
+  std::string level56_schedule_codes_output_path;
   std::string interleaver_name;
   std::string decoder_name;
   bool generate_random_bits = true;

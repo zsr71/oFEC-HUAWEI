@@ -1,0 +1,10 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333', 'secondaryColor': '#ffffff', 'tertiaryColor': '#ffffff'}}}%%
+flowchart LR
+    round1["第一轮<br/>全部非空组进入"] --> serve["每组最多服务<br/>两个 code"]
+    serve --> update["重新计算<br/>剩余负载"]
+    update --> check{"有剩余<br/>且有预算？"}
+    check -->|否| stop["停止"]
+    check -->|是| rank["按剩余负载重排<br/>高负载组优先"]
+    rank --> serve
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class check,rank key;

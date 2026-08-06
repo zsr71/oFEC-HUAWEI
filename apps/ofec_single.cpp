@@ -13,7 +13,7 @@ static constexpr int         kBitgenSeed         = 20260319;    // 比特生成�
 static constexpr bool        kGenerateRandomBits = true;       // true=发送随机信息比特，false=发送全 0 比特
 
 // 信道参数
-static constexpr float       kEbN0_db                      = 3.05f;   // 信道 Eb/N0，单位 dB
+static constexpr float       kEbN0_db                      = 3.06f;   // 信道 Eb/N0，单位 dB
 static constexpr int         kChannelSeed                  = 3182026; // 信道噪声随机种子，固定后可复现实验
 static constexpr unsigned    kBitsPerSymbol                = 1;       // 每个调制符号携带的比特数：1=BPSK，偶数=QAM
 
@@ -93,6 +93,11 @@ static constexpr newcode::Level56ScheduleMode kLevel56ScheduleMode =
     newcode::Level56ScheduleMode::Group4LoadSortedMultiround; // GlobalPriority=全局优先级；Group4LoadSortedMultiround=64 code 固定分为 16 组、按组负载排序并多轮调度
 static constexpr bool kLevel56SingleLevelSelectEnable = false; // true=按 early-stop 命中数动态只解一级
 static constexpr bool kLevel56UnselectedEarlyStopActionEnable = true; // true=未选中级仍执行 early-stop action
+static constexpr bool kDumpLevel56ScheduleStats = true; // true=导出每次共享调用的轮次与 code 级调度统计
+static constexpr const char* kLevel56ScheduleRoundsPath =
+    "data/level56_schedule/ofec_single_level56_schedule_rounds.csv";
+static constexpr const char* kLevel56ScheduleCodesPath =
+    "data/level56_schedule/ofec_single_level56_schedule_codes.csv";
 
 // LLR 导出相关
 static constexpr bool        kDumpQuantizedLlr = false;                         // 是否导出量化后的信道 LLR
@@ -211,6 +216,9 @@ int main() {
     .level56_single_level_select_enable = kLevel56SingleLevelSelectEnable,
     .level56_unselected_early_stop_action_enable =
         kLevel56UnselectedEarlyStopActionEnable,
+    .dump_level56_schedule_stats = kDumpLevel56ScheduleStats,
+    .level56_schedule_rounds_output_path = kLevel56ScheduleRoundsPath,
+    .level56_schedule_codes_output_path = kLevel56ScheduleCodesPath,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,
     .generate_random_bits = kGenerateRandomBits,

@@ -215,6 +215,8 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.LEVEL56_SHARED_SISO_ACTIVE = cfg.level56_shared_siso_active;
   params.LEVEL56_PRIORITY_MODE = cfg.level56_priority_mode;
   params.LEVEL56_SCHEDULE_MODE = cfg.level56_schedule_mode;
+  params.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE =
+      cfg.dump_level56_schedule_stats;
   params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE =
       cfg.level56_single_level_select_enable;
   params.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE =
