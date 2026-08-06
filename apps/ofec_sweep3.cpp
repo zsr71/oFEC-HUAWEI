@@ -96,7 +96,7 @@ static constexpr newcode::Level56ScheduleMode kLevel56ScheduleMode =
     newcode::Level56ScheduleMode::Group4LoadSortedMultiround; // GlobalPriority=旧全局优先级；Group4LoadSortedMultiround=16 个四行组按负载排序并多轮调度
 static constexpr newcode::Level56EarlyStopGroupUpdateMode
     kLevel56EarlyStopGroupUpdateMode =
-        newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries;
+        newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries; // AllGroups=所有 early-stop 命中组都更新；EnteredGroupsOnly=只更新普通调度进入过的组；FillIdleEntries=普通调度后用空闲 entry 补未进入组
 static constexpr bool kLevel56SingleLevelSelectEnable = false; // 新分组多轮模式必须关闭；true=按 early-stop 命中数动态只解一级
 static constexpr bool kLevel56UnselectedEarlyStopActionEnable = false; // 仅 single-level selection 开启时有效
 
