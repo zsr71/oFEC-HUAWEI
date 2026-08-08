@@ -138,6 +138,8 @@ struct Params {
 
   // 第五/六级共享 HISO/SISO 资源。关闭时保持现有逐 tile 解码路径。
   bool LEVEL56_SHARED_ENABLE = false;
+  // 开启第五/六级三时刻 192-code lookahead 调度；关闭时保持单批次共享路径。
+  bool LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE = false;
   int LEVEL56_SHARED_HISO_ACTIVE = 32;
   int LEVEL56_SHARED_SISO_ACTIVE = 32;
   Level56PriorityMode LEVEL56_PRIORITY_MODE =

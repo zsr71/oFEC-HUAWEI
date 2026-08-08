@@ -211,6 +211,8 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       cfg.hybrid_classifier_mode != newcode::HybridClassifierMode::LegacyHardDecode;
   params.HYBRID_NORMALIZE_SOFT_ONLY = cfg.hybrid_normalize_soft_only;
   params.LEVEL56_SHARED_ENABLE = cfg.level56_shared_enable;
+  params.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE =
+      cfg.level56_temporal_lookahead_enable;
   params.LEVEL56_SHARED_HISO_ACTIVE = cfg.level56_shared_hiso_active;
   params.LEVEL56_SHARED_SISO_ACTIVE = cfg.level56_shared_siso_active;
   params.LEVEL56_PRIORITY_MODE = cfg.level56_priority_mode;

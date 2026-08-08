@@ -88,6 +88,7 @@ static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只�
 
 // Level 5/6 共享：四行分组、负载排序与多轮 MUX 调度
 static constexpr bool kLevel56SharedEnable = true;                  // true=第五/六级共享 HISO/SISO
+static constexpr bool kLevel56TemporalLookaheadEnable = true;       // true=启用 t=0/t=1/t=2 三时刻 192-code 调度
 static constexpr int kLevel56SharedHisoActive = 8;                  // 新分组方案固定使用 8 个共享 HISO entry slot
 static constexpr int kLevel56SharedSisoActive = 8;                  // 新分组方案固定使用 8 个共享 SISO entry slot
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
@@ -96,7 +97,7 @@ static constexpr newcode::Level56ScheduleMode kLevel56ScheduleMode =
     newcode::Level56ScheduleMode::Group4LoadSortedMultiround; // GlobalPriority=旧全局优先级；Group4LoadSortedMultiround=16 个四行组按负载排序并多轮调度
 static constexpr newcode::Level56EarlyStopGroupUpdateMode
     kLevel56EarlyStopGroupUpdateMode =
-        newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries; // AllGroups=所有 early-stop 命中组都更新；EnteredGroupsOnly=只更新普通调度进入过的组；FillIdleEntries=普通调度后用空闲 entry 补未进入组
+        newcode::Level56EarlyStopGroupUpdateMode::AllGroups; // temporal 方案固定使用 AllGroups
 static constexpr bool kLevel56SingleLevelSelectEnable = false; // 新分组多轮模式必须关闭；true=按 early-stop 命中数动态只解一级
 static constexpr bool kLevel56UnselectedEarlyStopActionEnable = false; // 仅 single-level selection 开启时有效
 
@@ -863,6 +864,8 @@ ofec_sweep::SweepParameterConfig build_config() {
       kHybridClassifierMode != newcode::HybridClassifierMode::LegacyHardDecode;
   config.base_params.HYBRID_NORMALIZE_SOFT_ONLY = kHybridNormalizeSoftOnly;
   config.base_params.LEVEL56_SHARED_ENABLE = kLevel56SharedEnable;
+  config.base_params.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE =
+      kLevel56TemporalLookaheadEnable;
   config.base_params.LEVEL56_SHARED_HISO_ACTIVE = kLevel56SharedHisoActive;
   config.base_params.LEVEL56_SHARED_SISO_ACTIVE = kLevel56SharedSisoActive;
   config.base_params.LEVEL56_PRIORITY_MODE = kLevel56PriorityMode;

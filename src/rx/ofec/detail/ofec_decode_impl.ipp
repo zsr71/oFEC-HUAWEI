@@ -123,6 +123,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
     stats_ptr = &local_tile_stats;
   }
   std::size_t level56_shared_invocation = 0;
+  Level56TemporalState<LLR> level56_temporal_state;
 
   while (win_start <= last_ws) {
     const size_t win_end = win_start + WIN_HEIGHT_ROWS - 1;
@@ -135,7 +136,10 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
                              tx_llr_ref,
                              core_fn,
                              &last_tile_history_llr,
-                             &level56_shared_invocation);
+                             &level56_shared_invocation,
+                             p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE
+                                 ? &level56_temporal_state
+                                 : nullptr);
 
     win_start += POP_PUSH_ROWS;
   }

@@ -18,8 +18,31 @@ enum class Level56ScheduleBranch : uint8_t {
   KGreaterThan8
 };
 
+enum class Level56TemporalBranch : uint8_t {
+  Disabled = 0,
+  NoHistory,
+  SupplementHistory,
+  CurrentFirst,
+  NoFuture
+};
+
+enum class Level56TemporalInfoType : uint8_t {
+  DecodeInfo = 0,
+  EarlyStopInfo
+};
+
+enum class Level56DecodeStatus : uint8_t {
+  NotDecoded = 0,
+  Produced,
+  ActionFailed
+};
+
 struct Level56ScheduleRoundSample {
   std::size_t round_index = 0;
+  std::size_t time_index = 1;
+  std::array<std::size_t, 16> initial_counts{};
+  std::size_t initial_nonzero_groups = 0;
+  Level56ScheduleBranch branch = Level56ScheduleBranch::K0;
   std::array<std::size_t, 16> remaining_before{};
   std::vector<std::size_t> selected_groups;
   std::array<std::size_t, 16> remaining_after{};
@@ -29,6 +52,11 @@ struct Level56ScheduleRoundSample {
 
 struct Level56ScheduleCodeSample {
   std::size_t code_index = 0;
+  std::size_t time_index = 1;
+  int time_offset = 0;
+  Level56TemporalInfoType info_type =
+      Level56TemporalInfoType::DecodeInfo;
+  Level56DecodeStatus decode_status = Level56DecodeStatus::NotDecoded;
   std::size_t source_level = 0;
   std::size_t source_local_row = 0;
   std::size_t group_index = 0;
@@ -42,10 +70,29 @@ struct Level56ScheduleCodeSample {
   uint8_t final_action = 0;
   int assigned_entry_slot = -1;
   int assigned_core = -1;
+  bool produced = false;
 };
 
 struct Level56ScheduleSample {
   std::size_t invocation = 0;
+  bool temporal_lookahead_enabled = false;
+  bool temporal_has_history = false;
+  bool temporal_has_future = false;
+  std::size_t temporal_x = 0;
+  std::size_t temporal_k1 = 0;
+  std::size_t temporal_k2 = 0;
+  Level56TemporalBranch temporal_branch = Level56TemporalBranch::Disabled;
+  std::size_t temporal_t0_group_entries = 0;
+  std::size_t temporal_t1_group_entries = 0;
+  std::size_t temporal_t0_pending_before = 0;
+  std::size_t temporal_t0_pending_after = 0;
+  std::size_t temporal_t1_pending_before = 0;
+  std::size_t temporal_t1_pending_after = 0;
+  std::size_t temporal_t0_new_produced = 0;
+  // Temporal samples keep per-time group-entry counts. The legacy
+  // group_entry_counts field remains the sum for compatibility.
+  std::array<std::size_t, 16> temporal_t0_group_entry_counts{};
+  std::array<std::size_t, 16> temporal_t1_group_entry_counts{};
   std::array<std::size_t, 16> initial_counts{};
   std::size_t initial_nonzero_groups = 0;
   Level56ScheduleBranch branch = Level56ScheduleBranch::K0;

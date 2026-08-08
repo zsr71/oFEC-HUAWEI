@@ -85,6 +85,7 @@ static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
     newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority;                    // Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;            // true=只归一化 soft rows，false=保持当前兼容行为
 static constexpr bool kLevel56SharedEnable = true;                // true=第五/六级共享 HISO/SISO
+static constexpr bool kLevel56TemporalLookaheadEnable = true;     // true=启用 t=0/t=1/t=2 三时刻 192-code 调度
 static constexpr int kLevel56SharedHisoActive = 8;                 // 第五/六级共享 HISO 容量
 static constexpr int kLevel56SharedSisoActive = 8;                 // 第五/六级共享 SISO 容量
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
@@ -212,6 +213,7 @@ int main() {
     .hybrid_siso_backfill_mode = kHybridSisoBackfillMode,
     .hybrid_normalize_soft_only = kHybridNormalizeSoftOnly,
     .level56_shared_enable = kLevel56SharedEnable,
+    .level56_temporal_lookahead_enable = kLevel56TemporalLookaheadEnable,
     .level56_shared_hiso_active = kLevel56SharedHisoActive,
     .level56_shared_siso_active = kLevel56SharedSisoActive,
     .level56_priority_mode = kLevel56PriorityMode,

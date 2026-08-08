@@ -8,6 +8,7 @@
 #include "newcode/ofec/mux/mux_config_validate.hpp"
 #include "newcode/ofec/mux/mux_siso_budget.hpp"
 
+#include <iterator>
 #include <vector>
 
 namespace newcode {
@@ -23,7 +24,8 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                          const matrix::Matrix<float>* tx_llr_ref,
                          CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn,
                          matrix::Matrix<float>* last_tile_history_accum,
-                         std::size_t* level56_shared_invocation)
+                         std::size_t* level56_shared_invocation,
+                         Level56TemporalState<LLR>* level56_temporal_state = nullptr)
 {
   // 输入:
   // - work_llr: 当前全局工作矩阵，保存已经累积的外信息/历史信息，会被原地更新。
@@ -67,6 +69,9 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
   const long trace_row = trace_has_coords ? trace_cfg.row : -1;
   const long trace_col = trace_has_coords ? trace_cfg.col : -1;
   const size_t N = newcode::Params::NUM_SUBBLOCK_COLS * newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  const size_t rows_to_decode =
+      static_cast<size_t>(p.CHASE_SBR) *
+      newcode::Params::BITS_PER_SUBBLOCK_DIM;
   static size_t chase_invocation_counter = 0;
 
   auto pick_float = [](const std::vector<float>& tbl, size_t idx, float fallback) -> float {
@@ -112,6 +117,59 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
           static_cast<int>(++chase_invocation_counter);
       return tile_params;
   };
+
+  auto copy_tile_from_global = [&](size_t top_row) {
+    matrix::Matrix<LLR> tile(tile_height_rows, N);
+    for (size_t r = 0; r < tile_height_rows; ++r) {
+      for (size_t c = 0; c < N; ++c) {
+        tile[r][c] = work_llr[top_row + r][c];
+      }
+    }
+    return tile;
+  };
+
+  auto make_temporal_batch = [&](size_t batch_win_start)
+      -> std::optional<Level56TemporalBatch<LLR>> {
+    const size_t batch_win_end =
+        batch_win_start + (win_end - win_start);
+    if (batch_win_end >= channel_llr.rows()) {
+      return std::nullopt;
+    }
+    const size_t bottom5 = batch_win_end - kLevel5TileIndex * tile_stride_rows;
+    const size_t top5 = bottom5 + 1 - tile_height_rows;
+    const size_t bottom6 = batch_win_end - kLevel6TileIndex * tile_stride_rows;
+    const size_t top6 = bottom6 + 1 - tile_height_rows;
+    Level56TemporalBatch<LLR> batch;
+    batch.tile_top5 = top5;
+    batch.tile_top6 = top6;
+    batch.tile_in5 = copy_tile_from_global(top5);
+    batch.tile_in6 = copy_tile_from_global(top6);
+    batch.ch_tile5 = matrix::Matrix<LLR>(tile_height_rows, N);
+    batch.ch_tile6 = matrix::Matrix<LLR>(tile_height_rows, N);
+    for (size_t r = 0; r < tile_height_rows; ++r) {
+      for (size_t c = 0; c < N; ++c) {
+        batch.ch_tile5[r][c] = channel_llr[top5 + r][c];
+        batch.ch_tile6[r][c] = channel_llr[top6 + r][c];
+      }
+    }
+    const auto params5 = make_tile_params(kLevel5TileIndex);
+    const auto params6 = make_tile_params(kLevel6TileIndex);
+    auto prep5 = prepare_tile_inputs(batch.tile_in5, batch.ch_tile5, params5,
+                                     top5, params5.CHASE_SBR, rows_to_decode,
+                                     tx_llr_ref);
+    auto prep6 = prepare_tile_inputs(batch.tile_in6, batch.ch_tile6, params6,
+                                     top6, params6.CHASE_SBR, rows_to_decode,
+                                     tx_llr_ref);
+    batch.early5 = detect_level56_early_stop(prep5, params5);
+    batch.early6 = detect_level56_early_stop(prep6, params6);
+    append_level56_early_stop_only_entries(
+        prep5, batch.early5.effective, 5, &batch.entries);
+    append_level56_early_stop_only_entries(
+        prep6, batch.early6.effective, 6, &batch.entries);
+    return batch;
+  };
+
+  std::optional<Level56TemporalBatch<LLR>> lookahead_batch;
   auto update_tile_stats = [&](size_t t,
                                const TileProcessResult<LLR>& tile_result) {
     if (!tile_stats || t >= tile_stats->size()) {
@@ -203,6 +261,214 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
           const std::size_t invocation = level56_shared_invocation
               ? (*level56_shared_invocation)++
               : 0u;
+          if (level56_temporal_state && p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE) {
+            // Level 1-4 have prepared the relevant rows by this point. Build
+            // the new future batch before any current Level 5/6 writeback.
+            lookahead_batch =
+                make_temporal_batch(win_start + p.pop_push_rows());
+            auto current_batch = level56_temporal_state->current
+                                     ? std::move(level56_temporal_state->current)
+                                     : make_temporal_batch(win_start);
+            if (!current_batch) {
+              throw std::logic_error(
+                  "LEVEL56 temporal current batch is unavailable");
+            }
+            const bool have_previous =
+                level56_temporal_state->previous.has_value();
+            const std::size_t x = have_previous
+                                      ? level56_temporal_pending_group_count(
+                                            level56_temporal_state->previous->entries)
+                                      : 0;
+            const std::size_t k1 =
+                level56_temporal_candidate_group_count(current_batch->entries);
+            const std::size_t k2 = lookahead_batch
+                                      ? level56_temporal_candidate_group_count(
+                                            lookahead_batch->entries)
+                                      : 0;
+            const auto temporal_branch = select_level56_temporal_branch(
+                have_previous, lookahead_batch.has_value(), x, k1, k2);
+            const bool supplement_history =
+                temporal_branch == Level56TemporalBranch::SupplementHistory;
+            const std::size_t t0_pending_before =
+                have_previous
+                    ? level56_temporal_pending_code_count(
+                          level56_temporal_state->previous->entries)
+                    : 0;
+            const std::size_t t1_pending_before =
+                level56_temporal_pending_code_count(current_batch->entries);
+            std::vector<bool> t0_was_pending;
+            if (supplement_history) {
+              t0_was_pending.reserve(
+                  level56_temporal_state->previous->entries.size());
+              for (const auto& entry :
+                   level56_temporal_state->previous->entries) {
+                t0_was_pending.push_back(is_level56_pending_decode(entry));
+              }
+            }
+            Level56SharedResult<LLR> current_result;
+            std::optional<Level56ScheduleSample> history_schedule_sample;
+            std::size_t used_t0 = 0;
+
+            auto run_batch = [&](Level56TemporalBatch<LLR>* batch,
+                                 std::vector<Level56DispatchEntry>* prior,
+                                 std::size_t budget,
+                                 std::size_t slot_offset,
+                                 bool preserve) {
+              const auto& input5 = batch->tile_in5;
+              const auto& input6 = batch->tile_in6;
+              const auto& channel5 = batch->ch_tile5;
+              const auto& channel6 = batch->ch_tile6;
+              auto out5 = copy_tile_from_global(batch->tile_top5);
+              auto out6 = copy_tile_from_global(batch->tile_top6);
+              auto result = process_level56_shared(
+                  input5, channel5, input6, channel6,
+                  make_tile_params(kLevel5TileIndex),
+                  make_tile_params(kLevel6TileIndex),
+                  batch->tile_top5, batch->tile_top6, invocation,
+                  normalize_extrinsic, tx_llr_ref, core_fn,
+                  last_tile_history_accum, prior, budget, slot_offset, preserve,
+                  &batch->early5, &batch->early6, &out5, &out6);
+              batch->entries = result.dispatch;
+              for (size_t r = 0; r < result.level5.tile_out.rows(); ++r) {
+                for (size_t c = 0; c < N; ++c) {
+                  work_llr[batch->tile_top5 + r][c] =
+                      result.level5.tile_out[r][c];
+                  work_llr[batch->tile_top6 + r][c] =
+                      result.level6.tile_out[r][c];
+                }
+              }
+              return result;
+            };
+
+            if (supplement_history) {
+              auto previous_result = run_batch(
+                  &*level56_temporal_state->previous,
+                  &level56_temporal_state->previous->entries,
+                  kLevel56MaxGroupEntries, 0, true);
+              if (previous_result.has_schedule_sample) {
+                history_schedule_sample =
+                    std::move(previous_result.schedule_sample);
+              }
+              // The scheduler sample is the authoritative count after planning.
+              // A later pass uses the number of assigned slots in the cached batch.
+              for (const auto& entry : level56_temporal_state->previous->entries) {
+                if (entry.assigned_entry_slot >= 0) {
+                  used_t0 = std::max(
+                      used_t0,
+                      static_cast<std::size_t>(entry.assigned_entry_slot + 1));
+                }
+              }
+              current_result = run_batch(
+                  &*current_batch, nullptr,
+                  kLevel56MaxGroupEntries - used_t0, used_t0, false);
+            } else {
+              current_result = run_batch(
+                  &*current_batch, nullptr,
+                  kLevel56MaxGroupEntries, 0, false);
+            }
+            const std::size_t t0_pending_after =
+                have_previous
+                    ? level56_temporal_pending_code_count(
+                          level56_temporal_state->previous->entries)
+                    : 0;
+            const std::size_t t1_pending_after =
+                level56_temporal_pending_code_count(current_result.dispatch);
+            std::size_t t0_new_produced = 0;
+            if (supplement_history) {
+              const auto& history_entries =
+                  level56_temporal_state->previous->entries;
+              for (std::size_t index = 0; index < history_entries.size();
+                   ++index) {
+                t0_new_produced +=
+                    t0_was_pending[index] && history_entries[index].produced;
+              }
+            }
+            if (current_result.has_schedule_sample) {
+              auto& sample = current_result.schedule_sample;
+              const auto t1_group_entry_counts = sample.group_entry_counts;
+              sample.temporal_lookahead_enabled = true;
+              sample.temporal_has_history = have_previous;
+              sample.temporal_has_future = lookahead_batch.has_value();
+              sample.temporal_x = x;
+              sample.temporal_k1 = k1;
+              sample.temporal_k2 = k2;
+              sample.temporal_branch = temporal_branch;
+              sample.temporal_t0_group_entries = supplement_history ? used_t0 : 0;
+              sample.temporal_t1_group_entries =
+                  sample.total_group_entries - sample.temporal_t0_group_entries;
+              sample.temporal_t0_pending_before = t0_pending_before;
+              sample.temporal_t0_pending_after = t0_pending_after;
+              sample.temporal_t1_pending_before = t1_pending_before;
+              sample.temporal_t1_pending_after = t1_pending_after;
+              sample.temporal_t0_new_produced = t0_new_produced;
+              sample.temporal_t1_group_entry_counts = t1_group_entry_counts;
+
+              for (auto& round : sample.rounds) {
+                round.time_index = 1;
+              }
+              if (history_schedule_sample) {
+                sample.temporal_t0_group_entry_counts =
+                    history_schedule_sample->group_entry_counts;
+                for (auto& round : history_schedule_sample->rounds) {
+                  round.time_index = 0;
+                }
+                sample.rounds.insert(
+                    sample.rounds.begin(),
+                    std::make_move_iterator(
+                        history_schedule_sample->rounds.begin()),
+                    std::make_move_iterator(
+                        history_schedule_sample->rounds.end()));
+                for (std::size_t group = 0;
+                     group < sample.group_entry_counts.size(); ++group) {
+                  sample.group_entry_counts[group] +=
+                      history_schedule_sample->group_entry_counts[group];
+                }
+                sample.planned_hiso_count +=
+                    history_schedule_sample->planned_hiso_count;
+                sample.planned_siso_count +=
+                    history_schedule_sample->planned_siso_count;
+              }
+
+              std::vector<Level56ScheduleCodeSample> temporal_codes;
+              temporal_codes.reserve(
+                  (have_previous ? kLevel56GroupedCodeCount : 0u) +
+                  kLevel56GroupedCodeCount +
+                  (lookahead_batch ? kLevel56GroupedCodeCount : 0u));
+              const auto append_temporal_codes =
+                  [&](const std::vector<Level56DispatchEntry>& entries,
+                      std::size_t time_index,
+                      Level56TemporalInfoType info_type) {
+                    for (const auto& entry : entries) {
+                      temporal_codes.push_back(make_level56_schedule_code_sample(
+                          entry, time_index, info_type, true));
+                    }
+                  };
+              if (have_previous) {
+                append_temporal_codes(
+                    level56_temporal_state->previous->entries, 0,
+                    Level56TemporalInfoType::DecodeInfo);
+              }
+              append_temporal_codes(
+                  current_result.dispatch, 1,
+                  Level56TemporalInfoType::EarlyStopInfo);
+              if (lookahead_batch) {
+                append_temporal_codes(
+                    lookahead_batch->entries, 2,
+                    Level56TemporalInfoType::EarlyStopInfo);
+              }
+              sample.codes = std::move(temporal_codes);
+            }
+            update_tile_stats(kLevel5TileIndex, current_result.level5);
+            update_tile_stats(kLevel6TileIndex, current_result.level6);
+            if (tile_stats && current_result.has_schedule_sample) {
+              (*tile_stats)[kLevel5TileIndex].level56_schedule_samples.push_back(
+                  std::move(current_result.schedule_sample));
+            }
+            level56_temporal_state->previous = std::move(*current_batch);
+            level56_temporal_state->current = std::move(lookahead_batch);
+            ++t;
+            continue;
+          }
           auto shared = process_level56_shared(
               tile_in5, ch_tile5, tile_in6, ch_tile6,
               params5, params6, top5, top6, invocation,

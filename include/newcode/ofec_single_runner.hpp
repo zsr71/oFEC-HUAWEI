@@ -63,6 +63,7 @@ struct Config {
       newcode::HybridSisoBackfillMode::Disabled;
   bool hybrid_normalize_soft_only = false;
   bool level56_shared_enable = false;
+  bool level56_temporal_lookahead_enable = false;
   int level56_shared_hiso_active = 32;
   int level56_shared_siso_active = 32;
   newcode::Level56PriorityMode level56_priority_mode =

@@ -190,6 +190,8 @@ void log_run_overview(const Config& cfg,
       << (params.HYBRID_NORMALIZE_SOFT_ONLY ? "ON" : "OFF") << "\n";
   log << "[INFO] Level5/6 shared = "
       << (params.LEVEL56_SHARED_ENABLE ? "ON" : "OFF")
+      << ", temporal_lookahead = "
+      << (params.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE ? "ON" : "OFF")
       << ", HISO/SISO = "
       << params.LEVEL56_SHARED_HISO_ACTIVE << "/"
       << params.LEVEL56_SHARED_SISO_ACTIVE

@@ -978,6 +978,223 @@ void check_grouped_end_to_end_single_window() {
   }
 }
 
+void check_temporal_lookahead_three_windows() {
+  newcode::Params p;
+  p.CHASE_L = 2;
+  p.CHASE_NTEST = 4;
+  p.EARLY_STOP_ENABLE_LIST = {1, 1, 1, 1, 1, 1};
+  p.EARLY_STOP_ACTION_SIGN_BETA_LIST = {1, 1, 1, 1, 1, 1};
+  p.EARLY_STOP_BIND_GROUP_SIZE = 1;
+  p.HARD_TILE_LIST = {0, 0, 0, 0, 0, 0};
+  p.HYBRID_ENABLE_LIST = {0, 0, 0, 0, 1, 1};
+  p.HYBRID_HARD_LLR_MAG_LIST = {4, 4, 4, 4, 4, 4};
+  p.HYBRID_CLASSIFIER_MODE =
+      newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;
+  p.HYBRID_USE_FAST_CLASSIFIER = true;
+  p.ALPHA_LIST = {1, 1, 1, 1, 0.8f, 0.9f};
+  p.beta_list = {1, 1, 1, 1, 1.2f, 1.4f};
+  p.SISO_ACTIVE_LIST = {32, 32, 32, 32};
+  p.HIHO_ACTIVE_LIST = {32, 32, 32, 32};
+  p.LEVEL56_SHARED_ENABLE = true;
+  p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE = true;
+  p.LEVEL56_SHARED_HISO_ACTIVE = 8;
+  p.LEVEL56_SHARED_SISO_ACTIVE = 8;
+  p.LEVEL56_PRIORITY_MODE = newcode::Level56PriorityMode::Level5First;
+  p.LEVEL56_SCHEDULE_MODE =
+      newcode::Level56ScheduleMode::Group4LoadSortedMultiround;
+  p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::AllGroups;
+  p.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE = true;
+
+  const std::size_t rows = p.win_height_rows() + 2 * p.pop_push_rows();
+  matrix::Matrix<float> llr(
+      rows, newcode::Params::NUM_SUBBLOCK_COLS *
+                newcode::Params::BITS_PER_SUBBLOCK_DIM);
+  for (std::size_t row = 0; row < llr.rows(); ++row) {
+    for (std::size_t col = 0; col < llr.cols(); ++col) {
+      const int code = static_cast<int>((row * 31u + col * 17u) % 37u) - 18;
+      llr[row][col] = static_cast<float>(code) * 0.22f +
+                      ((row + col) & 1u ? 0.03f : -0.03f);
+    }
+  }
+
+  std::vector<newcode::TileEarlyStopCounter> stats;
+  const auto decoded = newcode::ofec_decode_llr_plain(
+      llr, p, &stats, true, nullptr);
+  require(decoded.rows() == llr.rows() && decoded.cols() == llr.cols(),
+          "temporal decode changed the matrix shape");
+  require(stats.size() == 6 && stats[4].total == 3 && stats[5].total == 3,
+          "temporal decode did not process exactly three Level 5/6 batches");
+  require(stats[4].level56_schedule_samples.size() == 3,
+          "temporal decode did not export three schedule samples");
+
+  const auto& samples = stats[4].level56_schedule_samples;
+  require(samples.front().temporal_branch ==
+              newcode::Level56TemporalBranch::NoHistory,
+          "first temporal batch must use the no-history boundary branch");
+  require(samples.back().temporal_branch ==
+              newcode::Level56TemporalBranch::NoFuture,
+          "last temporal batch must use the no-future boundary branch");
+  require(samples[0].codes.size() == 128 &&
+              samples[1].codes.size() == 192 &&
+              samples[2].codes.size() == 128,
+          "temporal boundaries must export 128/192/128 real code entries");
+  for (std::size_t sample_index = 0; sample_index < samples.size();
+       ++sample_index) {
+    const auto& sample = samples[sample_index];
+    require(sample.temporal_lookahead_enabled,
+            "temporal sample did not record lookahead enablement");
+    require(sample.total_group_entries <= 8 &&
+                sample.temporal_t0_group_entries <= 8 &&
+                sample.temporal_t1_group_entries <= 8,
+            "temporal schedule exceeded the eight-entry budget");
+    require(sample.temporal_t0_group_entries +
+                sample.temporal_t1_group_entries <= 8,
+            "temporal t=0/t=1 entries exceeded the shared budget");
+    for (const auto& code : sample.codes) {
+      require(code.code_index == code.time_index * 64 +
+                                     (code.source_level == 5 ? 0 : 32) +
+                                     code.source_local_row,
+              "temporal code violated the fixed 192-code linear layout");
+      require(code.time_offset == static_cast<int>(code.time_index) - 1,
+              "temporal code has an invalid time offset");
+      if (code.time_index == 0) {
+        require(code.info_type ==
+                    newcode::Level56TemporalInfoType::DecodeInfo,
+                "t=0 must expose complete decode information");
+      } else {
+        require(code.info_type ==
+                    newcode::Level56TemporalInfoType::EarlyStopInfo,
+                "t=1/t=2 must expose EarlyStop information");
+      }
+      if (code.time_index == 1 && code.early_stop_hit) {
+        require(code.final_action == 0,
+                "AllGroups temporal mode suppressed an EarlyStopAction");
+      }
+      if (code.time_index == 2) {
+        require(code.hybrid_class == 0 && code.resource_eligibility == 0 &&
+                    code.final_action ==
+                        static_cast<uint8_t>(Level56FinalAction::Unscheduled) &&
+                    !code.produced && code.assigned_entry_slot == -1,
+                "t=2 lookahead performed classification or decode work");
+      }
+    }
+    const std::size_t first_time_index = sample_index == 0 ? 1 : 0;
+    const std::size_t last_time_index = sample_index == 2 ? 1 : 2;
+    require(sample.codes.front().time_index == first_time_index &&
+                sample.codes.back().time_index == last_time_index,
+            "temporal boundary exported a synthetic missing batch");
+  }
+  for (std::size_t row = 0; row < decoded.rows(); ++row) {
+    for (std::size_t col = 0; col < decoded.cols(); ++col) {
+      require(std::isfinite(decoded[row][col]),
+              "temporal decode produced a non-finite LLR");
+    }
+  }
+}
+
+void check_temporal_rule_helpers() {
+  require(newcode::detail::select_level56_temporal_branch(
+              false, true, 0, 4, 4) ==
+              newcode::Level56TemporalBranch::NoHistory,
+          "missing history must select NoHistory");
+  require(newcode::detail::select_level56_temporal_branch(
+              true, false, 8, 0, 0) ==
+              newcode::Level56TemporalBranch::NoFuture,
+          "missing future must select NoFuture");
+  require(newcode::detail::select_level56_temporal_branch(
+              true, true, 3, 4, 4) ==
+              newcode::Level56TemporalBranch::SupplementHistory,
+          "strictly light temporal load must supplement history");
+  require(newcode::detail::select_level56_temporal_branch(
+              true, true, 3, 6, 7) ==
+              newcode::Level56TemporalBranch::CurrentFirst,
+          "equality at K1+K2=16-X must select current first");
+  require(newcode::detail::select_level56_temporal_branch(
+              true, true, 0, 0, 0) ==
+              newcode::Level56TemporalBranch::CurrentFirst,
+          "X=0 must process the current batch");
+
+  auto entries = make_entries(32);
+  for (auto& entry : entries) {
+    entry.early_stop_hit = true;
+    entry.produced = false;
+    entry.final_action = Level56FinalAction::EarlyStopAction;
+  }
+  entries[0].early_stop_hit = false;
+  entries[0].final_action = Level56FinalAction::Unscheduled;
+  entries[4].early_stop_hit = false;
+  entries[4].final_action = Level56FinalAction::HisoDecode;
+  entries[4].produced = true;
+  require(newcode::detail::is_level56_pending_decode(entries[0]) &&
+              !newcode::detail::is_level56_pending_decode(entries[1]) &&
+              !newcode::detail::is_level56_pending_decode(entries[4]),
+          "temporal pending predicate does not match the three-field rule");
+  require(newcode::detail::level56_temporal_pending_group_count(entries) == 1,
+          "X must count groups containing at least one pending code");
+}
+
+void check_temporal_two_stage_budget() {
+  auto history = make_all_early_stop_grouped_entries();
+  for (std::size_t group = 0; group < 3; ++group) {
+    activate_grouped_row(&history, group * 4u,
+                         newcode::detail::HybridRowClass::ParityOnly);
+  }
+  auto current = make_all_early_stop_grouped_entries();
+  for (std::size_t group = 0; group < 16; ++group) {
+    activate_grouped_row(&current, group * 4u,
+                         newcode::detail::HybridRowClass::ParityOnly);
+  }
+  auto p = make_grouped_params();
+  p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::AllGroups;
+
+  newcode::Level56ScheduleSample history_sample;
+  newcode::detail::schedule_level56_rows(
+      &history, p, 0, &history_sample, 3, 0, false);
+  require(grouped_entry_count(history) == 3,
+          "history stage must consume exactly used_t0 slots");
+  require(history_sample.total_group_entries == 3,
+          "history stage reported the wrong used_t0 budget");
+
+  newcode::Level56ScheduleSample current_sample;
+  newcode::detail::schedule_level56_rows(
+      &current, p, 0, &current_sample, 5, 3, false);
+  require(current_sample.total_group_entries == 8,
+          "current stage must report the combined slot endpoint");
+  for (const auto& entry : current) {
+    if (entry.planned_hiso || entry.planned_siso) {
+      require(entry.assigned_entry_slot >= 3 &&
+                  entry.assigned_entry_slot < 8,
+              "current stage used a history entry slot");
+    }
+  }
+  require(grouped_entry_count(current) == 8,
+          "two-stage schedule must use at most eight total slots");
+
+  auto no_budget = make_all_early_stop_grouped_entries();
+  activate_grouped_row(&no_budget, 0,
+                       newcode::detail::HybridRowClass::ParityOnly);
+  newcode::Level56ScheduleSample no_budget_sample;
+  newcode::detail::schedule_level56_rows(
+      &no_budget, p, 0, &no_budget_sample, 0, 8, false);
+  require(no_budget_sample.total_group_entries == 8,
+          "B=0 must preserve the consumed history slot endpoint");
+  require(grouped_entry_count(no_budget) == 0,
+          "B=0 must not plan ordinary HISO/SISO entries");
+  require(no_budget[0].final_action == Level56FinalAction::Unscheduled,
+          "B=0 must leave ordinary candidates unscheduled");
+  for (std::size_t index = 1; index < no_budget.size(); ++index) {
+    require(no_budget[index].final_action ==
+                Level56FinalAction::EarlyStopAction,
+            "AllGroups EarlyStopAction must not depend on B");
+  }
+  for (int slot = 3; slot < 8; ++slot) {
+    require(group_for_slot(current, slot) >= 0,
+            "every current-stage slot must select a group");
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -1008,6 +1225,9 @@ int main() {
     check_grouped_single_flexible_row_uses_siso();
     check_end_to_end_single_window();
     check_grouped_end_to_end_single_window();
+    check_temporal_rule_helpers();
+    check_temporal_two_stage_budget();
+    check_temporal_lookahead_three_windows();
     std::cout << "LEVEL56 shared scheduler regression checks passed\n";
     return 0;
   } catch (const std::exception& ex) {

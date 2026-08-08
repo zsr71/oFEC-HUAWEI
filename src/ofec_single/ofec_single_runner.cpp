@@ -66,6 +66,37 @@ const char* level56_branch_name(newcode::Level56ScheduleBranch branch) {
   return "UNKNOWN";
 }
 
+const char* level56_temporal_branch_name(
+    newcode::Level56TemporalBranch branch) {
+  switch (branch) {
+    case newcode::Level56TemporalBranch::Disabled: return "Disabled";
+    case newcode::Level56TemporalBranch::NoHistory: return "NoHistory";
+    case newcode::Level56TemporalBranch::SupplementHistory:
+      return "SupplementHistory";
+    case newcode::Level56TemporalBranch::CurrentFirst: return "CurrentFirst";
+    case newcode::Level56TemporalBranch::NoFuture: return "NoFuture";
+  }
+  return "Unknown";
+}
+
+const char* level56_info_type_name(newcode::Level56TemporalInfoType type) {
+  switch (type) {
+    case newcode::Level56TemporalInfoType::DecodeInfo: return "DecodeInfo";
+    case newcode::Level56TemporalInfoType::EarlyStopInfo:
+      return "EarlyStopInfo";
+  }
+  return "Unknown";
+}
+
+const char* level56_decode_status_name(newcode::Level56DecodeStatus status) {
+  switch (status) {
+    case newcode::Level56DecodeStatus::NotDecoded: return "NotDecoded";
+    case newcode::Level56DecodeStatus::Produced: return "Produced";
+    case newcode::Level56DecodeStatus::ActionFailed: return "ActionFailed";
+  }
+  return "Unknown";
+}
+
 const char* level56_hybrid_class_name(uint8_t value) {
   switch (value) {
     case 0: return "None";
@@ -156,26 +187,61 @@ void dump_level56_schedule_rounds_csv(
     std::filesystem::create_directories(parent);
   }
   std::ofstream out(output_path);
-  out << "run_id,label,invocation,K,branch,round_index,used_entries_before,"
+  out << "run_id,label,invocation,temporal_enabled,has_history,has_future,"
+         "X,K1,K2,temporal_branch,t0_group_entries,t1_group_entries,"
+         "t0_pending_before,t0_pending_after,t0_pending_reduced,"
+         "t1_pending_before,t1_pending_after,t1_pending_reduced,"
+         "pending_reduced_total,t0_new_produced,"
+         "K,branch,time_index,round_index,used_entries_before,"
          "used_entries_after,initial_counts,remaining_before,selected_groups_1based,"
-         "remaining_after,group_entry_counts,total_group_entries,planned_hiso,"
+         "remaining_after,group_entry_counts,t0_group_entry_counts,"
+         "t1_group_entry_counts,total_group_entries,planned_hiso,"
          "planned_siso,idle_hiso_capacity,idle_siso_capacity\n";
   for (const auto& sample : samples) {
     const auto write_row = [&](long round_index,
+                               std::size_t time_index,
                                std::size_t used_before,
                                std::size_t used_after,
+                               const auto& initial_counts,
+                               std::size_t initial_nonzero_groups,
+                               newcode::Level56ScheduleBranch branch,
                                const auto& remaining_before,
                                const auto& selected_groups,
-                               const auto& remaining_after) {
+                               const auto& remaining_after,
+                               const auto& group_entry_counts) {
       out << run_id << ',' << label << ',' << sample.invocation << ','
-          << sample.initial_nonzero_groups << ','
-          << level56_branch_name(sample.branch) << ',' << round_index << ','
+          << sample.temporal_lookahead_enabled << ','
+          << sample.temporal_has_history << ','
+          << sample.temporal_has_future << ','
+          << sample.temporal_x << ',' << sample.temporal_k1 << ','
+          << sample.temporal_k2 << ','
+          << level56_temporal_branch_name(sample.temporal_branch) << ','
+          << sample.temporal_t0_group_entries << ','
+          << sample.temporal_t1_group_entries << ','
+          << sample.temporal_t0_pending_before << ','
+          << sample.temporal_t0_pending_after << ','
+          << (sample.temporal_t0_pending_before -
+              sample.temporal_t0_pending_after) << ','
+          << sample.temporal_t1_pending_before << ','
+          << sample.temporal_t1_pending_after << ','
+          << (sample.temporal_t1_pending_before -
+              sample.temporal_t1_pending_after) << ','
+          << (sample.temporal_t0_pending_before -
+              sample.temporal_t0_pending_after +
+              sample.temporal_t1_pending_before -
+              sample.temporal_t1_pending_after) << ','
+          << sample.temporal_t0_new_produced << ','
+          << initial_nonzero_groups << ','
+          << level56_branch_name(branch) << ','
+          << time_index << ',' << round_index << ','
           << used_before << ',' << used_after << ','
-          << '"' << join_numbers(sample.initial_counts) << "\",\""
+          << '"' << join_numbers(initial_counts) << "\",\""
           << join_numbers(remaining_before) << "\",\""
           << join_one_based(selected_groups) << "\",\""
           << join_numbers(remaining_after) << "\",\""
-          << join_numbers(sample.group_entry_counts) << "\","
+          << join_numbers(group_entry_counts) << "\",\""
+          << join_numbers(sample.temporal_t0_group_entry_counts) << "\",\""
+          << join_numbers(sample.temporal_t1_group_entry_counts) << "\","
           << sample.total_group_entries << ','
           << sample.planned_hiso_count << ','
           << sample.planned_siso_count << ','
@@ -184,15 +250,26 @@ void dump_level56_schedule_rounds_csv(
     };
     if (sample.rounds.empty()) {
       const std::vector<std::size_t> no_groups;
-      write_row(-1, 0, 0, sample.initial_counts, no_groups,
-                sample.initial_counts);
+      write_row(-1, 1, 0, 0, sample.initial_counts,
+                sample.initial_nonzero_groups, sample.branch,
+                sample.initial_counts, no_groups,
+                sample.initial_counts, sample.group_entry_counts);
       continue;
     }
-    for (const auto& round : sample.rounds) {
-      write_row(static_cast<long>(round.round_index + 1u),
+    for (std::size_t index = 0; index < sample.rounds.size(); ++index) {
+      const auto& round = sample.rounds[index];
+      const auto& round_group_entry_counts =
+          sample.temporal_lookahead_enabled
+              ? (round.time_index == 0
+                     ? sample.temporal_t0_group_entry_counts
+                     : sample.temporal_t1_group_entry_counts)
+              : sample.group_entry_counts;
+      write_row(static_cast<long>(index + 1u), round.time_index,
                 round.used_entries_before, round.used_entries_after,
+                round.initial_counts, round.initial_nonzero_groups,
+                round.branch,
                 round.remaining_before, round.selected_groups,
-                round.remaining_after);
+                round.remaining_after, round_group_entry_counts);
     }
   }
 }
@@ -207,13 +284,17 @@ void dump_level56_schedule_codes_csv(
     std::filesystem::create_directories(parent);
   }
   std::ofstream out(output_path);
-  out << "run_id,label,invocation,code,source_level,source_row,group,"
+  out << "run_id,label,invocation,shared_index,time_index,time_offset,info_type,"
+         "decode_status,code,source_level,source_row,group,"
          "position_in_group,early_stop_hit,hybrid_class,resource_eligibility,"
          "planned_hiso,planned_siso,remaining_for_schedule,final_action,"
-         "assigned_entry_slot,assigned_core\n";
+         "assigned_entry_slot,assigned_core,produced\n";
   for (const auto& sample : samples) {
     for (const auto& code : sample.codes) {
       out << run_id << ',' << label << ',' << sample.invocation << ','
+          << code.code_index << ',' << code.time_index << ','
+          << code.time_offset << ',' << level56_info_type_name(code.info_type)
+          << ',' << level56_decode_status_name(code.decode_status) << ','
           << (code.code_index + 1u) << ',' << code.source_level << ','
           << (code.source_local_row + 1u) << ',' << (code.group_index + 1u)
           << ',' << (code.position_in_group + 1u) << ','
@@ -223,7 +304,8 @@ void dump_level56_schedule_codes_csv(
           << code.planned_hiso << ',' << code.planned_siso << ','
           << code.remaining_for_schedule << ','
           << level56_action_name(code.final_action) << ','
-          << code.assigned_entry_slot << ',' << code.assigned_core << '\n';
+          << code.assigned_entry_slot << ',' << code.assigned_core << ','
+          << code.produced << '\n';
     }
   }
 }
@@ -232,6 +314,13 @@ void log_level56_schedule_summary(
     const std::vector<newcode::Level56ScheduleSample>& samples,
     io::DualWriter& log) {
   std::array<std::size_t, 4> branch_counts{};
+  std::array<std::size_t, 5> temporal_branch_counts{};
+  std::array<std::size_t, 5> temporal_t0_pending_reduced{};
+  std::array<std::size_t, 5> temporal_t1_pending_reduced{};
+  std::size_t current_first_with_history_pending_windows = 0;
+  std::size_t current_first_history_pending_codes = 0;
+  std::size_t supplement_history_new_produced = 0;
+  std::size_t temporal_window_count = 0;
   std::array<std::size_t, 16> group_entries{};
   std::array<std::array<std::size_t, 4>, 2> level_actions{};
   std::array<std::array<std::size_t, 4>, 9> class_actions{};
@@ -240,6 +329,31 @@ void log_level56_schedule_summary(
   std::size_t total_siso = 0;
   for (const auto& sample : samples) {
     ++branch_counts[static_cast<std::size_t>(sample.branch)];
+    if (sample.temporal_lookahead_enabled) {
+      ++temporal_window_count;
+      ++temporal_branch_counts[
+          static_cast<std::size_t>(sample.temporal_branch)];
+      const auto temporal_index =
+          static_cast<std::size_t>(sample.temporal_branch);
+      temporal_t0_pending_reduced[temporal_index] +=
+          sample.temporal_t0_pending_before -
+          sample.temporal_t0_pending_after;
+      temporal_t1_pending_reduced[temporal_index] +=
+          sample.temporal_t1_pending_before -
+          sample.temporal_t1_pending_after;
+      if (sample.temporal_branch ==
+              newcode::Level56TemporalBranch::CurrentFirst &&
+          sample.temporal_x > 0) {
+        ++current_first_with_history_pending_windows;
+        current_first_history_pending_codes +=
+            sample.temporal_t0_pending_after;
+      }
+      if (sample.temporal_branch ==
+          newcode::Level56TemporalBranch::SupplementHistory) {
+        supplement_history_new_produced +=
+            sample.temporal_t0_new_produced;
+      }
+    }
     total_entries += sample.total_group_entries;
     total_hiso += sample.planned_hiso_count;
     total_siso += sample.planned_siso_count;
@@ -247,6 +361,9 @@ void log_level56_schedule_summary(
       group_entries[group] += sample.group_entry_counts[group];
     }
     for (const auto& code : sample.codes) {
+      if (sample.temporal_lookahead_enabled && code.time_index != 1) {
+        continue;
+      }
       if ((code.source_level == 5 || code.source_level == 6) &&
           code.final_action < 4) {
         ++level_actions[code.source_level - 5u][code.final_action];
@@ -261,6 +378,43 @@ void log_level56_schedule_summary(
       << samples.size() << "/[" << branch_counts[0] << ", "
       << branch_counts[1] << ", " << branch_counts[2] << ", "
       << branch_counts[3] << "]\n";
+  if (temporal_window_count > 0) {
+    log << "[RESULT] Level56 temporal windows/branches("
+        << "NoHistory,SupplementHistory,CurrentFirst,NoFuture) = "
+        << temporal_window_count << "/["
+        << temporal_branch_counts[static_cast<std::size_t>(
+               newcode::Level56TemporalBranch::NoHistory)]
+        << ", "
+        << temporal_branch_counts[static_cast<std::size_t>(
+               newcode::Level56TemporalBranch::SupplementHistory)]
+        << ", "
+        << temporal_branch_counts[static_cast<std::size_t>(
+               newcode::Level56TemporalBranch::CurrentFirst)]
+        << ", "
+        << temporal_branch_counts[static_cast<std::size_t>(
+               newcode::Level56TemporalBranch::NoFuture)]
+        << "]\n";
+    log << "[RESULT] Level56 CurrentFirst windows with X>0/history pending "
+        << "codes = " << current_first_with_history_pending_windows << '/'
+        << current_first_history_pending_codes << "\n";
+    log << "[RESULT] Level56 SupplementHistory t0 newly produced codes = "
+        << supplement_history_new_produced << "\n";
+    log << "[RESULT] Level56 temporal pending reduced by branch "
+        << "(NoHistory,SupplementHistory,CurrentFirst,NoFuture), t0/t1/total = ";
+    for (const auto branch : {
+             newcode::Level56TemporalBranch::NoHistory,
+             newcode::Level56TemporalBranch::SupplementHistory,
+             newcode::Level56TemporalBranch::CurrentFirst,
+             newcode::Level56TemporalBranch::NoFuture}) {
+      const auto index = static_cast<std::size_t>(branch);
+      log << (branch == newcode::Level56TemporalBranch::NoHistory ? "[" : ", ")
+          << temporal_t0_pending_reduced[index] << '/'
+          << temporal_t1_pending_reduced[index] << '/'
+          << (temporal_t0_pending_reduced[index] +
+              temporal_t1_pending_reduced[index]);
+    }
+    log << "]\n";
+  }
   log << "[RESULT] Level56 entry/HISO/SISO/idle-HISO/idle-SISO totals = "
       << total_entries << '/' << total_hiso << '/' << total_siso << '/'
       << (samples.size() * 8u - total_hiso) << '/'

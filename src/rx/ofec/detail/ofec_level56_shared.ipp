@@ -9,6 +9,10 @@ namespace detail {
 
 constexpr std::size_t kLevel5TileIndex = 4;
 constexpr std::size_t kLevel6TileIndex = 5;
+constexpr std::size_t kLevel56GroupedCodeCount = 64;
+constexpr std::size_t kLevel56GroupedGroupCount = 16;
+constexpr std::size_t kLevel56CodesPerGroup = 4;
+constexpr std::size_t kLevel56MaxGroupEntries = 8;
 
 enum class Level56Eligibility : uint8_t {
   None = 0,
@@ -38,6 +42,11 @@ struct Level56DispatchEntry {
   Level56FinalAction final_action = Level56FinalAction::Unscheduled;
   int assigned_entry_slot = -1;
   int assigned_core = -1;
+  // 完整解码状态中的输出标志；调度阶段为 false，执行阶段完成后更新。
+  bool produced = false;
+  Level56DecodeStatus decode_status = Level56DecodeStatus::NotDecoded;
+  // 历史批次补解时，避免已经完成的 action 被重复执行。
+  bool needs_execution = true;
 };
 
 struct Level56EarlyStopEvaluation {
@@ -54,6 +63,118 @@ struct Level56SharedResult {
   Level56ScheduleSample schedule_sample;
 };
 
+template <typename LLR>
+struct Level56TemporalBatch {
+  matrix::Matrix<LLR> tile_in5;
+  matrix::Matrix<LLR> ch_tile5;
+  matrix::Matrix<LLR> tile_in6;
+  matrix::Matrix<LLR> ch_tile6;
+  std::size_t tile_top5 = 0;
+  std::size_t tile_top6 = 0;
+  Level56EarlyStopEvaluation early5;
+  Level56EarlyStopEvaluation early6;
+  std::vector<Level56DispatchEntry> entries;
+};
+
+template <typename LLR>
+struct Level56TemporalState {
+  std::optional<Level56TemporalBatch<LLR>> previous;
+  std::optional<Level56TemporalBatch<LLR>> current;
+};
+
+inline bool is_level56_pending_decode(const Level56DispatchEntry& entry) {
+  return !entry.early_stop_hit &&
+         entry.final_action == Level56FinalAction::Unscheduled &&
+         !entry.produced;
+}
+
+inline std::size_t level56_temporal_pending_code_count(
+    const std::vector<Level56DispatchEntry>& entries) {
+  return static_cast<std::size_t>(std::count_if(
+      entries.begin(), entries.end(), is_level56_pending_decode));
+}
+
+inline std::size_t level56_temporal_pending_group_count(
+    const std::vector<Level56DispatchEntry>& entries) {
+  std::array<bool, kLevel56GroupedGroupCount> groups{};
+  for (const auto& entry : entries) {
+    if (is_level56_pending_decode(entry)) {
+      groups[entry.shared_row / kLevel56CodesPerGroup] = true;
+    }
+  }
+  return static_cast<std::size_t>(
+      std::count(groups.begin(), groups.end(), true));
+}
+
+inline std::size_t level56_temporal_candidate_group_count(
+    const std::vector<Level56DispatchEntry>& entries) {
+  std::array<bool, kLevel56GroupedGroupCount> groups{};
+  for (const auto& entry : entries) {
+    // K1/K2 count ordinary non-EarlyStop candidates that can enter the
+    // original Group4 scheduler. Lookahead entries have no classification
+    // yet, but their row-level EarlyStop result is sufficient for this count.
+    if (!entry.early_stop_hit) {
+      groups[entry.shared_row / kLevel56CodesPerGroup] = true;
+    }
+  }
+  return static_cast<std::size_t>(
+      std::count(groups.begin(), groups.end(), true));
+}
+
+inline Level56TemporalBranch select_level56_temporal_branch(
+    bool has_history,
+    bool has_future,
+    std::size_t x,
+    std::size_t k1,
+    std::size_t k2) {
+  if (!has_history) {
+    return Level56TemporalBranch::NoHistory;
+  }
+  if (!has_future) {
+    return Level56TemporalBranch::NoFuture;
+  }
+  if (x > kLevel56GroupedGroupCount ||
+      k1 > kLevel56GroupedGroupCount ||
+      k2 > kLevel56GroupedGroupCount) {
+    throw std::invalid_argument(
+        "LEVEL56 temporal group counts must be within 0..16");
+  }
+  return x > 0 && k1 + k2 < kLevel56GroupedGroupCount - x
+             ? Level56TemporalBranch::SupplementHistory
+             : Level56TemporalBranch::CurrentFirst;
+}
+
+inline Level56ScheduleCodeSample make_level56_schedule_code_sample(
+    const Level56DispatchEntry& entry,
+    std::size_t time_index,
+    Level56TemporalInfoType info_type,
+    bool use_temporal_shared_index) {
+  return Level56ScheduleCodeSample{
+      .code_index = use_temporal_shared_index
+                        ? time_index * kLevel56GroupedCodeCount +
+                              entry.shared_row
+                        : entry.shared_row,
+      .time_index = time_index,
+      .time_offset = static_cast<int>(time_index) - 1,
+      .info_type = info_type,
+      .decode_status = entry.decode_status,
+      .source_level = entry.source_level,
+      .source_local_row = entry.source_local_row,
+      .group_index = entry.shared_row / kLevel56CodesPerGroup,
+      .position_in_group = entry.shared_row % kLevel56CodesPerGroup,
+      .early_stop_hit = entry.early_stop_hit,
+      .hybrid_class = static_cast<uint8_t>(entry.hybrid_class),
+      .resource_eligibility = static_cast<uint8_t>(entry.eligibility),
+      .planned_hiso = entry.planned_hiso,
+      .planned_siso = entry.planned_siso,
+      .remaining_for_schedule = entry.remaining_for_schedule,
+      .final_action = static_cast<uint8_t>(entry.final_action),
+      .assigned_entry_slot = entry.assigned_entry_slot,
+      .assigned_core = entry.assigned_core,
+      .produced = entry.produced,
+  };
+}
+
 inline int pick_level56_int(const std::vector<int>& values,
                             std::size_t index,
                             int fallback) {
@@ -68,7 +189,38 @@ inline float pick_level56_float(const std::vector<float>& values,
 
 inline void validate_level56_shared_config(const newcode::Params& p) {
   if (!p.LEVEL56_SHARED_ENABLE) {
+    if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE) {
+      throw std::invalid_argument(
+          "LEVEL56 temporal lookahead requires shared mode ON");
+    }
     return;
+  }
+  if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE &&
+      p.LEVEL56_SCHEDULE_MODE !=
+          newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
+    throw std::invalid_argument(
+        "LEVEL56 temporal lookahead requires Group4 multiround scheduling");
+  }
+  if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE &&
+      p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE !=
+          newcode::Level56EarlyStopGroupUpdateMode::AllGroups) {
+    throw std::invalid_argument(
+        "LEVEL56 temporal lookahead requires AllGroups early-stop updates");
+  }
+  if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE) {
+    for (const std::size_t tile : {kLevel5TileIndex, kLevel6TileIndex}) {
+      if (pick_level56_int(p.EARLY_STOP_BIND_GROUP_SIZE_LIST, tile,
+                           p.EARLY_STOP_BIND_GROUP_SIZE) != 1) {
+        throw std::invalid_argument(
+            "LEVEL56 temporal lookahead requires row-level early-stop "
+            "decisions for both Level 5 and Level 6");
+      }
+    }
+    if (p.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE) {
+      throw std::invalid_argument(
+          "LEVEL56 temporal lookahead does not support single-level "
+          "selection; AllGroups requires both levels");
+    }
   }
   if (p.TILES_PER_WIN != 6 || p.CHASE_SBR != 2 ||
       p.TILE_OVERLAP_BR != 0 || p.MUX_GROUP_G != 1) {
@@ -382,11 +534,6 @@ inline void schedule_level56_rows_global_priority(
   }
 }
 
-constexpr std::size_t kLevel56GroupedCodeCount = 64;
-constexpr std::size_t kLevel56GroupedGroupCount = 16;
-constexpr std::size_t kLevel56CodesPerGroup = 4;
-constexpr std::size_t kLevel56MaxGroupEntries = 8;
-
 inline int level56_group_flexible_priority(HybridRowClass row_class) {
   switch (row_class) {
     case HybridRowClass::TwoMain:
@@ -517,7 +664,10 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     std::vector<Level56DispatchEntry>* entries,
     const newcode::Params& p,
     std::size_t selected_level,
-    Level56ScheduleSample* sample) {
+    Level56ScheduleSample* sample,
+    std::size_t max_group_entries = kLevel56MaxGroupEntries,
+    std::size_t entry_slot_offset = 0,
+    bool preserve_entry_state = false) {
   if (!p.LEVEL56_SHARED_ENABLE) {
     throw std::invalid_argument(
         "LEVEL56 grouped multiround mode requires shared mode ON");
@@ -550,10 +700,14 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
   for (auto& entry : *entries) {
     entry.planned_hiso = false;
     entry.planned_siso = false;
-    entry.remaining_for_schedule = !entry.early_stop_hit;
-    entry.final_action = entry.early_stop_hit
-                             ? Level56FinalAction::EarlyStopAction
-                             : Level56FinalAction::Unscheduled;
+    if (!preserve_entry_state) {
+      entry.remaining_for_schedule = !entry.early_stop_hit;
+      entry.final_action = entry.early_stop_hit
+                               ? Level56FinalAction::EarlyStopAction
+                               : Level56FinalAction::Unscheduled;
+      entry.produced = false;
+      entry.decode_status = Level56DecodeStatus::NotDecoded;
+    }
     entry.assigned_entry_slot = -1;
     entry.assigned_core = -1;
   }
@@ -581,6 +735,11 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     });
   };
 
+  if (max_group_entries > kLevel56MaxGroupEntries ||
+      entry_slot_offset + max_group_entries > kLevel56MaxGroupEntries) {
+    throw std::invalid_argument(
+        "LEVEL56 grouped scheduler budget must fit within eight entry slots");
+  }
   int used_group_entries = 0;
   std::array<bool, kLevel56GroupedGroupCount> group_entered{};
   const auto plan_groups = [&](const std::vector<std::size_t>& groups,
@@ -588,7 +747,8 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     Level56ScheduleRoundSample round;
     if (sample) {
       round.round_index = sample->rounds.size();
-      round.used_entries_before = static_cast<std::size_t>(used_group_entries);
+      round.used_entries_before =
+          entry_slot_offset + static_cast<std::size_t>(used_group_entries);
       for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
         round.remaining_before[group] =
             level56_group_remaining_count(*entries, group);
@@ -597,7 +757,10 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
                                                     static_cast<std::ptrdiff_t>(count));
     }
     for (std::size_t i = 0; i < count; ++i) {
-      plan_level56_group_entry(entries, groups[i], used_group_entries);
+      plan_level56_group_entry(
+          entries, groups[i],
+          static_cast<int>(entry_slot_offset +
+                           static_cast<std::size_t>(used_group_entries)));
       group_entered[groups[i]] = true;
       if (sample) {
         ++sample->group_entry_counts[groups[i]];
@@ -605,7 +768,8 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
       ++used_group_entries;
     }
     if (sample) {
-      round.used_entries_after = static_cast<std::size_t>(used_group_entries);
+      round.used_entries_after =
+          entry_slot_offset + static_cast<std::size_t>(used_group_entries);
       for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
         round.remaining_after[group] =
             level56_group_remaining_count(*entries, group);
@@ -615,13 +779,19 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
   };
 
   const std::size_t initial_nonzero_count = initial_nonzero_groups.size();
-  if (initial_nonzero_count > kLevel56MaxGroupEntries) {
+  if (initial_nonzero_count == 0) {
+    if (sample) {
+      sample->branch = Level56ScheduleBranch::K0;
+    }
+  } else if (initial_nonzero_count > max_group_entries) {
     if (sample) {
       sample->branch = Level56ScheduleBranch::KGreaterThan8;
     }
-    sort_groups_by_count(&initial_nonzero_groups, initial_counts);
-    plan_groups(initial_nonzero_groups, kLevel56MaxGroupEntries);
-  } else if (initial_nonzero_count == kLevel56MaxGroupEntries) {
+    if (max_group_entries > 0) {
+      sort_groups_by_count(&initial_nonzero_groups, initial_counts);
+      plan_groups(initial_nonzero_groups, max_group_entries);
+    }
+  } else if (initial_nonzero_count == max_group_entries) {
     if (sample) {
       sample->branch = Level56ScheduleBranch::KEqual8;
     }
@@ -632,8 +802,8 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     }
     plan_groups(initial_nonzero_groups, initial_nonzero_count);
 
-    while (initial_nonzero_count < kLevel56MaxGroupEntries &&
-           used_group_entries < static_cast<int>(kLevel56MaxGroupEntries)) {
+    while (initial_nonzero_count < max_group_entries &&
+           used_group_entries < static_cast<int>(max_group_entries)) {
       std::array<std::size_t, kLevel56GroupedGroupCount> remaining_counts{};
       std::vector<std::size_t> remaining_groups;
       for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
@@ -647,22 +817,21 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
       }
       sort_groups_by_count(&remaining_groups, remaining_counts);
       const std::size_t available_entries =
-          kLevel56MaxGroupEntries -
+          max_group_entries -
           static_cast<std::size_t>(used_group_entries);
       plan_groups(remaining_groups,
                   std::min(available_entries, remaining_groups.size()));
     }
-  } else if (sample) {
-    sample->branch = Level56ScheduleBranch::K0;
   }
 
   if (p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE ==
           newcode::Level56EarlyStopGroupUpdateMode::FillIdleEntries &&
-      used_group_entries < static_cast<int>(kLevel56MaxGroupEntries)) {
+      used_group_entries < static_cast<int>(max_group_entries)) {
     Level56ScheduleRoundSample round;
     if (sample) {
       round.round_index = sample->rounds.size();
-      round.used_entries_before = static_cast<std::size_t>(used_group_entries);
+      round.used_entries_before =
+          entry_slot_offset + static_cast<std::size_t>(used_group_entries);
       for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
         round.remaining_before[group] =
             level56_group_remaining_count(*entries, group);
@@ -670,7 +839,7 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     }
     for (std::size_t group = 0;
          group < kLevel56GroupedGroupCount &&
-         used_group_entries < static_cast<int>(kLevel56MaxGroupEntries);
+         used_group_entries < static_cast<int>(max_group_entries);
          ++group) {
       if (group_entered[group]) {
         continue;
@@ -683,7 +852,8 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
       }
     }
     if (sample && !round.selected_groups.empty()) {
-      round.used_entries_after = static_cast<std::size_t>(used_group_entries);
+      round.used_entries_after =
+          entry_slot_offset + static_cast<std::size_t>(used_group_entries);
       for (std::size_t group = 0; group < kLevel56GroupedGroupCount; ++group) {
         round.remaining_after[group] =
             level56_group_remaining_count(*entries, group);
@@ -744,35 +914,27 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     planned_hiso += entry.planned_hiso;
     planned_siso += entry.planned_siso;
   }
-  if (used_group_entries > static_cast<int>(kLevel56MaxGroupEntries) ||
-      planned_hiso > kLevel56MaxGroupEntries ||
-      planned_siso > kLevel56MaxGroupEntries) {
+  if (used_group_entries > static_cast<int>(max_group_entries) ||
+      planned_hiso > max_group_entries ||
+      planned_siso > max_group_entries) {
     throw std::logic_error(
         "LEVEL56 grouped scheduler exceeded the eight-entry budget");
   }
 
   if (sample) {
-    sample->total_group_entries = static_cast<std::size_t>(used_group_entries);
+    sample->total_group_entries =
+        entry_slot_offset + static_cast<std::size_t>(used_group_entries);
     sample->planned_hiso_count = planned_hiso;
     sample->planned_siso_count = planned_siso;
+    for (auto& round : sample->rounds) {
+      round.initial_counts = sample->initial_counts;
+      round.initial_nonzero_groups = sample->initial_nonzero_groups;
+      round.branch = sample->branch;
+    }
     sample->codes.reserve(entries->size());
     for (const auto& entry : *entries) {
-      sample->codes.push_back(Level56ScheduleCodeSample{
-          .code_index = entry.shared_row,
-          .source_level = entry.source_level,
-          .source_local_row = entry.source_local_row,
-          .group_index = entry.shared_row / kLevel56CodesPerGroup,
-          .position_in_group = entry.shared_row % kLevel56CodesPerGroup,
-          .early_stop_hit = entry.early_stop_hit,
-          .hybrid_class = static_cast<uint8_t>(entry.hybrid_class),
-          .resource_eligibility = static_cast<uint8_t>(entry.eligibility),
-          .planned_hiso = entry.planned_hiso,
-          .planned_siso = entry.planned_siso,
-          .remaining_for_schedule = entry.remaining_for_schedule,
-          .final_action = static_cast<uint8_t>(entry.final_action),
-          .assigned_entry_slot = entry.assigned_entry_slot,
-          .assigned_core = entry.assigned_core,
-      });
+      sample->codes.push_back(make_level56_schedule_code_sample(
+          entry, 1, Level56TemporalInfoType::DecodeInfo, false));
     }
   }
 }
@@ -780,11 +942,16 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
 inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
                                   const newcode::Params& p,
                                   std::size_t selected_level = 0,
-                                  Level56ScheduleSample* sample = nullptr) {
+                                  Level56ScheduleSample* sample = nullptr,
+                                  std::size_t max_group_entries =
+                                      kLevel56MaxGroupEntries,
+                                  std::size_t entry_slot_offset = 0,
+                                  bool preserve_entry_state = false) {
   if (p.LEVEL56_SCHEDULE_MODE ==
       newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
     schedule_level56_rows_group4_load_sorted_multiround(
-        entries, p, selected_level, sample);
+        entries, p, selected_level, sample, max_group_entries,
+        entry_slot_offset, preserve_entry_state);
     return;
   }
   schedule_level56_rows_global_priority(entries, p, selected_level);
@@ -898,6 +1065,29 @@ void append_level56_entries(const TilePrepared<LLR>& prep,
 }
 
 template <typename LLR>
+void append_level56_early_stop_only_entries(
+    const TilePrepared<LLR>& prep,
+    const TileEarlyStopResult& early_stop,
+    std::size_t source_level,
+    std::vector<Level56DispatchEntry>* entries) {
+  for (std::size_t row = 0; row < prep.lin_matrix.rows(); ++row) {
+    Level56DispatchEntry entry;
+    entry.shared_row = entries->size();
+    entry.source_level = source_level;
+    entry.source_local_row = row;
+    entry.source_global_row = prep.row_global_lookup[row];
+    entry.early_stop_hit =
+        row < early_stop.row_passed_flags.size() &&
+        early_stop.row_passed_flags[row];
+    // Future lookahead exposes only the row-level EarlyStop decision. It does
+    // not classify, reserve a resource, or execute EarlyStopAction yet.
+    entry.remaining_for_schedule = !entry.early_stop_hit;
+    entry.needs_execution = false;
+    entries->push_back(entry);
+  }
+}
+
+template <typename LLR>
 void append_level56_bypassed_entries(
     const TilePrepared<LLR>& prep,
     const TileEarlyStopResult& early_stop,
@@ -941,7 +1131,7 @@ execute_level56_slice(
   std::vector<bool> normalize_rows(rows, false);
 
   for (const auto& entry : entries) {
-    if (entry.source_level != source_level ||
+    if (!entry.needs_execution || entry.source_level != source_level ||
         entry.final_action == Level56FinalAction::Unscheduled) {
       continue;
     }
@@ -1066,15 +1256,25 @@ Level56SharedResult<LLR> process_level56_shared(
     bool normalize_extrinsic,
     const matrix::Matrix<float>* tx_llr_ref,
     CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn,
-    matrix::Matrix<float>* last_tile_history_accum) {
+    matrix::Matrix<float>* last_tile_history_accum,
+    std::vector<Level56DispatchEntry>* prior_entries = nullptr,
+    std::size_t max_group_entries = kLevel56MaxGroupEntries,
+    std::size_t entry_slot_offset = 0,
+    bool preserve_entry_state = false,
+    const Level56EarlyStopEvaluation* cached_early5 = nullptr,
+    const Level56EarlyStopEvaluation* cached_early6 = nullptr,
+    matrix::Matrix<LLR>* output_tile5 = nullptr,
+    matrix::Matrix<LLR>* output_tile6 = nullptr) {
   const std::size_t rows = static_cast<std::size_t>(params5.CHASE_SBR) *
                            newcode::Params::BITS_PER_SUBBLOCK_DIM;
   auto prep5 = prepare_tile_inputs(tile_in5, ch_tile5, params5, tile_top5,
                                    params5.CHASE_SBR, rows, tx_llr_ref);
   auto prep6 = prepare_tile_inputs(tile_in6, ch_tile6, params6, tile_top6,
                                    params6.CHASE_SBR, rows, tx_llr_ref);
-  const auto early5 = detect_level56_early_stop(prep5, params5);
-  const auto early6 = detect_level56_early_stop(prep6, params6);
+  const auto early5 = cached_early5 ? *cached_early5
+                                   : detect_level56_early_stop(prep5, params5);
+  const auto early6 = cached_early6 ? *cached_early6
+                                   : detect_level56_early_stop(prep6, params6);
   const std::size_t selected_level = select_level56_decode_level(
       early5.effective, early6.effective, params5);
 
@@ -1082,19 +1282,72 @@ Level56SharedResult<LLR> process_level56_shared(
   entries.reserve(rows * 2u);
   const bool preserve_unselected_early_stop_action =
       params5.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE;
-  if (selected_level != 0 && selected_level != 5) {
-    append_level56_bypassed_entries(
-        prep5, early5.effective, preserve_unselected_early_stop_action,
-        5, &entries);
+  if (prior_entries) {
+    if (prior_entries->size() != rows * 2u) {
+      throw std::invalid_argument(
+          "LEVEL56 temporal history requires exactly 64 cached entries");
+    }
+    entries = *prior_entries;
+    for (std::size_t index = 0; index < rows; ++index) {
+      entries[index].source_global_row = prep5.row_global_lookup[index];
+      entries[rows + index].source_global_row = prep6.row_global_lookup[index];
+    }
+    auto refresh_pending = [](const TilePrepared<LLR>& prep,
+                              std::size_t begin,
+                              std::vector<Level56DispatchEntry>* values) {
+      for (std::size_t row = 0; row < prep.lin_matrix.rows(); ++row) {
+        auto& entry = (*values)[begin + row];
+        const bool pending = !entry.early_stop_hit &&
+                             entry.final_action == Level56FinalAction::Unscheduled &&
+                             !entry.produced;
+        entry.planned_hiso = false;
+        entry.planned_siso = false;
+        entry.remaining_for_schedule = pending;
+        entry.needs_execution = false;
+        if (!pending) {
+          continue;
+        }
+        std::array<typename TilePrepared<LLR>::CoreLLR,
+                   newcode::Params::BCH_N> lin{};
+        for (std::size_t col = 0; col < lin.size(); ++col) {
+          lin[col] = prep.lin_matrix[row][col];
+        }
+        HybridRowClass row_class = HybridRowClass::HardFail;
+        (void)run_selected_hybrid_classifier_classify_only(
+            lin, prep.params_for_core, &row_class);
+        if (row_class == HybridRowClass::Clean) {
+          throw std::runtime_error(
+              "LEVEL56 temporal history classify-only returned Clean");
+        }
+        entry.hybrid_class = row_class;
+        entry.eligibility = level56_hiso_eligible(row_class)
+                                ? Level56Eligibility::HisoOrSiso
+                                : Level56Eligibility::SisoOnly;
+      }
+    };
+    refresh_pending(prep5, 0, &entries);
+    refresh_pending(prep6, rows, &entries);
   } else {
-    append_level56_entries(prep5, early5.effective, 5, &entries);
-  }
-  if (selected_level != 0 && selected_level != 6) {
-    append_level56_bypassed_entries(
-        prep6, early6.effective, preserve_unselected_early_stop_action,
-        6, &entries);
-  } else {
-    append_level56_entries(prep6, early6.effective, 6, &entries);
+    const bool preserve_unselected_early_stop_action =
+        params5.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE;
+    if (selected_level != 0 && selected_level != 5) {
+      append_level56_bypassed_entries(
+          prep5, early5.effective, preserve_unselected_early_stop_action,
+          5, &entries);
+    } else {
+      append_level56_entries(prep5, early5.effective, 5, &entries);
+    }
+    if (selected_level != 0 && selected_level != 6) {
+      append_level56_bypassed_entries(
+          prep6, early6.effective, preserve_unselected_early_stop_action,
+          6, &entries);
+    } else {
+      append_level56_entries(prep6, early6.effective, 6, &entries);
+    }
+    for (auto& entry : entries) {
+      entry.produced = false;
+      entry.needs_execution = true;
+    }
   }
   Level56ScheduleSample schedule_sample;
   Level56ScheduleSample* schedule_sample_ptr =
@@ -1102,8 +1355,17 @@ Level56SharedResult<LLR> process_level56_shared(
           ? &schedule_sample
           : nullptr;
   schedule_level56_rows(
-      &entries, params5, selected_level, schedule_sample_ptr);
+      &entries, params5, selected_level, schedule_sample_ptr,
+      max_group_entries, entry_slot_offset, preserve_entry_state);
   route_level56_g1(&entries, params5, selected_level);
+
+  for (auto& entry : entries) {
+    if (preserve_entry_state) {
+      entry.needs_execution = entry.planned_hiso || entry.planned_siso;
+    } else {
+      entry.needs_execution = entry.final_action != Level56FinalAction::Unscheduled;
+    }
+  }
 
   using SharedCoreLLR = typename TilePrepared<LLR>::CoreLLR;
   chase::DecoderCoreResult<SharedCoreLLR> decoded5{
@@ -1122,8 +1384,20 @@ Level56SharedResult<LLR> process_level56_shared(
     decoded6 = execute_level56_slice(
         prep6, entries, 6, normalize_extrinsic, core_fn);
   }
-  matrix::Matrix<LLR> tile_out5 = tile_in5;
-  matrix::Matrix<LLR> tile_out6 = tile_in6;
+  for (auto& entry : entries) {
+    if (!entry.needs_execution) {
+      continue;
+    }
+    const auto& produced_rows =
+        entry.source_level == 5 ? decoded5.produced_rows : decoded6.produced_rows;
+    entry.produced = entry.source_local_row < produced_rows.size() &&
+                     produced_rows[entry.source_local_row];
+    entry.decode_status = entry.produced
+                              ? Level56DecodeStatus::Produced
+                              : Level56DecodeStatus::ActionFailed;
+  }
+  matrix::Matrix<LLR> tile_out5 = output_tile5 ? *output_tile5 : tile_in5;
+  matrix::Matrix<LLR> tile_out6 = output_tile6 ? *output_tile6 : tile_in6;
   writeback_tile(prep5, decoded5, params5, tile_top5, false,
                  &tile_out5, nullptr);
   writeback_tile(prep6, decoded6, params6, tile_top6, true,
@@ -1138,6 +1412,10 @@ Level56SharedResult<LLR> process_level56_shared(
       params6, std::move(tile_out6));
   result.dispatch = std::move(entries);
   if (schedule_sample_ptr) {
+    for (auto& code : schedule_sample.codes) {
+      code.produced = result.dispatch[code.code_index].produced;
+      code.decode_status = result.dispatch[code.code_index].decode_status;
+    }
     schedule_sample.invocation = shared_invocation;
     result.has_schedule_sample = true;
     result.schedule_sample = std::move(schedule_sample);
