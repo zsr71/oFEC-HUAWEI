@@ -1,0 +1,9 @@
+%%{init: {'theme': 'base', 'flowchart': {'padding': 20}, 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333'}}}%%
+flowchart LR
+    input["Level 5 / 6&nbsp;<br/>64 code&nbsp;"] --> early["EarlyStop&nbsp;<br/>判断"]
+    early --> classify["Hybrid&nbsp;<br/>分类"]
+    classify --> groups["16 组 × 4&nbsp;<br/>负载统计"]
+    groups --> schedule["8 次 group&nbsp;<br/>entry 调度"]
+    schedule --> output["EarlyStop / HISO&nbsp;<br/>SISO / Unscheduled&nbsp;"]
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class k,policy,mode,all,fill,d,kl,modes,old,rule,backlog,history,final,merge key;

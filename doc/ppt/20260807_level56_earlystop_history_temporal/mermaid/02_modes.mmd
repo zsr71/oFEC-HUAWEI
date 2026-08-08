@@ -1,0 +1,11 @@
+%%{init: {'theme': 'base', 'flowchart': {'padding': 20}, 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333'}}}%%
+flowchart TD
+    start["EarlyStop 命中行&nbsp;"] --> mode{"更新模式&nbsp;"}
+    mode --> all["AllGroups&nbsp;<br/>所有组更新"]
+    mode --> entered["EnteredGroupsOnly&nbsp;<br/>仅普通进入组更新"]
+    mode --> fill["FillIdleEntries&nbsp;<br/>空闲 entry 补位后更新"]
+    all --> hist["产生 EarlyStop 外信息&nbsp;<br/>写入最终 history&nbsp;"]
+    entered --> hist2["未进入组：Unscheduled&nbsp;<br/>不产生新 extrinsic&nbsp;"]
+    fill --> hist3["补位组：允许更新&nbsp;<br/>其余组：Unscheduled&nbsp;"]
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class mode,all,fill key;

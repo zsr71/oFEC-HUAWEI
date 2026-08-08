@@ -1,0 +1,9 @@
+%%{init: {'theme': 'base', 'flowchart': {'padding': 20}, 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333'}}}%%
+flowchart LR
+    prior["当前 prior&nbsp;"] --> merge{"produced？&nbsp;"}
+    extrinsic["新 extrinsic&nbsp;"] --> merge
+    merge --> history["last_tile&nbsp;<br/>history&nbsp;"]
+    channel["channel LLR&nbsp;"] --> final["最终输出&nbsp;<br/>channel + history&nbsp;"]
+    history --> final
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class k,policy,mode,all,fill,d,kl,modes,old,rule,backlog,history,final,merge key;

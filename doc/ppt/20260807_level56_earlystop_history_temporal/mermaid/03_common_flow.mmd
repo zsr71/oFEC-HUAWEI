@@ -1,0 +1,10 @@
+%%{init: {'theme': 'base', 'flowchart': {'padding': 20}, 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333'}}}%%
+flowchart LR
+    detect["EarlyStop&nbsp;<br/>检测"] --> classify["Hybrid&nbsp;<br/>分类"]
+    classify --> load["统计各组&nbsp;<br/>普通负载"]
+    load --> k["计算 K&nbsp;"]
+    k --> rank["负载排序&nbsp;<br/>多轮调度"]
+    rank --> entered["记录&nbsp;<br/>group_entered&nbsp;"]
+    entered --> policy["按模式确定&nbsp;<br/>EarlyStop 更新&nbsp;"]
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class k,policy,mode,all,fill,d,kl,modes,old,rule,backlog,history,final,merge key;

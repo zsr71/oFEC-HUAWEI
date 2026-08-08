@@ -1,0 +1,9 @@
+%%{init: {'theme': 'base', 'flowchart': {'padding': 20}, 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333'}}}%%
+flowchart LR
+    old{"t=0 有遗留&nbsp;<br/>未解码组？"} -->|否| current["按原方案&nbsp;<br/>调度 t=1&nbsp;"]
+    old -->|是| stats["统计&nbsp;<br/>X、K1、K2&nbsp;"]
+    stats --> rule{"K1 + K2&nbsp;<br/>< 16 - X？"}
+    rule -->|是| backlog["先补解 t=0&nbsp;<br/>剩余 entry 解码 t=1&nbsp;"]
+    rule -->|否| current2["优先解码 t=1&nbsp;"]
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class old,rule,backlog key;

@@ -1,0 +1,10 @@
+%%{init: {'theme': 'base', 'flowchart': {'padding': 20}, 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333'}}}%%
+flowchart LR
+    batch["64 code&nbsp;"] --> normal["普通&nbsp;<br/>调度"]
+    normal --> budget{"used entry&nbsp;<br/>< 8？"}
+    budget -->|否| entered["保留普通&nbsp;<br/>进入组"]
+    budget -->|是| fill["按 group index&nbsp;<br/>补未进入组"]
+    fill --> update["普通进入组 + 补位组&nbsp;<br/>允许 EarlyStop 更新&nbsp;"]
+    entered --> update2["普通进入组&nbsp;<br/>允许 EarlyStop 更新&nbsp;"]
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class k,policy,mode,all,fill,d,kl,modes,old,rule,backlog,history,final,merge key;

@@ -1,0 +1,10 @@
+%%{init: {'theme': 'base', 'flowchart': {'padding': 20}, 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333'}}}%%
+flowchart LR
+    t0["t=0&nbsp;<br/>历史状态"] --> t1["t=1&nbsp;<br/>当前 EarlyStop&nbsp;"]
+    t1 --> t2["t=2&nbsp;<br/>未来 EarlyStop&nbsp;"]
+    t0 --> slide["窗口滚动&nbsp;"]
+    t1 --> slide
+    t2 --> slide
+    slide --> next["下一窗口&nbsp;<br/>t=1→新 t=0&nbsp;<br/>t=2→新 t=1&nbsp;"]
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class k,policy,mode,all,fill,d,kl,modes,old,rule,backlog,history,final,merge key;

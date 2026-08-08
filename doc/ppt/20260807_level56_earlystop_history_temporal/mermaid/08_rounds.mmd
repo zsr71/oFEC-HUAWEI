@@ -1,0 +1,8 @@
+%%{init: {'theme': 'base', 'flowchart': {'padding': 20}, 'themeVariables': {'fontFamily': 'Noto Sans CJK SC, Microsoft YaHei, sans-serif', 'primaryColor': '#f2f2f2', 'primaryTextColor': '#111111', 'primaryBorderColor': '#111111', 'lineColor': '#333333'}}}%%
+flowchart LR
+    r1["第一轮&nbsp;<br/>4 组"] --> r2["第二轮&nbsp;<br/>2 组"]
+    r2 --> idle["used = 6&nbsp;<br/>remaining = 2&nbsp;"]
+    idle --> entered["EnteredGroups&nbsp;<br/>Only：2 个浪费&nbsp;"]
+    idle --> fill["FillIdleEntries&nbsp;<br/>补 2 个未进入组&nbsp;"]
+    classDef key fill:#f2f2f2,stroke:#c00000,stroke-width:3px,color:#111111,font-weight:bold;
+    class k,policy,mode,all,fill,d,kl,modes,old,rule,backlog,history,final,merge key;
