@@ -89,6 +89,7 @@ static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只�
 // Level 5/6 共享：四行分组、负载排序与多轮 MUX 调度
 static constexpr bool kLevel56SharedEnable = true;                  // true=第五/六级共享 HISO/SISO
 static constexpr bool kLevel56TemporalLookaheadEnable = true;       // true=启用 t=0/t=1/t=2 三时刻 192-code 调度
+static constexpr int kLevel56TemporalGroupLoadThreshold = 16;       // temporal 分支阈值：X+K1+K2 小于该值时补解 t=0
 static constexpr int kLevel56SharedHisoActive = 8;                  // 新分组方案固定使用 8 个共享 HISO entry slot
 static constexpr int kLevel56SharedSisoActive = 8;                  // 新分组方案固定使用 8 个共享 SISO entry slot
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
@@ -866,6 +867,8 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.LEVEL56_SHARED_ENABLE = kLevel56SharedEnable;
   config.base_params.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE =
       kLevel56TemporalLookaheadEnable;
+  config.base_params.LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD =
+      kLevel56TemporalGroupLoadThreshold;
   config.base_params.LEVEL56_SHARED_HISO_ACTIVE = kLevel56SharedHisoActive;
   config.base_params.LEVEL56_SHARED_SISO_ACTIVE = kLevel56SharedSisoActive;
   config.base_params.LEVEL56_PRIORITY_MODE = kLevel56PriorityMode;
