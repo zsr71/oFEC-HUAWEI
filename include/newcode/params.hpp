@@ -140,6 +140,8 @@ struct Params {
   bool LEVEL56_SHARED_ENABLE = false;
   // 开启第五/六级三时刻 192-code lookahead 调度；关闭时保持单批次共享路径。
   bool LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE = false;
+  // temporal 分支的组级负载阈值。默认 16 保持原规则：K1+K2 < 16-X。
+  int LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD = 16;
   int LEVEL56_SHARED_HISO_ACTIVE = 32;
   int LEVEL56_SHARED_SISO_ACTIVE = 32;
   Level56PriorityMode LEVEL56_PRIORITY_MODE =
@@ -242,6 +244,8 @@ struct Params {
            (LEVEL56_SHARED_HISO_ACTIVE <= 64) &&
            (LEVEL56_SHARED_SISO_ACTIVE >= 0) &&
            (LEVEL56_SHARED_SISO_ACTIVE <= 64) &&
+           (LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD >= 0) &&
+           (LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD <= 48) &&
            (CHASE_SBR == 1 || CHASE_SBR == 2);
   }
 };

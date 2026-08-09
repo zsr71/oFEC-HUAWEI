@@ -266,9 +266,10 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             // the new future batch before any current Level 5/6 writeback.
             lookahead_batch =
                 make_temporal_batch(win_start + p.pop_push_rows());
-            auto current_batch = level56_temporal_state->current
-                                     ? std::move(level56_temporal_state->current)
-                                     : make_temporal_batch(win_start);
+            // t=1 is the batch being decoded now. Rebuild it from the latest
+            // work_llr so prior-window Level5/6 writeback is visible. The
+            // lookahead snapshot is only a prediction input for this window.
+            auto current_batch = make_temporal_batch(win_start);
             if (!current_batch) {
               throw std::logic_error(
                   "LEVEL56 temporal current batch is unavailable");
@@ -286,7 +287,9 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                                             lookahead_batch->entries)
                                       : 0;
             const auto temporal_branch = select_level56_temporal_branch(
-                have_previous, lookahead_batch.has_value(), x, k1, k2);
+                have_previous, lookahead_batch.has_value(), x, k1, k2,
+                static_cast<std::size_t>(
+                    p.LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD));
             const bool supplement_history =
                 temporal_branch == Level56TemporalBranch::SupplementHistory;
             const std::size_t t0_pending_before =
@@ -465,7 +468,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                   std::move(current_result.schedule_sample));
             }
             level56_temporal_state->previous = std::move(*current_batch);
-            level56_temporal_state->current = std::move(lookahead_batch);
+            level56_temporal_state->current.reset();
             ++t;
             continue;
           }

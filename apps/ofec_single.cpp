@@ -86,6 +86,7 @@ static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
 static constexpr bool kHybridNormalizeSoftOnly = false;            // true=只归一化 soft rows，false=保持当前兼容行为
 static constexpr bool kLevel56SharedEnable = true;                // true=第五/六级共享 HISO/SISO
 static constexpr bool kLevel56TemporalLookaheadEnable = true;     // true=启用 t=0/t=1/t=2 三时刻 192-code 调度
+static constexpr int kLevel56TemporalGroupLoadThreshold = 16;     // temporal 分支阈值，默认等价于 K1+K2 < 16-X
 static constexpr int kLevel56SharedHisoActive = 8;                 // 第五/六级共享 HISO 容量
 static constexpr int kLevel56SharedSisoActive = 8;                 // 第五/六级共享 SISO 容量
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
@@ -155,12 +156,12 @@ static const std::vector<newcode::Params::DebugTraceConfig::TraceTarget>
 // dump_chase_csv     每次进入 Chase 时导出 256 码字的 LLR/ω/ML/硬判决到 CSV
 // chase_csv_dir      CSV 导出目录（可直接用 Excel 打开）
 
-static constexpr bool        kDecoderTraceEnable      = true;             // 是否启用 decoder trace 总开关
-static constexpr bool        kDecoderTraceLogRead     = true;             // 是否打印 tile 读取映射
-static constexpr bool        kDecoderTraceLogWrite    = true;             // 是否打印 tile 写回映射
-static constexpr bool        kDecoderTraceLogMismatch = true;             // 是否打印同坐标写回不一致告警
-static constexpr bool        kDecoderTraceLogChase    = true;             // 是否打印 Chase 内部细节
-static constexpr bool        kDecoderTraceDumpCsv     = true;             // 是否把 Chase 细节落成 CSV
+static constexpr bool        kDecoderTraceEnable      = false;            // 是否启用 decoder trace 总开关
+static constexpr bool        kDecoderTraceLogRead     = false;            // 是否打印 tile 读取映射
+static constexpr bool        kDecoderTraceLogWrite    = false;            // 是否打印 tile 写回映射
+static constexpr bool        kDecoderTraceLogMismatch = false;            // 是否打印同坐标写回不一致告警
+static constexpr bool        kDecoderTraceLogChase    = false;            // 是否打印 Chase 内部细节
+static constexpr bool        kDecoderTraceDumpCsv     = false;            // 是否把 Chase 细节落成 CSV
 static constexpr const char* kDecoderTraceCsvDir      = "data/chase_csv"; // Chase CSV 导出目录
 
 
@@ -214,6 +215,7 @@ int main() {
     .hybrid_normalize_soft_only = kHybridNormalizeSoftOnly,
     .level56_shared_enable = kLevel56SharedEnable,
     .level56_temporal_lookahead_enable = kLevel56TemporalLookaheadEnable,
+    .level56_temporal_group_load_threshold = kLevel56TemporalGroupLoadThreshold,
     .level56_shared_hiso_active = kLevel56SharedHisoActive,
     .level56_shared_siso_active = kLevel56SharedSisoActive,
     .level56_priority_mode = kLevel56PriorityMode,

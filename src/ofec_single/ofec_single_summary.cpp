@@ -192,6 +192,8 @@ void log_run_overview(const Config& cfg,
       << (params.LEVEL56_SHARED_ENABLE ? "ON" : "OFF")
       << ", temporal_lookahead = "
       << (params.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE ? "ON" : "OFF")
+      << ", temporal_group_load_threshold = "
+      << params.LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD
       << ", HISO/SISO = "
       << params.LEVEL56_SHARED_HISO_ACTIVE << "/"
       << params.LEVEL56_SHARED_SISO_ACTIVE

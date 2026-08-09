@@ -1114,6 +1114,14 @@ void check_temporal_rule_helpers() {
               true, true, 0, 0, 0) ==
               newcode::Level56TemporalBranch::CurrentFirst,
           "X=0 must process the current batch");
+  require(newcode::detail::select_level56_temporal_branch(
+              true, true, 3, 4, 4, 11) ==
+              newcode::Level56TemporalBranch::CurrentFirst,
+          "custom temporal threshold must switch to current first");
+  require(newcode::detail::select_level56_temporal_branch(
+              true, true, 3, 4, 4, 12) ==
+              newcode::Level56TemporalBranch::SupplementHistory,
+          "custom temporal threshold must allow history supplement");
 
   auto entries = make_entries(32);
   for (auto& entry : entries) {

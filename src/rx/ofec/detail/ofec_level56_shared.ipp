@@ -126,7 +126,8 @@ inline Level56TemporalBranch select_level56_temporal_branch(
     bool has_future,
     std::size_t x,
     std::size_t k1,
-    std::size_t k2) {
+    std::size_t k2,
+    std::size_t group_load_threshold = kLevel56GroupedGroupCount) {
   if (!has_history) {
     return Level56TemporalBranch::NoHistory;
   }
@@ -139,7 +140,11 @@ inline Level56TemporalBranch select_level56_temporal_branch(
     throw std::invalid_argument(
         "LEVEL56 temporal group counts must be within 0..16");
   }
-  return x > 0 && k1 + k2 < kLevel56GroupedGroupCount - x
+  if (group_load_threshold > 3 * kLevel56GroupedGroupCount) {
+    throw std::invalid_argument(
+        "LEVEL56 temporal group load threshold must be within 0..48");
+  }
+  return x > 0 && x + k1 + k2 < group_load_threshold
              ? Level56TemporalBranch::SupplementHistory
              : Level56TemporalBranch::CurrentFirst;
 }
