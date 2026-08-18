@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>五六级共享新方案 · 交互式演示</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #667381;
+      --line: #d8dee5;
+      --paper: #f6f8fa;
+      --panel: #ffffff;
+      --accent: #145da0;
+      --buffer: #eef1f4;
+      --l6: #e8f3ff;
+      --l5: #fff3df;
+      --early: #2e8b57;
+      --hiso: #c77700;
+      --siso: #1769aa;
+      --pending: #c43d3d;
+      --done: #7c8793;
+      --evicted: #3e454d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 14px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
+    }
+    .app { max-width: 1600px; margin: 0 auto; padding: 20px; }
+    header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
+    h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
+    .sub { margin-top: 4px; color: var(--muted); }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: flex-end; }
+    button, select, input[type=range], input[type=number] { font: inherit; }
+    button, select, input[type=number] { border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); padding: 7px 10px; }
+    button { cursor: pointer; }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button.primary:hover { background: #0e4e88; color: #fff; }
+    .speed { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+    .metric-row { display: grid; grid-template-columns: repeat(6, minmax(110px, 1fr)); gap: 8px; margin-bottom: 12px; }
+    .metric { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; min-height: 62px; }
+    .metric .label { color: var(--muted); font-size: 12px; }
+    .metric .value { margin-top: 2px; font-size: 20px; font-weight: 650; }
+    .layout { display: grid; grid-template-columns: minmax(450px, 1.35fr) minmax(420px, 1fr); gap: 12px; align-items: start; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+    .panel-title { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding: 10px 12px; font-weight: 650; }
+    .memory-wrap { padding: 10px 12px 12px; }
+    .sram-state-bar { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 0 0 9px; }
+    .sram-state { display: inline-flex; align-items: center; min-height: 26px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px; font-size: 12px; font-weight: 650; }
+    .sram-state.decode { background: #dceeff; color: #20537b; border-color: #a8cde8; }
+    .sram-state.input { background: #e6f4eb; color: #21633d; border-color: #afd4bc; }
+    .sram-state.output { background: #fbe8e7; color: #8c2a25; border-color: #e4b5b1; }
+    .memory-legend, .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; color: var(--muted); font-size: 12px; margin-bottom: 9px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+    .swatch { width: 12px; height: 12px; border: 1px solid rgba(0,0,0,.12); border-radius: 3px; display: inline-block; }
+    .memory { height: 640px; overflow: auto; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
+    .mem-row { min-height: 25px; display: grid; grid-template-columns: 58px 94px 62px 1fr 112px; align-items: center; border-bottom: 1px solid #edf0f2; padding: 0 8px; font-size: 12px; position: relative; }
+    .mem-row:last-child { border-bottom: 0; }
+    .mem-row.window { box-shadow: inset 4px 0 0 var(--accent); }
+    .mem-row.window.buffer-row { background: #f4f8fc; }
+    .mem-row.incoming { outline: 2px solid #9b3b00; outline-offset: -2px; z-index: 1; }
+    .mem-row .row-no { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .mem-row .region { font-weight: 600; }
+    .mem-row .owner { font-weight: 650; }
+    .mem-row .source { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mem-row .flags { justify-self: end; color: var(--muted); }
+    .mem-row.buffer-row { background: var(--buffer); }
+    .mem-row.l6-row { background: var(--l6); }
+    .mem-row.l5-row { background: var(--l5); }
+    .mem-row.window.l6-row { background: #dceeff; }
+    .mem-row.window.l5-row { background: #ffebc4; }
+    .grid-axis-note { display: flex; justify-content: space-between; gap: 12px; margin: 0 2px 6px; color: var(--muted); font-size: 12px; }
+    .memory.memory-grid {
+      display: grid;
+      grid-template-columns: 50px 74px 58px repeat(8, minmax(50px, 1fr));
+      grid-auto-rows: 18px;
+      align-content: start;
+      min-width: 670px;
+      height: 640px;
+      overflow: auto;
+      border: 1px solid #6f7780;
+      border-radius: 4px;
+      background: #fff;
+    }
+    .grid-head {
+      position: sticky;
+      top: 0;
+      z-index: 8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f3f5f7;
+      border-right: 1px solid #727a82;
+      border-bottom: 2px solid #40474f;
+      color: #414a53;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .grid-row-label, .grid-region-label, .grid-batch-label {
+      position: sticky;
+      left: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-right: 1px solid #727a82;
+      border-bottom: 1px solid rgba(48,56,64,.42);
+      background: #f8f9fa;
+      color: #4a535c;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    .grid-region-label { left: 50px; font-weight: 700; z-index: 4; }
+    .grid-batch-label { left: 124px; z-index: 4; background: #f8f9fa; font-weight: 700; color: #33404c; }
+    .grid-region-label.buffer { background: #e9edf1; }
+    .grid-region-label.l6 { background: #cceeff; color: #0a527f; }
+    .grid-region-label.l5 { background: #ffe9b8; color: #765100; }
+    .grid-cell {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      border-right: 1px solid #3f474f;
+      border-bottom: 1px solid #3f474f;
+      overflow: hidden;
+      color: rgba(18,32,43,.66);
+      font-size: 9px;
+      font-variant-numeric: tabular-nums;
+    }
+    .grid-cell.buffer.even { background: #edf1f4; }
+    .grid-cell.buffer.odd { background: #f7f8f9; }
+    .grid-cell.l6.even, .grid-cell.l5.even { background: #c7f2f4; }
+    .grid-cell.l6.odd, .grid-cell.l5.odd { background: #fffbd0; }
+    .grid-cell.window-cell { color: #254d70; }
+    .grid-cell.window-l6 { background: #c7f2f4 !important; }
+    .grid-cell.window-l5 { background: #fffbd0 !important; }
+    .grid-cell.window-top-row { border-top: 2px solid var(--accent); }
+    .grid-cell.window-bottom-row { border-bottom: 2px solid var(--accent); }
+    .grid-cell.output-row { background: #fbe8e7 !important; }
+    .grid-cell.input-row { background: #e6f4eb !important; }
+    .grid-cell.role-output { background: #fbe8e7 !important; }
+    .grid-cell.role-input { background: #e6f4eb !important; }
+    .grid-row-label.output-row { background: #fbe8e7; color: #8c2a25; font-weight: 700; }
+    .grid-row-label.input-row { background: #e6f4eb; color: #21633d; font-weight: 700; }
+    .grid-row-label small { margin-left: 3px; font-size: 9px; }
+    .grid-cell .batch-label { font-weight: 700; white-space: nowrap; color: #1f4d72; }
+    .grid-cell.region-start, .grid-row-label.region-start, .grid-region-label.region-start, .grid-batch-label.region-start { border-top: 3px solid #303840; }
+    .right-stack { display: grid; gap: 12px; }
+    .section-pad { padding: 10px 12px 12px; }
+    .schedule { display: grid; grid-template-columns: repeat(4, minmax(100px, 1fr)); gap: 7px; }
+    .slot { border: 1px solid var(--line); border-radius: 5px; padding: 8px; min-height: 68px; background: #fbfcfd; }
+    .slot.active { border-color: var(--accent); background: #eef6ff; }
+    .slot .slot-head { display: flex; justify-content: space-between; font-weight: 650; }
+    .slot .slot-detail { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .timeline { max-height: 210px; overflow: auto; padding: 6px 12px 12px; }
+    .event { display: grid; grid-template-columns: 50px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid #edf0f2; }
+    .event:last-child { border-bottom: 0; }
+    .event .et { color: var(--accent); font-variant-numeric: tabular-nums; }
+    .note { padding: 0 12px 12px; color: var(--muted); font-size: 12px; }
+    .case-description { color: var(--muted); font-size: 13px; margin: 0 12px 8px; }
+    .chip { display: inline-block; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: #fafafa; color: var(--muted); font-size: 12px; }
+    @media (max-width: 1050px) {
+      header { flex-direction: column; }
+      .controls { justify-content: flex-start; }
+      .layout { grid-template-columns: 1fr; }
+      .memory { height: 520px; }
+    }
+    @media (max-width: 650px) {
+      .app { padding: 12px; }
+      .metric-row { grid-template-columns: repeat(3, 1fr); }
+      .schedule { grid-template-columns: repeat(2, 1fr); }
+      .mem-row { grid-template-columns: 45px 66px 45px 1fr; }
+      .mem-row .flags { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>五六级共享新方案 · 交互式演示</h1>
+        <div class="sub">连续 block-row 内存、FIFO 服务、pending 延后与全 EarlyStop 快路径</div>
+      </div>
+      <div class="controls">
+        <label>案例 <select id="caseSelect"></select></label>
+        <label>buffer rows <input id="bufferRows" type="number" min="0" max="256" step="1" value="32" title="可调 buffer block-row 行数"></label>
+        <button id="resetBtn" title="回到当前案例的起始时刻">重置</button>
+        <button id="stepBtn" title="前进一步">单步</button>
+        <button id="playBtn" class="primary" title="自动播放">播放</button>
+        <span class="speed">速度 <input id="speed" type="range" min="250" max="1600" step="50" value="800"> <span id="speedValue">0.8 s</span></span>
+      </div>
+    </header>
+
+    <section class="metric-row" aria-label="当前时刻摘要">
+      <div class="metric"><div class="label">当前 t</div><div id="mT" class="value">0</div></div>
+      <div class="metric"><div class="label">窗口起点 S_t</div><div id="mS" class="value">32</div></div>
+      <div class="metric"><div class="label">内部完成 C_t</div><div id="mC" class="value">0</div></div>
+      <div class="metric"><div class="label">FIFO 队列</div><div id="mFifo" class="value">B0</div></div>
+      <div class="metric"><div class="label">当前服务</div><div id="mService" class="value">B0</div></div>
+      <div class="metric"><div class="label">物理输出</div><div id="mOutput" class="value">2 rows</div></div>
+    </section>
+
+    <section class="layout">
+      <div class="panel">
+        <div class="panel-title"><span id="memoryTitle">连续物理内存运行网格（8 × 76 SRAM blocks）</span><span class="chip" id="windowChip">window [32, 76)</span></div>
+        <div class="memory-wrap">
+          <div class="sram-state-bar">
+            <span id="gridDecode" class="sram-state decode">t=0 · 解码 B0 · rows [32, 76)</span>
+            <span id="gridInput" class="sram-state input">新进入 B0 · rows [74, 76)</span>
+            <span id="gridOutput" class="sram-state output">输出 rows [0, 2)</span>
+          </div>
+          <div class="memory-legend">
+            <span class="legend-item"><span class="swatch" style="background:var(--buffer)"></span><span id="bufferLegend">buffer：其余 32 行</span></span>
+            <span class="legend-item"><span class="swatch" style="background:var(--l6)"></span>当前 Level 6：[S_t, S_t+22)</span>
+            <span class="legend-item"><span class="swatch" style="background:var(--l5)"></span>当前 Level 5：[S_t+22, S_t+44)</span>
+            <span class="legend-item"><span class="swatch" style="background:#dceeff"></span>当前解码窗口</span>
+            <span class="legend-item"><span class="swatch" style="background:#fbe8e7"></span>本 t 顶部输出</span>
+            <span class="legend-item"><span class="swatch" style="background:#e6f4eb"></span>本 t 底部新加入</span>
+            <span class="legend-item"><span class="swatch" style="background:#f8f9fa"></span>其他 SRAM block</span>
+          </div>
+          <div class="grid-axis-note"><span id="axisRows">纵轴：物理 block row（32 + 22 + 22）</span><span>横轴：SRAM block column（8 列）</span></div>
+          <div id="memory" class="memory memory-grid" aria-label="连续内存运行网格"></div>
+        </div>
+      </div>
+
+      <div class="right-stack">
+        <div class="case-description" id="caseDescription"></div>
+        <div class="panel">
+          <div class="panel-title"><span>本 t 的普通调度槽</span><span class="chip">最多 8 个 group-entry</span></div>
+          <div class="section-pad"><div id="schedule" class="schedule"></div></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title"><span>事件时间线</span><span class="chip" id="frameLabel">1 / 1</span></div>
+          <div id="timeline" class="timeline"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const statusArray = (kind, count, start = 0) => {
+      const a = Array(64).fill(kind);
+      if (kind === 'early') return a;
+      return a.map((_, i) => i < start ? 'done' : (i < start + count ? kind : 'pending'));
+    };
+    const mix = (doneCount, hisoCount, sisoCount, earlyCount = 0) => {
+      const a = Array(64).fill('pending');
+      for (let i = 0; i < earlyCount; i++) a[i] = 'early';
+      let p = earlyCount;
+      for (let i = 0; i < doneCount && p < 64; i++, p++) a[p] = 'done';
+      for (let i = 0; i < hisoCount && p < 64; i++, p++) a[p] = 'hiso';
+      for (let i = 0; i < sisoCount && p < 64; i++, p++) a[p] = 'siso';
+      return a;
+    };
+    const cases = {
+      burst_pending: {
+        name: 'A · burst / pending 延后',
+        desc: 'B0 在 t=0 的 EarlyStop 率低，8 个 group-entry 每 t 按原 scheduler 服务；未获资源的 code 在后续 t 继续调度。',
+        frames: [
+          {t:0,s:32,c:0,fifo:['B0','B1','B2'],service:'B0',incoming:'B0',states:mix(0,12,12,4),events:['B0：4 个 EarlyStop；HISO/SISO 候选超过本 t 的 8 个 group-entry。','首轮获得资源的 code 完成；其余 code 标记为 pending。'],groups:[0,1,2,3,4,5,6,7]},
+          {t:1,s:30,c:0,fifo:['B0','B1','B2'],service:'B0',incoming:'B1',states:mix(24,12,12,4),events:['物理内存上推两行，底部写入 B1 的两行。','B0 已完成 code 变为 AlreadyDecoded；pending code 重新按原始资格进入 scheduler。'],groups:[8,9,10,11,12,13,14,15]},
+          {t:2,s:28,c:1,fifo:['B1','B2','B3'],service:'B1',incoming:'B2',states:statusArray('early',64),events:['B0 的剩余 code 完成，C_t=1。','B0 退休，FIFO 队首转为 B1。'],groups:[]},
+          {t:3,s:28,c:1,fifo:['B2','B3','B4'],service:'B2',incoming:'B3',states:statusArray('early',64),events:['B1 全 EarlyStop，走快路径立即完成。','同一 t 的剩余普通服务能力继续检查 B2。'],groups:[]},
+          {t:4,s:28,c:0,fifo:['B2','B3','B4'],service:'B2',incoming:'B4',states:mix(0,20,16,2),events:['B2 进入普通调度，出现新的需求 burst。','普通 batch 未使用的资源不跨 batch 转交。'],groups:[0,1,2,3,4,5,6,7]}
+        ]
+      },
+      all_early_stop_chain: {
+        name: 'B · 全 EarlyStop 连续快路径',
+        desc: 'B1、B2、B3 均为全 EarlyStop，在同一个 t 内连续完成；没有理论上的连续数量上限。',
+        frames: [
+          {t:0,s:30,c:3,fifo:['B4','B5'],service:'B4',incoming:'B0',states:mix(0,20,16,4),events:['B1 全 EarlyStop，立即完成。','B2 全 EarlyStop，立即完成。','B3 全 EarlyStop，立即完成。','C_t=3：内部完成 3 个 batch；对外仍只输出顶部两行。'],groups:[0,1,2,3,4,5,6,7]},
+          {t:1,s:32,c:1,fifo:['B5','B6'],service:'B5',incoming:'B1',states:statusArray('early',64),events:['B4 也全 EarlyStop，沿用同一 t 的快路径语义。','窗口起点被 clip 到 R_buf，物理节拍仍为两行。'],groups:[]},
+          {t:2,s:32,c:0,fifo:['B5','B6'],service:'B5',incoming:'B2',states:mix(16,16,16,4),events:['遇到第一个普通 batch，停止跨 batch 快路径。','B5 进入原五六级共享 scheduler。'],groups:[0,1,2,3,4,5,6,7]}
+        ]
+      },
+      ct_two_recovery: {
+        name: 'C · C_t=2 窗口恢复',
+        desc: '一个时刻内部正常完成两个 batch，窗口向基准位置恢复；物理输出节拍不变。',
+        frames: [
+          {t:0,s:24,c:0,fifo:['B0','B1','B2'],service:'B0',incoming:'B0',states:mix(20,20,16,8),events:['当前窗口位于 buffer 中段。','B0 尚有 pending，C_t=0，下一窗口回退两行。'],groups:[0,1,2,3,4,5,6,7]},
+          {t:1,s:22,c:2,fifo:['B2','B3'],service:'B2',incoming:'B1',states:statusArray('early',64),events:['B0 补完并退休。','B1 全 EarlyStop 快速完成，C_t=2。','窗口按 S_{t+1}=clip(S_t-2+2*C_t,0,R_buf) 恢复；顶部仍只输出两行。'],groups:[]},
+          {t:2,s:24,c:0,fifo:['B2','B3'],service:'B2',incoming:'B2',states:mix(12,20,20,12),events:['B2 成为队首，普通调度最多使用 8 个 group-entry。','此前完成的 B1 仍留在连续内存，等待物理上推到顶部。'],groups:[0,1,2,3,4,5,6,7]}
+        ]
+      },
+      forced_eviction: {
+        name: 'D · S_t=0 强制顶出',
+        desc: '窗口已经到达边界仍有 pending 时，固定物理吞吐优先：顶部两行被顶出，pending 变为 forced-evicted。',
+        frames: [
+          {t:0,s:2,c:0,fifo:['B0','B1','B2'],service:'B0',incoming:'B0',states:mix(0,10,10,2),events:['B0 大量 pending，窗口已接近 S_t=0 边界。','下一步继续上推后窗口到达 S_t=0。'],groups:[0,1,2,3,4,5,6,7]},
+          {t:1,s:0,c:0,fifo:['B1','B2','B3'],service:'B1',incoming:'B1',states:(() => { const a = mix(0,10,10,2); for (let i=2;i<14;i++) a[i]='evicted'; return a; })(),events:['S_t=0：顶部仍有 pending，不能暂停输入。','两行固定输出后，顶部 pending 被标记为 forced-evicted；不计入 C_t、吞吐量或译码质量。','下一时刻服务随物理推进进入窗口的 B1。'],groups:[0,1,2,3,4,5,6,7]},
+          {t:2,s:0,c:1,fifo:['B2','B3','B4'],service:'B2',incoming:'B2',states:statusArray('early',64),events:['B1 全 EarlyStop，快路径完成。','固定两行输出和底部两行输入继续进行。'],groups:[]}
+        ]
+      }
+    };
+
+    const caseSelect = document.getElementById('caseSelect');
+    const bufferRowsInput = document.getElementById('bufferRows');
+    const memory = document.getElementById('memory');
+    const schedule = document.getElementById('schedule');
+    const timeline = document.getElementById('timeline');
+    let currentCase = 'burst_pending';
+    let frameIndex = 0;
+    let playing = false;
+    let timer = null;
+
+    const WINDOW_ROWS = 44;
+    const BASE_BUFFER_ROWS = 32;
+    function bufferRows() {
+      const value = Number(bufferRowsInput.value);
+      return Number.isFinite(value) ? Math.max(0, Math.min(256, Math.round(value))) : BASE_BUFFER_ROWS;
+    }
+    function totalRows() { return bufferRows() + WINDOW_ROWS; }
+    function effectiveStart(frame) {
+      const candidate = currentCase === 'forced_eviction'
+        ? frame.s
+        : bufferRows() - (BASE_BUFFER_ROWS - frame.s);
+      return Math.max(0, Math.min(bufferRows(), candidate));
+    }
+
+    Object.entries(cases).forEach(([key, item]) => {
+      const option = document.createElement('option'); option.value = key; option.textContent = item.name; caseSelect.appendChild(option);
+    });
+
+    function current() { return cases[currentCase].frames[frameIndex]; }
+    function stop() { playing = false; if (timer) { clearInterval(timer); timer = null; } document.getElementById('playBtn').textContent = '播放'; }
+    function render() {
+      const item = cases[currentCase], frame = current();
+      const rows = totalRows();
+      const start = effectiveStart(frame);
+      document.getElementById('mT').textContent = frame.t;
+      document.getElementById('mS').textContent = start;
+      document.getElementById('mC').textContent = frame.c;
+      document.getElementById('mFifo').textContent = frame.fifo.join(' → ');
+      document.getElementById('mService').textContent = frame.service;
+      document.getElementById('mOutput').textContent = '2 rows';
+      document.getElementById('windowChip').textContent = `t=${frame.t} · decode ${frame.service} · [${start}, ${start + WINDOW_ROWS})`;
+      document.getElementById('gridDecode').textContent = `t=${frame.t} · 解码 ${frame.service} · rows [${start}, ${start + WINDOW_ROWS})`;
+      document.getElementById('gridInput').textContent = `新进入 ${frame.incoming} · rows [${rows - 2}, ${rows})`;
+      document.getElementById('gridOutput').textContent = `输出 rows [0, 2) · 顶部物理节拍`;
+      document.getElementById('memoryTitle').textContent = `连续物理内存运行网格（8 × ${rows} SRAM blocks）`;
+      document.getElementById('bufferLegend').textContent = `buffer：其余 ${bufferRows()} 行`;
+      document.getElementById('axisRows').textContent = `纵轴：物理 block row（${bufferRows()} + 22 + 22）`;
+      document.getElementById('caseDescription').textContent = `${item.desc} 当前 R_buf=${bufferRows()}，R_mem=${rows}。`;
+      document.getElementById('frameLabel').textContent = `${frameIndex + 1} / ${item.frames.length}`;
+      renderMemory(frame, start, rows);
+      renderSchedule(frame);
+      renderTimeline(item, frameIndex);
+    }
+    function renderMemory(frame, start, rows) {
+      let html = '<div class="grid-head">row</div><div class="grid-head">区域</div><div class="grid-head">Batch</div>';
+      html += Array.from({length: 8}, (_, block) => `<div class="grid-head" title="SRAM block column ${block}">block ${block}</div>`).join('');
+
+      for (let p = 0; p < rows; p++) {
+        const inWindow = p >= start && p < start + WINDOW_ROWS;
+        const region = p >= start && p < start + 22
+          ? 'l6'
+          : (p >= start + 22 && p < start + WINDOW_ROWS ? 'l5' : 'buffer');
+        const regionName = region === 'buffer' ? 'buffer' : (region === 'l6' ? 'Level 6' : 'Level 5');
+        const regionStart = p === 0 || p === start || p === start + 22 || p === start + WINDOW_ROWS;
+        const upperBufferMid = start > 1 ? Math.floor((start - 1) / 2) : -1;
+        const lowerBufferStart = start + WINDOW_ROWS;
+        const lowerBufferMid = start <= 1 ? lowerBufferStart + Math.floor((bufferRows() - start - 1) / 2) : -1;
+        const regionMid = (region === 'l6' && p === start + 11) ||
+          (region === 'l5' && p === start + 33) ||
+          (region === 'buffer' && (p === upperBufferMid || p === lowerBufferMid));
+        const batchAge = Math.floor((rows - 1 - p) / 2);
+        const batchIndex = frame.t - batchAge;
+        const physicalBatch = `B${batchIndex}`;
+        const rowRole = p < 2 ? 'output-row' : (p >= rows - 2 ? 'input-row' : '');
+        const roleLabel = p < 2 ? '<small>OUT</small>' : (p >= rows - 2 ? '<small>IN</small>' : '');
+        html += `<div class="grid-row-label ${rowRole} ${regionStart ? 'region-start' : ''}">${p}${roleLabel}</div>`;
+        html += `<div class="grid-region-label ${region} ${regionStart ? 'region-start' : ''}">${regionMid ? regionName : ''}</div>`;
+        html += `<div class="grid-batch-label ${rowRole} ${regionStart ? 'region-start' : ''}" title="physical_row=${p}; batch=${physicalBatch}">${physicalBatch}</div>`;
+
+        for (let block = 0; block < 8; block++) {
+          const sharedRow = inWindow ? Math.min(63, Math.floor((p - start) * 64 / WINDOW_ROWS)) : null;
+          const group = sharedRow === null ? null : Math.floor(sharedRow / 4);
+          const position = sharedRow === null ? null : sharedRow % 4;
+          const sourceLevel = sharedRow === null ? null : (sharedRow < 32 ? 5 : 6);
+          const sourceLocalRow = sharedRow === null ? null : sharedRow % 32;
+          const streamRow = p + frame.t * 2;
+          const batch = p >= rows - 2 ? frame.incoming : physicalBatch;
+          const role = p < 2 ? 'output' : (p >= rows - 2 ? 'input' : (region === 'l6' ? 'decode-level6' : (region === 'l5' ? 'decode-level5' : 'buffer')));
+          const cellLabel = block === 0 && p === start
+            ? `DEC ${frame.service}`
+            : (block === 0 && p >= rows - 2 ? `IN ${frame.incoming}` : '');
+          const classes = [
+            'grid-cell', region, p % 2 ? 'odd' : 'even',
+            inWindow ? 'window-cell' : '',
+            inWindow && region === 'l6' ? 'window-l6' : '',
+            inWindow && region === 'l5' ? 'window-l5' : '',
+            role === 'output' ? 'role-output' : '',
+            role === 'input' ? 'role-input' : '',
+            inWindow && p === start ? 'window-top-row' : '',
+            inWindow && p === start + WINDOW_ROWS - 1 ? 'window-bottom-row' : '',
+            regionStart ? 'region-start' : ''
+          ].filter(Boolean).join(' ');
+          const title = [
+            `physical_row=${p}`, `sram_block=${block}`, `time_index=${frame.t}`, `time_offset=${frame.t - 1}`,
+            `batch=${batch}`, `source_global_row=${streamRow}`,
+            `role=${role}`,
+            sharedRow === null ? 'decode_window=outside' : `decode_window=[${start}, ${start + WINDOW_ROWS}); shared_row=${sharedRow}`,
+            group === null ? '' : `group_index=${group}`,
+            position === null ? '' : `position_in_group=${position}`,
+            sourceLevel === null ? '' : `source_level=${sourceLevel}`,
+            sourceLocalRow === null ? '' : `source_local_row=${sourceLocalRow}`
+          ].filter(Boolean).join('; ');
+          html += `<div class="${classes}" title="${title}">${cellLabel ? `<span class="batch-label">${cellLabel}</span>` : ''}</div>`;
+        }
+      }
+      memory.innerHTML = html;
+      memory.scrollTop = Math.max(0, start * 18 - 100);
+    }
+    function renderSchedule(frame) {
+      const groups = frame.groups;
+      schedule.innerHTML = Array.from({length: 8}, (_, slot) => {
+        const g = groups[slot];
+        if (g === undefined) return `<div class="slot"><div class="slot-head"><span>slot ${slot}</span><span>空闲</span></div><div class="slot-detail">普通 batch 剩余资源不跨 batch 转交</div></div>`;
+        const first = g * 4;
+        const stateSet = frame.states.slice(first, first + 4).filter(s => s === 'hiso' || s === 'siso');
+        const action = stateSet.includes('hiso') ? 'HISO' : 'SISO';
+        return `<div class="slot active"><div class="slot-head"><span>slot ${slot}</span><span>G${g}</span></div><div class="slot-detail">code ${first}–${first + 3} · ${action}<br>shared_row ${first}–${first + 3}</div></div>`;
+      }).join('');
+    }
+    function renderTimeline(item, upto) {
+      const events = [];
+      item.frames.slice(0, upto + 1).forEach(f => f.events.forEach(e => events.push({t: f.t, text: e})));
+      timeline.innerHTML = events.map(e => `<div class="event"><span class="et">t=${e.t}</span><span>${e.text}</span></div>`).join('');
+      timeline.scrollTop = timeline.scrollHeight;
+    }
+    function step() { if (frameIndex < cases[currentCase].frames.length - 1) { frameIndex++; render(); } else stop(); }
+    function togglePlay() {
+      if (playing) { stop(); return; }
+      if (frameIndex >= cases[currentCase].frames.length - 1) frameIndex = 0;
+      playing = true; document.getElementById('playBtn').textContent = '暂停';
+      timer = setInterval(() => { if (frameIndex >= cases[currentCase].frames.length - 1) { stop(); return; } frameIndex++; render(); }, Number(document.getElementById('speed').value));
+    }
+    caseSelect.addEventListener('change', () => { stop(); currentCase = caseSelect.value; frameIndex = 0; render(); });
+    document.getElementById('resetBtn').addEventListener('click', () => { stop(); frameIndex = 0; render(); });
+    document.getElementById('stepBtn').addEventListener('click', () => { stop(); step(); });
+    document.getElementById('playBtn').addEventListener('click', togglePlay);
+    document.getElementById('speed').addEventListener('input', e => { document.getElementById('speedValue').textContent = `${(Number(e.target.value) / 1000).toFixed(2)} s`; if (playing) { stop(); togglePlay(); } });
+    bufferRowsInput.addEventListener('change', () => {
+      bufferRowsInput.value = bufferRows();
+      render();
+    });
+    caseSelect.value = currentCase;
+    render();
+  </script>
+</body>
+</html>
