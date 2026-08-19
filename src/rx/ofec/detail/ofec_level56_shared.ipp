@@ -47,6 +47,13 @@ struct Level56DispatchEntry {
   Level56DecodeStatus decode_status = Level56DecodeStatus::NotDecoded;
   // 历史批次补解时，避免已经完成的 action 被重复执行。
   bool needs_execution = true;
+  // Buffered FIFO 方案在原调度状态之上增加的 code 粒度完成屏蔽。
+  bool already_decoded = false;
+  // 上一轮 mux 后未获得 HISO/SISO 资源；不是新的 mux 前分类。
+  bool pending = false;
+  // S_t=0 时随顶部输出永久退出，不能伪装成正常完成。
+  bool forced_evicted = false;
+  bool writeback_complete = false;
 };
 
 struct Level56EarlyStopEvaluation {
@@ -83,9 +90,12 @@ struct Level56TemporalState {
 };
 
 inline bool is_level56_pending_decode(const Level56DispatchEntry& entry) {
-  return !entry.early_stop_hit &&
-         entry.final_action == Level56FinalAction::Unscheduled &&
-         !entry.produced;
+  if (entry.already_decoded || entry.forced_evicted || entry.early_stop_hit) {
+    return false;
+  }
+  return entry.pending ||
+         (entry.final_action == Level56FinalAction::Unscheduled &&
+          !entry.produced);
 }
 
 inline std::size_t level56_temporal_pending_code_count(
@@ -165,6 +175,7 @@ inline Level56ScheduleCodeSample make_level56_schedule_code_sample(
       .decode_status = entry.decode_status,
       .source_level = entry.source_level,
       .source_local_row = entry.source_local_row,
+      .source_global_row = entry.source_global_row,
       .group_index = entry.shared_row / kLevel56CodesPerGroup,
       .position_in_group = entry.shared_row % kLevel56CodesPerGroup,
       .early_stop_hit = entry.early_stop_hit,
@@ -177,6 +188,10 @@ inline Level56ScheduleCodeSample make_level56_schedule_code_sample(
       .assigned_entry_slot = entry.assigned_entry_slot,
       .assigned_core = entry.assigned_core,
       .produced = entry.produced,
+      .already_decoded = entry.already_decoded,
+      .pending = entry.pending,
+      .forced_evicted = entry.forced_evicted,
+      .writeback_complete = entry.writeback_complete,
   };
 }
 
@@ -194,11 +209,17 @@ inline float pick_level56_float(const std::vector<float>& values,
 
 inline void validate_level56_shared_config(const newcode::Params& p) {
   if (!p.LEVEL56_SHARED_ENABLE) {
-    if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE) {
+    if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE ||
+        p.LEVEL56_BUFFERED_FIFO_ENABLE) {
       throw std::invalid_argument(
-          "LEVEL56 temporal lookahead requires shared mode ON");
+          "LEVEL56 temporal/buffered scheduling requires shared mode ON");
     }
     return;
+  }
+  if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE &&
+      p.LEVEL56_BUFFERED_FIFO_ENABLE) {
+    throw std::invalid_argument(
+        "LEVEL56 temporal lookahead and buffered FIFO are mutually exclusive");
   }
   if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE &&
       p.LEVEL56_SCHEDULE_MODE !=
@@ -225,6 +246,26 @@ inline void validate_level56_shared_config(const newcode::Params& p) {
       throw std::invalid_argument(
           "LEVEL56 temporal lookahead does not support single-level "
           "selection; AllGroups requires both levels");
+    }
+  }
+  if (p.LEVEL56_BUFFERED_FIFO_ENABLE) {
+    if (p.LEVEL56_SCHEDULE_MODE !=
+        newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
+      throw std::invalid_argument(
+          "LEVEL56 buffered FIFO requires Group4 multiround scheduling");
+    }
+    if (p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE !=
+        newcode::Level56EarlyStopGroupUpdateMode::AllGroups) {
+      throw std::invalid_argument(
+          "LEVEL56 buffered FIFO requires AllGroups EarlyStop decisions");
+    }
+    if (p.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE) {
+      throw std::invalid_argument(
+          "LEVEL56 buffered FIFO requires both Level 5 and Level 6");
+    }
+    if (p.TILE_HEIGHT_BR != 22 || p.WINDOW_POP_PUSH != 2) {
+      throw std::invalid_argument(
+          "LEVEL56 buffered FIFO requires 22-row tiles and two-row push/pop");
     }
   }
   if (p.TILES_PER_WIN != 6 || p.CHASE_SBR != 2 ||
@@ -395,7 +436,8 @@ inline std::vector<std::size_t> order_level56_candidates(
     std::vector<std::size_t> level6;
     for (std::size_t index = 0; index < entries.size(); ++index) {
       const auto& entry = entries[index];
-      if (entry.early_stop_hit ||
+      if (entry.early_stop_hit || entry.already_decoded ||
+          entry.forced_evicted ||
           (selected_level != 0 && entry.source_level != selected_level) ||
           level56_class_priority(entry.hybrid_class) != priority) {
         continue;
@@ -428,7 +470,9 @@ inline void schedule_level56_rows_global_priority(
   for (auto& entry : *entries) {
     entry.planned_hiso = false;
     entry.planned_siso = false;
-    entry.remaining_for_schedule = !entry.early_stop_hit;
+    entry.remaining_for_schedule =
+        !entry.early_stop_hit && !entry.already_decoded &&
+        !entry.forced_evicted;
     entry.assigned_entry_slot = -1;
     entry.assigned_core = -1;
   }
@@ -452,7 +496,8 @@ inline void schedule_level56_rows_global_priority(
   std::size_t soft_total = 0;
   std::size_t flexible_total = 0;
   for (const auto& entry : *entries) {
-    if (!entry.early_stop_hit &&
+    if (!entry.early_stop_hit && !entry.already_decoded &&
+        !entry.forced_evicted &&
         (selected_level == 0 || entry.source_level == selected_level)) {
       ++soft_total;
       flexible_total += entry.eligibility == Level56Eligibility::HisoOrSiso;
@@ -508,7 +553,10 @@ inline void schedule_level56_rows_global_priority(
       }
       continue;
     }
-    if (entry.early_stop_hit !=
+    const bool active_early_stop =
+        entry.early_stop_hit && !entry.already_decoded &&
+        !entry.forced_evicted;
+    if (active_early_stop !=
         (entry.final_action == Level56FinalAction::EarlyStopAction)) {
       throw std::logic_error(
           "LEVEL56 scheduler violated early-stop action conservation");
@@ -706,12 +754,19 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     entry.planned_hiso = false;
     entry.planned_siso = false;
     if (!preserve_entry_state) {
-      entry.remaining_for_schedule = !entry.early_stop_hit;
-      entry.final_action = entry.early_stop_hit
+      const bool active_early_stop =
+          entry.early_stop_hit && !entry.already_decoded &&
+          !entry.forced_evicted;
+      entry.remaining_for_schedule =
+          !active_early_stop && !entry.already_decoded &&
+          !entry.forced_evicted;
+      entry.final_action = active_early_stop
                                ? Level56FinalAction::EarlyStopAction
                                : Level56FinalAction::Unscheduled;
-      entry.produced = false;
-      entry.decode_status = Level56DecodeStatus::NotDecoded;
+      if (!entry.already_decoded && !entry.forced_evicted) {
+        entry.produced = false;
+        entry.decode_status = Level56DecodeStatus::NotDecoded;
+      }
     }
     entry.assigned_entry_slot = -1;
     entry.assigned_core = -1;
@@ -893,7 +948,8 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
   for (const auto& entry : *entries) {
     const std::size_t group = entry.shared_row / kLevel56CodesPerGroup;
     const bool early_stop_action_expected =
-        entry.early_stop_hit &&
+        entry.early_stop_hit && !entry.already_decoded &&
+        !entry.forced_evicted &&
         (p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE ==
              newcode::Level56EarlyStopGroupUpdateMode::AllGroups ||
          group_entered[group]);
@@ -1216,7 +1272,8 @@ TileProcessResult<LLR> build_level56_tile_result(
   class_count.tile_index = source_level == 5 ? kLevel5TileIndex
                                              : kLevel6TileIndex;
   for (const auto& entry : entries) {
-    if (entry.source_level != source_level || entry.early_stop_hit) {
+    if (entry.source_level != source_level || entry.early_stop_hit ||
+        entry.already_decoded || entry.forced_evicted) {
       continue;
     }
     ++soft_candidates;
@@ -1269,7 +1326,8 @@ Level56SharedResult<LLR> process_level56_shared(
     const Level56EarlyStopEvaluation* cached_early5 = nullptr,
     const Level56EarlyStopEvaluation* cached_early6 = nullptr,
     matrix::Matrix<LLR>* output_tile5 = nullptr,
-    matrix::Matrix<LLR>* output_tile6 = nullptr) {
+    matrix::Matrix<LLR>* output_tile6 = nullptr,
+    bool buffered_fifo_semantics = false) {
   const std::size_t rows = static_cast<std::size_t>(params5.CHASE_SBR) *
                            newcode::Params::BITS_PER_SUBBLOCK_DIM;
   auto prep5 = prepare_tile_inputs(tile_in5, ch_tile5, params5, tile_top5,
@@ -1293,15 +1351,51 @@ Level56SharedResult<LLR> process_level56_shared(
           "LEVEL56 temporal history requires exactly 64 cached entries");
     }
     entries = *prior_entries;
-    for (std::size_t index = 0; index < rows; ++index) {
-      entries[index].source_global_row = prep5.row_global_lookup[index];
-      entries[rows + index].source_global_row = prep6.row_global_lookup[index];
+    if (!buffered_fifo_semantics) {
+      for (std::size_t index = 0; index < rows; ++index) {
+        entries[index].source_global_row = prep5.row_global_lookup[index];
+        entries[rows + index].source_global_row =
+            prep6.row_global_lookup[index];
+      }
     }
-    auto refresh_pending = [](const TilePrepared<LLR>& prep,
-                              std::size_t begin,
-                              std::vector<Level56DispatchEntry>* values) {
+    auto refresh_pending = [buffered_fifo_semantics](
+                               const TilePrepared<LLR>& prep,
+                               std::size_t begin,
+                               std::vector<Level56DispatchEntry>* values) {
       for (std::size_t row = 0; row < prep.lin_matrix.rows(); ++row) {
         auto& entry = (*values)[begin + row];
+        if (buffered_fifo_semantics) {
+          entry.planned_hiso = false;
+          entry.planned_siso = false;
+          entry.assigned_entry_slot = -1;
+          entry.assigned_core = -1;
+          entry.needs_execution = false;
+          if (entry.already_decoded || entry.forced_evicted) {
+            entry.remaining_for_schedule = false;
+            entry.pending = false;
+            entry.final_action = Level56FinalAction::Unscheduled;
+            continue;
+          }
+          if (entry.early_stop_hit) {
+            entry.remaining_for_schedule = false;
+            entry.pending = false;
+            entry.final_action = Level56FinalAction::EarlyStopAction;
+            continue;
+          }
+          if (entry.decode_status == Level56DecodeStatus::ActionFailed) {
+            entry.remaining_for_schedule = false;
+            entry.pending = false;
+            entry.final_action = Level56FinalAction::Unscheduled;
+            continue;
+          }
+          entry.produced = false;
+          entry.writeback_complete = false;
+          entry.decode_status = Level56DecodeStatus::NotDecoded;
+          entry.remaining_for_schedule = true;
+          entry.pending = false;
+          entry.final_action = Level56FinalAction::Unscheduled;
+          continue;
+        }
         const bool pending = !entry.early_stop_hit &&
                              entry.final_action == Level56FinalAction::Unscheduled &&
                              !entry.produced;
@@ -1365,7 +1459,11 @@ Level56SharedResult<LLR> process_level56_shared(
   route_level56_g1(&entries, params5, selected_level);
 
   for (auto& entry : entries) {
-    if (preserve_entry_state) {
+    if (buffered_fifo_semantics) {
+      entry.needs_execution =
+          !entry.already_decoded && !entry.forced_evicted &&
+          (entry.early_stop_hit || entry.planned_hiso || entry.planned_siso);
+    } else if (preserve_entry_state) {
       entry.needs_execution = entry.planned_hiso || entry.planned_siso;
     } else {
       entry.needs_execution = entry.final_action != Level56FinalAction::Unscheduled;
@@ -1390,16 +1488,24 @@ Level56SharedResult<LLR> process_level56_shared(
         prep6, entries, 6, normalize_extrinsic, core_fn);
   }
   for (auto& entry : entries) {
-    if (!entry.needs_execution) {
+    if (entry.needs_execution) {
+      const auto& produced_rows = entry.source_level == 5
+                                      ? decoded5.produced_rows
+                                      : decoded6.produced_rows;
+      entry.produced = entry.source_local_row < produced_rows.size() &&
+                       produced_rows[entry.source_local_row];
+      entry.decode_status = entry.produced
+                                ? Level56DecodeStatus::Produced
+                                : Level56DecodeStatus::ActionFailed;
       continue;
     }
-    const auto& produced_rows =
-        entry.source_level == 5 ? decoded5.produced_rows : decoded6.produced_rows;
-    entry.produced = entry.source_local_row < produced_rows.size() &&
-                     produced_rows[entry.source_local_row];
-    entry.decode_status = entry.produced
-                              ? Level56DecodeStatus::Produced
-                              : Level56DecodeStatus::ActionFailed;
+    if (buffered_fifo_semantics && !entry.already_decoded &&
+        !entry.forced_evicted && !entry.early_stop_hit &&
+        entry.decode_status != Level56DecodeStatus::ActionFailed) {
+      entry.pending = true;
+      entry.final_action = Level56FinalAction::Unscheduled;
+      entry.remaining_for_schedule = true;
+    }
   }
   matrix::Matrix<LLR> tile_out5 = output_tile5 ? *output_tile5 : tile_in5;
   matrix::Matrix<LLR> tile_out6 = output_tile6 ? *output_tile6 : tile_in6;
@@ -1407,6 +1513,16 @@ Level56SharedResult<LLR> process_level56_shared(
                  &tile_out5, nullptr);
   writeback_tile(prep6, decoded6, params6, tile_top6, true,
                  &tile_out6, last_tile_history_accum);
+  if (buffered_fifo_semantics) {
+    for (auto& entry : entries) {
+      if (!entry.needs_execution || !entry.produced) {
+        continue;
+      }
+      entry.already_decoded = true;
+      entry.pending = false;
+      entry.writeback_complete = true;
+    }
+  }
 
   Level56SharedResult<LLR> result;
   result.level5 = build_level56_tile_result(
@@ -1420,6 +1536,12 @@ Level56SharedResult<LLR> process_level56_shared(
     for (auto& code : schedule_sample.codes) {
       code.produced = result.dispatch[code.code_index].produced;
       code.decode_status = result.dispatch[code.code_index].decode_status;
+      code.already_decoded =
+          result.dispatch[code.code_index].already_decoded;
+      code.pending = result.dispatch[code.code_index].pending;
+      code.forced_evicted = result.dispatch[code.code_index].forced_evicted;
+      code.writeback_complete =
+          result.dispatch[code.code_index].writeback_complete;
     }
     schedule_sample.invocation = shared_invocation;
     result.has_schedule_sample = true;

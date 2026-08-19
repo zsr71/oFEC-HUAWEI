@@ -1,5 +1,7 @@
 #include "ofec/detail/ofec_tile_impl.ipp"
 #include "ofec/detail/ofec_level56_shared.ipp"
+#include "ofec/detail/ofec_level56_buffered_fifo.ipp"
+#include "newcode/rx/ber/ber.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -1203,6 +1205,664 @@ void check_temporal_two_stage_budget() {
   }
 }
 
+void check_buffered_window_transition_formula() {
+  using newcode::detail::level56_buffered_next_window_start;
+  require(level56_buffered_next_window_start(32, 0, 32) == 30,
+          "C_t=0 must move S_t back by two rows");
+  require(level56_buffered_next_window_start(28, 1, 32) == 28,
+          "C_t=1 must keep S_t unchanged");
+  require(level56_buffered_next_window_start(28, 2, 32) == 30,
+          "C_t=2 must recover S_t by two rows");
+  require(level56_buffered_next_window_start(30, 2, 32) == 32,
+          "S_t recovery must clip at R_buf");
+  require(level56_buffered_next_window_start(0, 0, 32) == 0,
+          "S_t must not move below zero");
+  require(level56_buffered_next_window_start(0, 1, 32) == 0,
+          "one completion at S_t=0 must only offset the fixed push");
+  require(level56_buffered_next_window_start(0, 2, 32) == 2,
+          "two completions at S_t=0 must begin recovery");
+  require(level56_buffered_next_window_start(5, 0, 5) == 3 &&
+              level56_buffered_next_window_start(3, 0, 5) == 1 &&
+              level56_buffered_next_window_start(1, 0, 5) == 0,
+          "odd R_buf must expose only complete two-row fallback steps");
+}
+
+void check_buffered_already_decoded_three_round_example() {
+  auto entries = make_all_early_stop_grouped_entries();
+  for (std::size_t group = 0; group < 12; ++group) {
+    activate_group_prefix(&entries, group, 4);
+  }
+  auto p = make_grouped_params();
+  p.LEVEL56_BUFFERED_FIFO_ENABLE = true;
+  p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::AllGroups;
+
+  const auto complete_scheduled_round = [](auto* values) {
+    for (auto& entry : *values) {
+      if (entry.already_decoded) {
+        continue;
+      }
+      if (entry.early_stop_hit) {
+        entry.already_decoded = true;
+        entry.pending = false;
+        entry.produced = true;
+        entry.writeback_complete = true;
+        entry.decode_status = newcode::Level56DecodeStatus::Produced;
+      } else if (entry.planned_hiso || entry.planned_siso) {
+        entry.already_decoded = true;
+        entry.pending = false;
+        entry.produced = true;
+        entry.writeback_complete = true;
+        entry.decode_status = newcode::Level56DecodeStatus::Produced;
+      } else {
+        entry.pending = true;
+        entry.produced = false;
+      }
+    }
+  };
+  const auto prepare_retry = [](auto* values) {
+    for (auto& entry : *values) {
+      entry.planned_hiso = false;
+      entry.planned_siso = false;
+      entry.assigned_entry_slot = -1;
+      entry.assigned_core = -1;
+      entry.needs_execution = false;
+      entry.final_action = Level56FinalAction::Unscheduled;
+      entry.remaining_for_schedule =
+          !entry.already_decoded && entry.pending;
+    }
+  };
+  const auto count_completed = [](const auto& values) {
+    return static_cast<std::size_t>(std::count_if(
+        values.begin(), values.end(),
+        [](const auto& entry) { return entry.already_decoded; }));
+  };
+
+  newcode::detail::schedule_level56_rows(&entries, p);
+  complete_scheduled_round(&entries);
+  require(count_completed(entries) == 32 &&
+              newcode::detail::level56_buffered_pending_count(entries) == 32,
+          "t=0 must leave 32 completed and 32 pending codes");
+  for (const auto& entry : entries) {
+    if (entry.early_stop_hit) {
+      require(entry.produced && entry.writeback_complete,
+              "EarlyStop completion must produce its original action result");
+    }
+  }
+
+  prepare_retry(&entries);
+  newcode::detail::schedule_level56_rows(
+      &entries, p, 0, nullptr, 8, 0, true);
+  for (const auto& entry : entries) {
+    if (entry.already_decoded) {
+      require(!entry.planned_hiso && !entry.planned_siso &&
+                  entry.assigned_entry_slot == -1,
+              "AlreadyDecoded code re-entered the scheduler");
+    }
+  }
+  complete_scheduled_round(&entries);
+  require(count_completed(entries) == 48 &&
+              newcode::detail::level56_buffered_pending_count(entries) == 16,
+          "t=1 must schedule only pending codes and leave 16 pending");
+
+  prepare_retry(&entries);
+  newcode::detail::schedule_level56_rows(
+      &entries, p, 0, nullptr, 8, 0, true);
+  complete_scheduled_round(&entries);
+  require(newcode::detail::level56_buffered_batch_complete(entries) &&
+              newcode::detail::level56_buffered_pending_count(entries) == 0,
+          "t=2 must complete the final 16 pending codes");
+}
+
+void check_buffered_retirement_markers() {
+  auto full_early_stop = make_all_early_stop_grouped_entries();
+  newcode::detail::mark_level56_full_early_stop_complete(
+      &full_early_stop);
+  require(newcode::detail::level56_buffered_batch_complete(full_early_stop),
+          "full EarlyStop batch must retire as a completed batch");
+  for (const auto& entry : full_early_stop) {
+    require(entry.already_decoded && entry.produced && !entry.pending &&
+                entry.writeback_complete &&
+                entry.decode_status ==
+                    newcode::Level56DecodeStatus::Produced,
+            "full EarlyStop code has an invalid action/writeback completion state");
+  }
+
+  auto incomplete_writeback = full_early_stop;
+  incomplete_writeback[7].writeback_complete = false;
+  require(!newcode::detail::level56_buffered_batch_complete(
+              incomplete_writeback),
+          "batch must not retire before every required writeback completes");
+
+  auto forced = make_entries(32);
+  forced[0].already_decoded = true;
+  forced[0].produced = true;
+  forced[0].writeback_complete = true;
+  for (std::size_t index = 1; index < forced.size(); ++index) {
+    forced[index].pending = true;
+  }
+  newcode::detail::mark_level56_batch_forced_evicted(&forced);
+  require(forced[0].already_decoded && !forced[0].forced_evicted,
+          "forced eviction must preserve code that already completed");
+  for (std::size_t index = 1; index < forced.size(); ++index) {
+    require(!forced[index].already_decoded && forced[index].forced_evicted &&
+                !forced[index].pending && !forced[index].produced &&
+                forced[index].decode_status ==
+                    newcode::Level56DecodeStatus::ForcedEvicted,
+            "unfinished code did not enter the forced-evicted state");
+  }
+}
+
+newcode::detail::Level56BufferedBatch<float> make_buffered_test_batch(
+    std::size_t batch_id,
+    bool full_early_stop) {
+  newcode::detail::Level56BufferedBatch<float> batch;
+  batch.batch_id = batch_id;
+  batch.arrival_time = batch_id;
+  batch.classified = true;
+  batch.entries = full_early_stop
+                      ? make_all_early_stop_grouped_entries()
+                      : make_entries(32);
+  return batch;
+}
+
+void mark_buffered_test_batch_complete(
+    newcode::detail::Level56BufferedBatch<float>* batch) {
+  for (auto& entry : batch->entries) {
+    entry.already_decoded = true;
+    entry.pending = false;
+    entry.produced = true;
+    entry.writeback_complete = true;
+    entry.decode_status = newcode::Level56DecodeStatus::Produced;
+  }
+}
+
+void check_buffered_service_fast_path_and_fifo_order() {
+  newcode::detail::Level56BufferedFifoState<float> state;
+  state.fifo.push_back(make_buffered_test_batch(0, true));
+  state.fifo.push_back(make_buffered_test_batch(1, true));
+  state.fifo.push_back(make_buffered_test_batch(2, false));
+  state.fifo.push_back(make_buffered_test_batch(3, false));
+
+  std::vector<std::size_t> classified;
+  std::vector<std::size_t> ordinary;
+  const auto outcome = newcode::detail::service_level56_buffered_fifo_time(
+      &state, false,
+      [&](auto* batch) { classified.push_back(batch->batch_id); },
+      [&](auto* batch) { ordinary.push_back(batch->batch_id); },
+      [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+
+  require(outcome.completed_batches == 2 &&
+              outcome.full_early_stop_batches == 2 &&
+              outcome.ordinary_service_used,
+          "leading full-EarlyStop batches must retire before ordinary service");
+  require(outcome.retirements.size() == 2 &&
+              outcome.retirements[0].batch_id == 0 &&
+              outcome.retirements[1].batch_id == 1,
+          "full-EarlyStop retirement must preserve FIFO order");
+  require(ordinary.size() == 1 && ordinary[0] == 2 &&
+              state.fifo.size() == 2 && state.fifo.front().batch_id == 2,
+          "one t must serve only the first ordinary FIFO head");
+  require(classified == std::vector<std::size_t>({0, 1, 2}),
+          "scheduler classified a future batch beyond the blocked head");
+
+  newcode::detail::Level56BufferedFifoState<float> all_fast;
+  for (std::size_t id = 0; id < 5; ++id) {
+    all_fast.fifo.push_back(make_buffered_test_batch(id, true));
+  }
+  std::size_t fast_callbacks = 0;
+  const auto all_fast_outcome =
+      newcode::detail::service_level56_buffered_fifo_time(
+          &all_fast, false, [](auto*) {}, [](auto*) {},
+          [&](auto* batch) {
+            mark_buffered_test_batch_complete(batch);
+            ++fast_callbacks;
+          });
+  require(all_fast_outcome.completed_batches == 5 &&
+              all_fast_outcome.full_early_stop_batches == 5 &&
+              !all_fast_outcome.ordinary_service_used && all_fast.fifo.empty() &&
+              fast_callbacks == 5,
+          "one t must allow an unbounded run of full-EarlyStop heads");
+}
+
+void check_buffered_service_ordinary_budget_boundary() {
+  newcode::detail::Level56BufferedFifoState<float> ordinary_then_ordinary;
+  ordinary_then_ordinary.fifo.push_back(make_buffered_test_batch(0, false));
+  ordinary_then_ordinary.fifo.push_back(make_buffered_test_batch(1, false));
+  std::vector<std::size_t> ordinary_calls;
+  std::vector<std::pair<std::size_t, int>> observed_shared_versions;
+  int shared_version = 0;
+  const auto ordinary_outcome =
+      newcode::detail::service_level56_buffered_fifo_time(
+          &ordinary_then_ordinary, false,
+          [&](auto* batch) {
+            observed_shared_versions.emplace_back(
+                batch->batch_id, shared_version);
+          },
+          [&](auto* batch) {
+            ordinary_calls.push_back(batch->batch_id);
+            mark_buffered_test_batch_complete(batch);
+            shared_version = 1;
+          },
+          [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(ordinary_outcome.completed_batches == 1 &&
+              ordinary_calls == std::vector<std::size_t>({0}) &&
+              ordinary_then_ordinary.fifo.size() == 1 &&
+              ordinary_then_ordinary.fifo.front().batch_id == 1,
+          "ordinary completion must not transfer unused entries to B1");
+  require(observed_shared_versions ==
+              std::vector<std::pair<std::size_t, int>>({{0, 0}, {1, 1}}),
+          "B1 must inspect shared SRAM only after B0 writeback completes");
+
+  newcode::detail::Level56BufferedFifoState<float> ordinary_then_fast;
+  ordinary_then_fast.fifo.push_back(make_buffered_test_batch(0, false));
+  ordinary_then_fast.fifo.push_back(make_buffered_test_batch(1, true));
+  ordinary_then_fast.fifo.push_back(make_buffered_test_batch(2, false));
+  const auto mixed_outcome =
+      newcode::detail::service_level56_buffered_fifo_time(
+          &ordinary_then_fast, false, [](auto*) {},
+          [&](auto* batch) { mark_buffered_test_batch_complete(batch); },
+          [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(mixed_outcome.completed_batches == 2 &&
+              mixed_outcome.full_early_stop_batches == 1 &&
+              mixed_outcome.retirements.size() == 2 &&
+              mixed_outcome.retirements[0].reason ==
+                  newcode::Level56BufferedBatchRetirement::Normal &&
+              mixed_outcome.retirements[1].reason ==
+                  newcode::Level56BufferedBatchRetirement::FullEarlyStop &&
+              ordinary_then_fast.fifo.size() == 1 &&
+              ordinary_then_fast.fifo.front().batch_id == 2,
+          "ordinary completion must still allow the following full-EarlyStop path");
+}
+
+void check_buffered_service_forced_eviction_boundary() {
+  newcode::detail::Level56BufferedFifoState<float> state;
+  state.fifo.push_back(make_buffered_test_batch(0, false));
+  state.fifo.push_back(make_buffered_test_batch(1, true));
+  const auto outcome = newcode::detail::service_level56_buffered_fifo_time(
+      &state, true, [](auto*) {}, [](auto*) {},
+      [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(outcome.completed_batches == 0 &&
+              outcome.forced_evicted_batches == 1 &&
+              outcome.forced_evicted_global_rows.size() == 64 &&
+              outcome.retirements.size() == 1 &&
+              outcome.retirements[0].batch_id == 0 &&
+              outcome.retirements[0].reason ==
+                  newcode::Level56BufferedBatchRetirement::ForcedEvicted &&
+              state.fifo.size() == 1 && state.fifo.front().batch_id == 1,
+          "S_t=0 must evict only the original unfinished head without C_t credit");
+
+  newcode::detail::Level56BufferedFifoState<float> exposed_head;
+  exposed_head.fifo.push_back(make_buffered_test_batch(0, true));
+  exposed_head.fifo.push_back(make_buffered_test_batch(1, false));
+  const auto exposed_outcome =
+      newcode::detail::service_level56_buffered_fifo_time(
+          &exposed_head, true, [](auto*) {}, [](auto*) {},
+          [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(exposed_outcome.completed_batches == 1 &&
+              exposed_outcome.forced_evicted_batches == 0 &&
+              exposed_head.fifo.size() == 1 &&
+              exposed_head.fifo.front().batch_id == 1,
+          "a newly exposed head must not be forced out in the same boundary t");
+}
+
+void check_buffered_configuration_validation() {
+  auto p = make_grouped_params();
+  p.HYBRID_ENABLE_LIST = {0, 0, 0, 0, 1, 1};
+  p.LEVEL56_BUFFERED_FIFO_ENABLE = true;
+  p.LEVEL56_BUFFER_ROWS = 4;
+  p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::AllGroups;
+  newcode::detail::validate_level56_shared_config(p);
+
+  newcode::detail::Level56BufferedFifoState<float> state;
+  newcode::detail::initialize_level56_buffered_fifo_state(&state, p);
+  require(state.initialized && state.window_start == 4,
+          "buffered FIFO must initialize S_0 from the configured R_buf");
+
+  auto temporal_conflict = p;
+  temporal_conflict.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE = true;
+  bool rejected = false;
+  try {
+    newcode::detail::validate_level56_shared_config(temporal_conflict);
+  } catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "buffered FIFO must reject temporal lookahead");
+
+  auto wrong_push = p;
+  wrong_push.WINDOW_POP_PUSH = 1;
+  rejected = false;
+  try {
+    newcode::detail::validate_level56_shared_config(wrong_push);
+  } catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "buffered FIFO must require a two-row physical push");
+}
+
+newcode::Params make_buffered_pipeline_params() {
+  newcode::Params p;
+  p.CHASE_L = 2;
+  p.CHASE_NTEST = 4;
+  p.EARLY_STOP_ENABLE_LIST = {1, 1, 1, 1, 1, 1};
+  p.EARLY_STOP_ACTION_SIGN_BETA_LIST = {1, 1, 1, 1, 1, 1};
+  p.HARD_TILE_LIST = {0, 0, 0, 0, 0, 0};
+  p.HYBRID_ENABLE_LIST = {0, 0, 0, 0, 1, 1};
+  p.HYBRID_HARD_LLR_MAG_LIST = {4, 4, 4, 4, 4, 4};
+  p.HYBRID_CLASSIFIER_MODE =
+      newcode::HybridClassifierMode::FriendS1S3WithS0Classifier;
+  p.HYBRID_USE_FAST_CLASSIFIER = true;
+  p.ALPHA_LIST = {1, 1, 1, 1, 0.8f, 0.9f};
+  p.beta_list = {1, 1, 1, 1, 1.2f, 1.4f};
+  p.SISO_ACTIVE_LIST = {32, 32, 32, 32};
+  p.HIHO_ACTIVE_LIST = {32, 32, 32, 32};
+  p.LEVEL56_SHARED_ENABLE = true;
+  p.LEVEL56_BUFFERED_FIFO_ENABLE = true;
+  p.LEVEL56_BUFFER_ROWS = 32;
+  p.LEVEL56_SHARED_HISO_ACTIVE = 8;
+  p.LEVEL56_SHARED_SISO_ACTIVE = 8;
+  p.LEVEL56_SCHEDULE_MODE =
+      newcode::Level56ScheduleMode::Group4LoadSortedMultiround;
+  p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::AllGroups;
+  p.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE = true;
+  return p;
+}
+
+void check_buffered_end_to_end_full_early_stop() {
+  auto p = make_buffered_pipeline_params();
+  constexpr std::size_t kServiceTimes = 3;
+  const std::size_t rows = p.win_height_rows() +
+                           (kServiceTimes - 1u) * p.pop_push_rows();
+  matrix::Matrix<float> llr(
+      rows, newcode::Params::NUM_SUBBLOCK_COLS *
+                newcode::Params::BITS_PER_SUBBLOCK_DIM);
+  for (std::size_t row = 0; row < llr.rows(); ++row) {
+    for (std::size_t col = 0; col < llr.cols(); ++col) {
+      llr[row][col] = 8.0f;
+    }
+  }
+
+  std::vector<newcode::TileEarlyStopCounter> stats;
+  (void)newcode::ofec_decode_llr_plain(llr, p, &stats, true, nullptr);
+  require(stats.size() == p.TILES_PER_WIN &&
+              stats[4].level56_buffered_time_samples.size() == kServiceTimes,
+          "full-EarlyStop integration did not emit one sample per t");
+  require(stats[4].level56_schedule_samples.size() == kServiceTimes,
+          "full-EarlyStop integration did not record its K=0 action pass");
+  for (const auto& schedule : stats[4].level56_schedule_samples) {
+    require(schedule.branch == newcode::Level56ScheduleBranch::K0 &&
+                schedule.total_group_entries == 0 &&
+                schedule.planned_hiso_count == 0 &&
+                schedule.planned_siso_count == 0,
+            "full-EarlyStop fast path consumed ordinary decode resources");
+    require(std::all_of(
+                schedule.codes.begin(), schedule.codes.end(),
+                [](const auto& code) {
+                  return code.early_stop_hit && code.produced &&
+                         code.already_decoded && code.writeback_complete;
+                }),
+            "full-EarlyStop fast path skipped EarlyStopAction writeback");
+  }
+  const auto& samples = stats[4].level56_buffered_time_samples;
+  for (std::size_t t = 0; t < samples.size(); ++t) {
+    const auto& sample = samples[t];
+    require(sample.service_time == t && sample.arrived_batch_id == t &&
+                sample.fifo_depth_before == 1 &&
+                sample.fifo_depth_after == 0 &&
+                !sample.ordinary_service_used &&
+                sample.completed_batches == 1 &&
+                sample.full_early_stop_batches == 1 &&
+                sample.forced_evicted_batches == 0 &&
+                sample.window_start_before == p.LEVEL56_BUFFER_ROWS &&
+                sample.window_start_after == p.LEVEL56_BUFFER_ROWS &&
+                sample.retirements.size() == 1 &&
+                sample.retirements.front().batch_id == t &&
+                sample.retirements.front().reason ==
+                    newcode::Level56BufferedBatchRetirement::FullEarlyStop,
+            "real full-EarlyStop batch did not take the documented fast path");
+  }
+}
+
+void check_buffered_end_to_end_multiple_windows() {
+  auto p = make_buffered_pipeline_params();
+
+  constexpr std::size_t kServiceTimes = 5;
+  const std::size_t rows = p.win_height_rows() +
+                           (kServiceTimes - 1u) * p.pop_push_rows();
+  matrix::Matrix<float> llr(
+      rows, newcode::Params::NUM_SUBBLOCK_COLS *
+                newcode::Params::BITS_PER_SUBBLOCK_DIM);
+  for (std::size_t row = 0; row < llr.rows(); ++row) {
+    for (std::size_t col = 0; col < llr.cols(); ++col) {
+      const int code =
+          static_cast<int>((row * 19u + col * 11u) % 29u) - 14;
+      llr[row][col] = static_cast<float>(code) * 0.3f +
+                      ((row + col) & 1u ? 0.05f : -0.05f);
+    }
+  }
+
+  std::vector<newcode::TileEarlyStopCounter> stats;
+  const auto decoded = newcode::ofec_decode_llr_plain(
+      llr, p, &stats, true, nullptr);
+  require(decoded.rows() == llr.rows() && decoded.cols() == llr.cols(),
+          "buffered end-to-end decode changed the matrix shape");
+  require(stats.size() == p.TILES_PER_WIN &&
+              stats[4].level56_buffered_time_samples.size() == kServiceTimes,
+          "buffered end-to-end decode did not emit one sample per t");
+
+  const auto& samples = stats[4].level56_buffered_time_samples;
+  std::size_t previous_fifo_depth = 0;
+  std::size_t next_retired_batch = 0;
+  std::size_t ordinary_service_times = 0;
+  std::size_t schedule_index = 0;
+  bool observed_pending = false;
+  bool observed_window_fallback = false;
+  std::vector<std::vector<newcode::Level56ScheduleCodeSample>>
+      prior_codes_by_batch;
+  for (std::size_t t = 0; t < samples.size(); ++t) {
+    const auto& sample = samples[t];
+    require(sample.service_time == t && sample.arrived_batch_id == t,
+            "buffered end-to-end arrival/service time sequence is invalid");
+    require(sample.fifo_depth_before == previous_fifo_depth + 1u,
+            "buffered end-to-end FIFO did not append exactly one batch");
+    require(sample.had_head_before &&
+                sample.head_batch_id_before == next_retired_batch,
+            "buffered end-to-end service did not select the FIFO head");
+
+    std::size_t normal_or_fast = 0;
+    std::size_t forced = 0;
+    for (const auto& retirement : sample.retirements) {
+      require(retirement.batch_id == next_retired_batch,
+              "buffered end-to-end retirement order is not FIFO");
+      ++next_retired_batch;
+      if (retirement.reason ==
+          newcode::Level56BufferedBatchRetirement::ForcedEvicted) {
+        ++forced;
+      } else {
+        ++normal_or_fast;
+      }
+    }
+    require(normal_or_fast == sample.completed_batches &&
+                forced == sample.forced_evicted_batches,
+            "buffered end-to-end C_t included an invalid retirement type");
+    require(sample.fifo_depth_after + sample.retirements.size() ==
+                sample.fifo_depth_before,
+            "buffered end-to-end FIFO depth violates arrival/retirement conservation");
+    require(sample.window_start_after ==
+                newcode::detail::level56_buffered_next_window_start(
+                    sample.window_start_before, sample.completed_batches,
+                    p.LEVEL56_BUFFER_ROWS),
+            "buffered end-to-end S_t transition violates the documented formula");
+    if (t > 0) {
+      require(sample.window_start_before == samples[t - 1u].window_start_after,
+              "buffered end-to-end S_t state was not carried to the next t");
+    }
+    if (sample.ordinary_service_used) {
+      require(schedule_index < stats[4].level56_schedule_samples.size(),
+              "buffered ordinary service has no linked schedule sample");
+      const auto& schedule =
+          stats[4].level56_schedule_samples[schedule_index++];
+      require(schedule.buffered_fifo_enabled &&
+                  schedule.buffered_service_time == sample.service_time &&
+                  schedule.buffered_batch_id == sample.ordinary_batch_id &&
+                  schedule.invocation ==
+                      sample.ordinary_schedule_invocation,
+              "buffered schedule sample is not linked to its t and batch");
+      if (prior_codes_by_batch.size() <= schedule.buffered_batch_id) {
+        prior_codes_by_batch.resize(schedule.buffered_batch_id + 1u);
+      }
+      const auto& prior_codes =
+          prior_codes_by_batch[schedule.buffered_batch_id];
+      for (std::size_t code_index = 0; code_index < schedule.codes.size();
+           ++code_index) {
+        const auto& code = schedule.codes[code_index];
+        require(code.code_index == code_index &&
+                    code.group_index == code_index / 4u &&
+                    code.position_in_group == code_index % 4u,
+                "buffered retry changed the fixed 64-code/group layout");
+        require(code.source_global_row >= code.source_local_row,
+                "buffered schedule exported an invalid global-row mapping");
+        if (code.already_decoded) {
+          require(code.writeback_complete && !code.pending &&
+                      !code.forced_evicted,
+                  "AlreadyDecoded code lacks terminal writeback state");
+        }
+        if (code.pending) {
+          require(!code.already_decoded && !code.writeback_complete &&
+                      !code.forced_evicted,
+                  "pending code overlaps a terminal buffered state");
+        }
+        if (!prior_codes.empty()) {
+          const auto& prior = prior_codes[code_index];
+          require(code.code_index == prior.code_index &&
+                      code.source_level == prior.source_level &&
+                      code.source_local_row == prior.source_local_row &&
+                      code.source_global_row == prior.source_global_row &&
+                      code.group_index == prior.group_index &&
+                      code.position_in_group == prior.position_in_group &&
+                      code.early_stop_hit == prior.early_stop_hit &&
+                      code.hybrid_class == prior.hybrid_class &&
+                      code.resource_eligibility ==
+                          prior.resource_eligibility,
+                  "pending retry refreshed frozen classification or row mapping");
+          if (prior.already_decoded) {
+            require(code.already_decoded && code.writeback_complete &&
+                        !code.planned_hiso && !code.planned_siso &&
+                        code.assigned_entry_slot == -1 &&
+                        code.assigned_core == -1 && !code.pending,
+                    "AlreadyDecoded code re-entered a later ordinary schedule");
+          }
+        }
+      }
+      prior_codes_by_batch[schedule.buffered_batch_id] = schedule.codes;
+      ++ordinary_service_times;
+    }
+    observed_pending = observed_pending || sample.pending_after > 0;
+    observed_window_fallback =
+        observed_window_fallback ||
+        sample.window_start_after < p.LEVEL56_BUFFER_ROWS;
+    previous_fifo_depth = sample.fifo_depth_after;
+  }
+
+  require(stats[4].level56_schedule_samples.size() ==
+              ordinary_service_times &&
+              schedule_index == ordinary_service_times,
+          "buffered end-to-end ordinary service/sample count mismatch");
+  for (const auto& schedule : stats[4].level56_schedule_samples) {
+    require(schedule.codes.size() == 64 &&
+                schedule.total_group_entries <= 8 &&
+                schedule.planned_hiso_count <= 8 &&
+                schedule.planned_siso_count <= 8,
+            "buffered end-to-end ordinary service exceeded eight entries");
+  }
+  require(samples.front().pending_after > 0 && observed_pending &&
+              observed_window_fallback,
+          "buffered end-to-end input did not exercise pending window fallback");
+  for (std::size_t row = 0; row < decoded.rows(); ++row) {
+    for (std::size_t col = 0; col < decoded.cols(); ++col) {
+      require(std::isfinite(decoded[row][col]),
+              "buffered end-to-end decode produced a non-finite LLR");
+    }
+  }
+
+  auto boundary_params = p;
+  boundary_params.LEVEL56_BUFFER_ROWS = 0;
+  matrix::Matrix<float> boundary_llr(
+      boundary_params.win_height_rows(), llr.cols());
+  for (std::size_t row = 0; row < boundary_llr.rows(); ++row) {
+    for (std::size_t col = 0; col < boundary_llr.cols(); ++col) {
+      boundary_llr[row][col] = llr[row][col];
+    }
+  }
+  std::vector<newcode::TileEarlyStopCounter> boundary_stats;
+  (void)newcode::ofec_decode_llr_plain(
+      boundary_llr, boundary_params, &boundary_stats, true, nullptr);
+  require(boundary_stats.size() == boundary_params.TILES_PER_WIN &&
+              boundary_stats[4].level56_buffered_time_samples.size() == 1,
+          "buffered boundary decode did not emit its t sample");
+  const auto& boundary =
+      boundary_stats[4].level56_buffered_time_samples.front();
+  require(boundary.window_start_before == 0 &&
+              boundary.window_start_after == 0 &&
+              boundary.completed_batches == 0 &&
+              boundary.forced_evicted_batches == 1 &&
+              boundary.fifo_depth_after == 0 &&
+              boundary.retirements.size() == 1 &&
+              boundary.retirements.front().reason ==
+                  newcode::Level56BufferedBatchRetirement::ForcedEvicted &&
+              boundary.forced_evicted_global_rows.size() ==
+                  samples.front().pending_after,
+          "buffered S_t=0 boundary did not force only unfinished codes");
+}
+
+void check_full_frame_ber_keeps_all_evaluation_bits() {
+  newcode::Params p;
+  p.TILES_PER_WIN = 2;
+  p.TILE_HEIGHT_BR = 1;
+  p.TILE_OVERLAP_BR = 0;
+
+  constexpr std::size_t kInfoBitsPerRow =
+      newcode::Params::BCH_K -
+      newcode::Params::NUM_SUBBLOCK_COLS *
+          newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  const std::size_t window_bits = p.win_height_rows() * kInfoBitsPerRow;
+  const std::size_t tile_bits = p.tile_height_rows() * kInfoBitsPerRow;
+  // The fixed BER interval excludes four leading and two trailing windows.
+  // Keep two complete windows in the middle and place both errors there.
+  const std::size_t bit_count = 8u * window_bits;
+  const std::size_t first_error = 4u * window_bits + 10u;
+  const std::size_t second_error =
+      4u * window_bits + tile_bits + 10u;
+
+  std::vector<uint8_t> reference(bit_count, 0u);
+  std::vector<uint8_t> received(bit_count, 0u);
+  received[first_error] = 1u;
+  received[second_error] = 1u;
+
+  std::vector<std::size_t> error_positions;
+  const auto aggregate =
+      newcode::compute_ber(reference, received, p, &error_positions);
+  require(aggregate.errors == 2 && aggregate.total == 2u * window_bits &&
+              error_positions ==
+                  std::vector<std::size_t>({first_error, second_error}),
+          "full-frame post-FEC BER must keep every bit in the standard evaluation interval");
+
+  const auto windows =
+      newcode::compute_ber_per_window(reference, received, p);
+  require(windows.size() == 8 && windows[4].errors == 2 &&
+              windows[4].total == window_bits,
+          "window post-FEC BER must not exclude forced-evicted positions");
+
+  const auto tiles =
+      newcode::compute_ber_per_tile_window(reference, received, p);
+  require(tiles.size() == 16 && tiles[8].errors == 1 &&
+              tiles[8].total == tile_bits &&
+              tiles[9].errors == 1 && tiles[9].total == tile_bits,
+          "tile post-FEC BER must not exclude forced-evicted positions");
+}
+
 }  // namespace
 
 int main() {
@@ -1236,6 +1896,16 @@ int main() {
     check_temporal_rule_helpers();
     check_temporal_two_stage_budget();
     check_temporal_lookahead_three_windows();
+    check_buffered_window_transition_formula();
+    check_buffered_already_decoded_three_round_example();
+    check_buffered_retirement_markers();
+    check_buffered_service_fast_path_and_fifo_order();
+    check_buffered_service_ordinary_budget_boundary();
+    check_buffered_service_forced_eviction_boundary();
+    check_buffered_configuration_validation();
+    check_buffered_end_to_end_full_early_stop();
+    check_buffered_end_to_end_multiple_windows();
+    check_full_frame_ber_keeps_all_evaluation_bits();
     std::cout << "LEVEL56 shared scheduler regression checks passed\n";
     return 0;
   } catch (const std::exception& ex) {

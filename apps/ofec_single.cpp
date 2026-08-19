@@ -1,3 +1,8 @@
+#include <charconv>
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+#include <string>
 #include <vector>
 
 #include "mux_bypass_edges.hpp"
@@ -85,8 +90,10 @@ static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
     newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority;                    // Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;            // true=只归一化 soft rows，false=保持当前兼容行为
 static constexpr bool kLevel56SharedEnable = true;                // true=第五/六级共享 HISO/SISO
-static constexpr bool kLevel56TemporalLookaheadEnable = true;     // true=启用 t=0/t=1/t=2 三时刻 192-code 调度
+static constexpr bool kLevel56TemporalLookaheadEnable = false;    // 旧 t=0/t=1/t=2 三时刻 lookahead；与新 FIFO 互斥
 static constexpr int kLevel56TemporalGroupLoadThreshold = 16;     // temporal 分支阈值，默认等价于 K1+K2 < 16-X
+static constexpr bool kLevel56BufferedFifoEnable = true;          // 新方案：完整 64-code batch FIFO 与跨时刻 pending
+static constexpr std::size_t kLevel56BufferRows = 32;             // R_buf，单位为 block row
 static constexpr int kLevel56SharedHisoActive = 8;                 // 第五/六级共享 HISO 容量
 static constexpr int kLevel56SharedSisoActive = 8;                 // 第五/六级共享 SISO 容量
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
@@ -168,11 +175,77 @@ static constexpr const char* kDecoderTraceCsvDir      = "data/chase_csv"; // Cha
 // =============================
 
 int main() {
+  bool level56_buffered_fifo_enable = kLevel56BufferedFifoEnable;
+  std::size_t level56_buffer_rows = kLevel56BufferRows;
+  float ebn0_db = kEbN0_db;
+  std::string run_label = kLabel;
+  std::string level56_schedule_rounds_path = kLevel56ScheduleRoundsPath;
+  std::string level56_schedule_codes_path = kLevel56ScheduleCodesPath;
+  std::string tile_early_stop_samples_path = kTileEarlyStopSamplesPath;
+  std::string tile_early_stop_group_bind_debug_samples_path =
+      kTileEarlyStopGroupBindDebugSamplesPath;
+  std::string run_suffix;
+
+  if (const char* value = std::getenv("OFEC_EBN0_DB")) {
+    const std::string text(value);
+    char* end = nullptr;
+    const float parsed = std::strtof(text.c_str(), &end);
+    if (text.empty() || end != text.c_str() + text.size() ||
+        !std::isfinite(parsed)) {
+      std::cerr << "[ERROR] OFEC_EBN0_DB must be a finite number\n";
+      return 2;
+    }
+    ebn0_db = parsed;
+    run_suffix += "_ebn0" + text;
+  }
+
+  if (const char* value = std::getenv("LEVEL56_BUFFERED_FIFO_ENABLE")) {
+    const std::string text(value);
+    if (text == "0") {
+      level56_buffered_fifo_enable = false;
+    } else if (text == "1") {
+      level56_buffered_fifo_enable = true;
+    } else {
+      std::cerr << "[ERROR] LEVEL56_BUFFERED_FIFO_ENABLE must be 0 or 1\n";
+      return 2;
+    }
+    run_suffix += level56_buffered_fifo_enable ? "_fifo1" : "_fifo0";
+  }
+
+  if (const char* value = std::getenv("LEVEL56_BUFFER_ROWS")) {
+    const std::string text(value);
+    const auto parse_result = std::from_chars(
+        text.data(), text.data() + text.size(), level56_buffer_rows);
+    if (text.empty() || parse_result.ec != std::errc{} ||
+        parse_result.ptr != text.data() + text.size()) {
+      std::cerr << "[ERROR] LEVEL56_BUFFER_ROWS must be a non-negative integer\n";
+      return 2;
+    }
+
+    run_suffix += "_rbuf" + std::to_string(level56_buffer_rows);
+  }
+
+  if (!run_suffix.empty()) {
+    run_label += run_suffix;
+    level56_schedule_rounds_path =
+        "data/level56_schedule/ofec_single" + run_suffix +
+        "_level56_schedule_rounds.csv";
+    level56_schedule_codes_path =
+        "data/level56_schedule/ofec_single" + run_suffix +
+        "_level56_schedule_codes.csv";
+    tile_early_stop_samples_path =
+        "data/early_stop_hist/ofec_single" + run_suffix +
+        "_tile_early_stop_samples.csv";
+    tile_early_stop_group_bind_debug_samples_path =
+        "data/early_stop_debug/ofec_single" + run_suffix +
+        "_group_bind_debug.csv";
+  }
+
   const auto& selected_mux_bypass_edges =
       app_mux::bypass_edges_for_scheme(kMuxBypassScheme);
   ofec_single::Config config{
-    .label = kLabel,
-    .ebn0_db = kEbN0_db,
+    .label = run_label,
+    .ebn0_db = ebn0_db,
     .chaseL_override = kChaseL_override,
     .chase_n_test_override = kChaseNTestOverride,
     .chase_topk_keep = kChaseTopkKeep,
@@ -216,6 +289,8 @@ int main() {
     .level56_shared_enable = kLevel56SharedEnable,
     .level56_temporal_lookahead_enable = kLevel56TemporalLookaheadEnable,
     .level56_temporal_group_load_threshold = kLevel56TemporalGroupLoadThreshold,
+    .level56_buffered_fifo_enable = level56_buffered_fifo_enable,
+    .level56_buffer_rows = level56_buffer_rows,
     .level56_shared_hiso_active = kLevel56SharedHisoActive,
     .level56_shared_siso_active = kLevel56SharedSisoActive,
     .level56_priority_mode = kLevel56PriorityMode,
@@ -225,8 +300,8 @@ int main() {
     .level56_unselected_early_stop_action_enable =
         kLevel56UnselectedEarlyStopActionEnable,
     .dump_level56_schedule_stats = kDumpLevel56ScheduleStats,
-    .level56_schedule_rounds_output_path = kLevel56ScheduleRoundsPath,
-    .level56_schedule_codes_output_path = kLevel56ScheduleCodesPath,
+    .level56_schedule_rounds_output_path = level56_schedule_rounds_path,
+    .level56_schedule_codes_output_path = level56_schedule_codes_path,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,
     .generate_random_bits = kGenerateRandomBits,
@@ -237,12 +312,16 @@ int main() {
     .quantized_llr_output_path = kQuantizedLlrPath,
     .dump_work_llr = kDumpWorkLlr,
     .work_llr_output_path = kWorkLlrPath,
+    .post_fec_error_positions_output_path =
+        std::getenv("POST_FEC_ERROR_POSITIONS_PATH") != nullptr
+            ? std::getenv("POST_FEC_ERROR_POSITIONS_PATH")
+            : "",
     .dump_tile_early_stop_samples = kDumpTileEarlyStopSamples,
-    .tile_early_stop_samples_output_path = kTileEarlyStopSamplesPath,
+    .tile_early_stop_samples_output_path = tile_early_stop_samples_path,
     .dump_tile_early_stop_group_bind_debug_samples =
         kDumpTileEarlyStopGroupBindDebugSamples,
     .tile_early_stop_group_bind_debug_samples_output_path =
-        kTileEarlyStopGroupBindDebugSamplesPath,
+        tile_early_stop_group_bind_debug_samples_path,
     .debug_trace = newcode::Params::DebugTraceConfig{
       .enable = kDecoderTraceEnable,
       .log_read_mapping = kDecoderTraceLogRead,

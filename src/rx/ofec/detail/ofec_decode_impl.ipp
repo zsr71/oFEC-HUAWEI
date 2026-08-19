@@ -124,6 +124,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   }
   std::size_t level56_shared_invocation = 0;
   Level56TemporalState<LLR> level56_temporal_state;
+  Level56BufferedFifoState<LLR> level56_buffered_state;
 
   while (win_start <= last_ws) {
     const size_t win_end = win_start + WIN_HEIGHT_ROWS - 1;
@@ -139,6 +140,9 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
                              &level56_shared_invocation,
                              p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE
                                  ? &level56_temporal_state
+                                 : nullptr,
+                             p.LEVEL56_BUFFERED_FIFO_ENABLE
+                                 ? &level56_buffered_state
                                  : nullptr);
 
     win_start += POP_PUSH_ROWS;

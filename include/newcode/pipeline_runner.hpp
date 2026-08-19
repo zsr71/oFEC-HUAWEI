@@ -43,6 +43,7 @@ struct PipelineResult {
   std::vector<TileEarlyStopGroupBindDebugSample> tile_early_stop_group_bind_debug_samples;
   std::vector<HybridClassCount> hybrid_class_counts;
   std::vector<Level56ScheduleSample> level56_schedule_samples;
+  std::vector<Level56BufferedTimeSample> level56_buffered_time_samples;
   std::vector<std::size_t> tile_hard_finish_count;
   std::vector<double> tile_hard_finish_pct;
   std::vector<std::size_t> tile_need_siso_before_mux_count;

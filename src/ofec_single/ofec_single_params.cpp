@@ -215,6 +215,9 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       cfg.level56_temporal_lookahead_enable;
   params.LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD =
       cfg.level56_temporal_group_load_threshold;
+  params.LEVEL56_BUFFERED_FIFO_ENABLE =
+      cfg.level56_buffered_fifo_enable;
+  params.LEVEL56_BUFFER_ROWS = cfg.level56_buffer_rows;
   params.LEVEL56_SHARED_HISO_ACTIVE = cfg.level56_shared_hiso_active;
   params.LEVEL56_SHARED_SISO_ACTIVE = cfg.level56_shared_siso_active;
   params.LEVEL56_PRIORITY_MODE = cfg.level56_priority_mode;
@@ -237,6 +240,11 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   if (params.LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD < 0 ||
       params.LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD > 48) {
     log << "[ERROR] LEVEL56 temporal 组负载阈值必须在 [0,48]\n";
+    return std::nullopt;
+  }
+  if (params.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE &&
+      params.LEVEL56_BUFFERED_FIFO_ENABLE) {
+    log << "[ERROR] LEVEL56 temporal lookahead 与 buffered FIFO 不能同时开启\n";
     return std::nullopt;
   }
   if (params.LEVEL56_SCHEDULE_MODE ==

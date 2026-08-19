@@ -65,6 +65,8 @@ struct Config {
   bool level56_shared_enable = false;
   bool level56_temporal_lookahead_enable = false;
   int level56_temporal_group_load_threshold = 16;
+  bool level56_buffered_fifo_enable = false;
+  std::size_t level56_buffer_rows = 32;
   int level56_shared_hiso_active = 32;
   int level56_shared_siso_active = 32;
   newcode::Level56PriorityMode level56_priority_mode =
@@ -88,6 +90,7 @@ struct Config {
   std::string quantized_llr_output_path;
   bool dump_work_llr = false;
   std::string work_llr_output_path;
+  std::string post_fec_error_positions_output_path;
   bool dump_tile_early_stop_samples = false;
   std::string tile_early_stop_samples_output_path;
   bool dump_tile_early_stop_group_bind_debug_samples = false;

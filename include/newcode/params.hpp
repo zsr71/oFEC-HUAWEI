@@ -142,6 +142,10 @@ struct Params {
   bool LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE = false;
   // temporal 分支的组级负载阈值。默认 16 保持原规则：K1+K2 < 16-X。
   int LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD = 16;
+  // 开启第五/六级完整 batch FIFO 和跨时刻 pending 延后方案。
+  bool LEVEL56_BUFFERED_FIFO_ENABLE = false;
+  // 连续 SRAM 中位于 44-row Level 5/6 解码区之前的可调 buffer 行数。
+  size_t LEVEL56_BUFFER_ROWS = 32;
   int LEVEL56_SHARED_HISO_ACTIVE = 32;
   int LEVEL56_SHARED_SISO_ACTIVE = 32;
   Level56PriorityMode LEVEL56_PRIORITY_MODE =

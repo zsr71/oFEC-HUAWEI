@@ -93,6 +93,21 @@ const char* level56_decode_status_name(newcode::Level56DecodeStatus status) {
     case newcode::Level56DecodeStatus::NotDecoded: return "NotDecoded";
     case newcode::Level56DecodeStatus::Produced: return "Produced";
     case newcode::Level56DecodeStatus::ActionFailed: return "ActionFailed";
+    case newcode::Level56DecodeStatus::CompletedNoWriteback:
+      return "CompletedNoWriteback";
+    case newcode::Level56DecodeStatus::ForcedEvicted: return "ForcedEvicted";
+  }
+  return "Unknown";
+}
+
+const char* level56_buffered_retirement_name(
+    newcode::Level56BufferedBatchRetirement reason) {
+  switch (reason) {
+    case newcode::Level56BufferedBatchRetirement::Normal: return "Normal";
+    case newcode::Level56BufferedBatchRetirement::FullEarlyStop:
+      return "FullEarlyStop";
+    case newcode::Level56BufferedBatchRetirement::ForcedEvicted:
+      return "ForcedEvicted";
   }
   return "Unknown";
 }
@@ -187,7 +202,8 @@ void dump_level56_schedule_rounds_csv(
     std::filesystem::create_directories(parent);
   }
   std::ofstream out(output_path);
-  out << "run_id,label,invocation,temporal_enabled,has_history,has_future,"
+  out << "run_id,label,invocation,buffered_fifo_enabled,buffered_t,"
+         "buffered_batch,temporal_enabled,has_history,has_future,"
          "X,K1,K2,temporal_branch,t0_group_entries,t1_group_entries,"
          "t0_pending_before,t0_pending_after,t0_pending_reduced,"
          "t1_pending_before,t1_pending_after,t1_pending_reduced,"
@@ -210,7 +226,14 @@ void dump_level56_schedule_rounds_csv(
                                const auto& remaining_after,
                                const auto& group_entry_counts) {
       out << run_id << ',' << label << ',' << sample.invocation << ','
-          << sample.temporal_lookahead_enabled << ','
+          << sample.buffered_fifo_enabled << ',';
+      if (sample.buffered_fifo_enabled) {
+        out << sample.buffered_service_time << ",B"
+            << sample.buffered_batch_id;
+      } else {
+        out << ',';
+      }
+      out << ',' << sample.temporal_lookahead_enabled << ','
           << sample.temporal_has_history << ','
           << sample.temporal_has_future << ','
           << sample.temporal_x << ',' << sample.temporal_k1 << ','
@@ -284,19 +307,29 @@ void dump_level56_schedule_codes_csv(
     std::filesystem::create_directories(parent);
   }
   std::ofstream out(output_path);
-  out << "run_id,label,invocation,shared_index,time_index,time_offset,info_type,"
-         "decode_status,code,source_level,source_row,group,"
+  out << "run_id,label,invocation,buffered_fifo_enabled,buffered_t,"
+         "buffered_batch,shared_index,time_index,time_offset,info_type,"
+         "decode_status,code,source_level,source_local_row,source_global_row,group,"
          "position_in_group,early_stop_hit,hybrid_class,resource_eligibility,"
          "planned_hiso,planned_siso,remaining_for_schedule,final_action,"
-         "assigned_entry_slot,assigned_core,produced\n";
+         "assigned_entry_slot,assigned_core,produced,already_decoded,pending,"
+         "forced_evicted,writeback_complete\n";
   for (const auto& sample : samples) {
     for (const auto& code : sample.codes) {
       out << run_id << ',' << label << ',' << sample.invocation << ','
-          << code.code_index << ',' << code.time_index << ','
+          << sample.buffered_fifo_enabled << ',';
+      if (sample.buffered_fifo_enabled) {
+        out << sample.buffered_service_time << ",B"
+            << sample.buffered_batch_id;
+      } else {
+        out << ',';
+      }
+      out << ',' << code.code_index << ',' << code.time_index << ','
           << code.time_offset << ',' << level56_info_type_name(code.info_type)
           << ',' << level56_decode_status_name(code.decode_status) << ','
           << (code.code_index + 1u) << ',' << code.source_level << ','
-          << (code.source_local_row + 1u) << ',' << (code.group_index + 1u)
+          << (code.source_local_row + 1u) << ',' << code.source_global_row
+          << ',' << (code.group_index + 1u)
           << ',' << (code.position_in_group + 1u) << ','
           << code.early_stop_hit << ','
           << level56_hybrid_class_name(code.hybrid_class) << ','
@@ -305,9 +338,100 @@ void dump_level56_schedule_codes_csv(
           << code.remaining_for_schedule << ','
           << level56_action_name(code.final_action) << ','
           << code.assigned_entry_slot << ',' << code.assigned_core << ','
-          << code.produced << '\n';
+          << code.produced << ',' << code.already_decoded << ','
+          << code.pending << ',' << code.forced_evicted << ','
+          << code.writeback_complete << '\n';
     }
   }
+}
+
+void dump_level56_buffered_times_csv(
+    const std::vector<newcode::Level56BufferedTimeSample>& samples,
+    const std::filesystem::path& output_path,
+    const std::string& run_id,
+    const std::string& label) {
+  const auto parent = output_path.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent);
+  }
+  std::ofstream out(output_path);
+  out << "run_id,label,t,arrived_batch,fifo_depth_before,had_head_before,"
+         "head_batch_before,pending_before,ordinary_service_used,"
+         "ordinary_batch,ordinary_schedule_invocation,C_t,"
+         "full_early_stop_batches,forced_evicted_batches,S_t,S_next,"
+         "fifo_depth_after,pending_after,retirements,forced_evicted_global_rows\n";
+  for (const auto& sample : samples) {
+    std::ostringstream retirements;
+    std::ostringstream forced_rows;
+    for (std::size_t index = 0; index < sample.retirements.size(); ++index) {
+      if (index > 0) {
+        retirements << '|';
+      }
+      const auto& retirement = sample.retirements[index];
+      retirements << 'B' << retirement.batch_id << ':'
+                  << level56_buffered_retirement_name(retirement.reason);
+    }
+    for (std::size_t index = 0;
+         index < sample.forced_evicted_global_rows.size(); ++index) {
+      if (index > 0) {
+        forced_rows << '|';
+      }
+      forced_rows << sample.forced_evicted_global_rows[index];
+    }
+    out << run_id << ',' << label << ',' << sample.service_time << ",B"
+        << sample.arrived_batch_id << ',' << sample.fifo_depth_before << ','
+        << sample.had_head_before << ',';
+    if (sample.had_head_before) {
+      out << 'B' << sample.head_batch_id_before;
+    }
+    out << ',' << sample.pending_before << ','
+        << sample.ordinary_service_used << ',';
+    if (sample.ordinary_service_used) {
+      out << 'B' << sample.ordinary_batch_id << ','
+          << sample.ordinary_schedule_invocation;
+    } else {
+      out << ',';
+    }
+    out << ',' << sample.completed_batches << ','
+        << sample.full_early_stop_batches << ','
+        << sample.forced_evicted_batches << ',' << sample.window_start_before
+        << ',' << sample.window_start_after << ',' << sample.fifo_depth_after
+        << ',' << sample.pending_after << ',' << retirements.str() << ','
+        << forced_rows.str() << '\n';
+  }
+}
+
+void log_level56_buffered_summary(
+    const std::vector<newcode::Level56BufferedTimeSample>& samples,
+    io::DualWriter& log) {
+  if (samples.empty()) {
+    log << "[INFO] Level56 buffered FIFO samples: 0\n";
+    return;
+  }
+  std::size_t completed = 0;
+  std::size_t full_early_stop = 0;
+  std::size_t forced_evicted = 0;
+  std::size_t max_fifo_depth = 0;
+  std::size_t min_window_start = samples.front().window_start_before;
+  std::array<std::size_t, 3> completion_buckets{};
+  for (const auto& sample : samples) {
+    completed += sample.completed_batches;
+    full_early_stop += sample.full_early_stop_batches;
+    forced_evicted += sample.forced_evicted_batches;
+    max_fifo_depth = std::max(max_fifo_depth, sample.fifo_depth_before);
+    min_window_start = std::min(
+        min_window_start,
+        std::min(sample.window_start_before, sample.window_start_after));
+    ++completion_buckets[std::min<std::size_t>(sample.completed_batches, 2u)];
+  }
+  log << "[INFO] Level56 buffered FIFO: t=" << samples.size()
+      << ", completed=" << completed
+      << ", full_early_stop=" << full_early_stop
+      << ", forced_evicted=" << forced_evicted
+      << ", max_fifo_depth=" << max_fifo_depth
+      << ", min_S_t=" << min_window_start
+      << ", C_t(0/1/2+)=" << completion_buckets[0] << '/'
+      << completion_buckets[1] << '/' << completion_buckets[2] << "\n";
 }
 
 void log_level56_schedule_summary(
@@ -456,6 +580,20 @@ int run_ofec_single(const Config& config) {
   newcode::PipelineConfig pipeline_cfg = detail::build_pipeline_config(config);
   const newcode::PipelineResult result =
       newcode::run_pipeline(*params, pipeline_cfg, config.label, config.ebn0_db);
+  if (!config.post_fec_error_positions_output_path.empty()) {
+    const std::filesystem::path output_path =
+        config.post_fec_error_positions_output_path;
+    const auto parent = output_path.parent_path();
+    if (!parent.empty()) {
+      std::filesystem::create_directories(parent);
+    }
+    std::ofstream out(output_path);
+    for (const auto position : result.post_fec_error_positions) {
+      out << position << '\n';
+    }
+    log << "[INFO] Full Post-FEC error positions saved to "
+        << output_path.string() << "\n";
+  }
   if (config.dump_tile_early_stop_samples) {
     std::filesystem::path output_path = config.tile_early_stop_samples_output_path;
     if (output_path.empty()) {
@@ -497,11 +635,20 @@ int run_ofec_single(const Config& config) {
         result.level56_schedule_samples, rounds_path, run_id, config.label);
     dump_level56_schedule_codes_csv(
         result.level56_schedule_samples, codes_path, run_id, config.label);
+    const std::filesystem::path buffered_times_path =
+        std::filesystem::path("data/level56_schedule") /
+        (config.label + "_level56_buffered_times.csv");
+    dump_level56_buffered_times_csv(
+        result.level56_buffered_time_samples, buffered_times_path,
+        run_id, config.label);
     log_level56_schedule_summary(result.level56_schedule_samples, log);
+    log_level56_buffered_summary(result.level56_buffered_time_samples, log);
     log << "[INFO] Level56 schedule rounds saved to "
         << rounds_path.string() << "\n";
     log << "[INFO] Level56 schedule codes saved to "
         << codes_path.string() << "\n";
+    log << "[INFO] Level56 buffered times saved to "
+        << buffered_times_path.string() << "\n";
   }
   detail::log_pipeline_results(result, log);
   log << "[INFO] log saved at " << log_path << "\n";

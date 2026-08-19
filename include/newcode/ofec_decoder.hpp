@@ -34,7 +34,15 @@ enum class Level56TemporalInfoType : uint8_t {
 enum class Level56DecodeStatus : uint8_t {
   NotDecoded = 0,
   Produced,
-  ActionFailed
+  ActionFailed,
+  CompletedNoWriteback,
+  ForcedEvicted
+};
+
+enum class Level56BufferedBatchRetirement : uint8_t {
+  Normal = 0,
+  FullEarlyStop,
+  ForcedEvicted
 };
 
 struct Level56ScheduleRoundSample {
@@ -59,6 +67,7 @@ struct Level56ScheduleCodeSample {
   Level56DecodeStatus decode_status = Level56DecodeStatus::NotDecoded;
   std::size_t source_level = 0;
   std::size_t source_local_row = 0;
+  std::size_t source_global_row = 0;
   std::size_t group_index = 0;
   std::size_t position_in_group = 0;
   bool early_stop_hit = false;
@@ -71,10 +80,45 @@ struct Level56ScheduleCodeSample {
   int assigned_entry_slot = -1;
   int assigned_core = -1;
   bool produced = false;
+  bool already_decoded = false;
+  bool pending = false;
+  bool forced_evicted = false;
+  bool writeback_complete = false;
+};
+
+struct Level56BufferedRetirementSample {
+  std::size_t batch_id = 0;
+  std::size_t arrival_time = 0;
+  Level56BufferedBatchRetirement reason =
+      Level56BufferedBatchRetirement::Normal;
+};
+
+struct Level56BufferedTimeSample {
+  std::size_t service_time = 0;
+  std::size_t arrived_batch_id = 0;
+  std::size_t fifo_depth_before = 0;
+  std::size_t fifo_depth_after = 0;
+  std::size_t head_batch_id_before = 0;
+  bool had_head_before = false;
+  std::size_t pending_before = 0;
+  std::size_t pending_after = 0;
+  std::size_t completed_batches = 0;
+  std::size_t full_early_stop_batches = 0;
+  std::size_t forced_evicted_batches = 0;
+  std::size_t window_start_before = 0;
+  std::size_t window_start_after = 0;
+  bool ordinary_service_used = false;
+  std::size_t ordinary_batch_id = 0;
+  std::size_t ordinary_schedule_invocation = 0;
+  std::vector<Level56BufferedRetirementSample> retirements;
+  std::vector<std::size_t> forced_evicted_global_rows;
 };
 
 struct Level56ScheduleSample {
   std::size_t invocation = 0;
+  bool buffered_fifo_enabled = false;
+  std::size_t buffered_service_time = 0;
+  std::size_t buffered_batch_id = 0;
   bool temporal_lookahead_enabled = false;
   bool temporal_has_history = false;
   bool temporal_has_future = false;
@@ -156,6 +200,7 @@ struct TileEarlyStopCounter {
   std::vector<TileEarlyStopGroupBindDebugSample> group_bind_debug_samples;
   std::vector<HybridClassCount> hybrid_class_counts;
   std::vector<Level56ScheduleSample> level56_schedule_samples;
+  std::vector<Level56BufferedTimeSample> level56_buffered_time_samples;
 };
 
 template <typename LLR>

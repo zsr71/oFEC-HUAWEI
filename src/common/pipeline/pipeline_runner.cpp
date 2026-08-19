@@ -148,6 +148,23 @@ std::vector<Level56ScheduleSample> collect_level56_schedule_samples(
   return samples;
 }
 
+std::vector<Level56BufferedTimeSample> collect_level56_buffered_time_samples(
+    const std::vector<TileEarlyStopCounter>& counters)
+{
+  std::size_t total_samples = 0;
+  for (const auto& counter : counters) {
+    total_samples += counter.level56_buffered_time_samples.size();
+  }
+  std::vector<Level56BufferedTimeSample> samples;
+  samples.reserve(total_samples);
+  for (const auto& counter : counters) {
+    samples.insert(samples.end(),
+                   counter.level56_buffered_time_samples.begin(),
+                   counter.level56_buffered_time_samples.end());
+  }
+  return samples;
+}
+
 std::vector<std::size_t> collect_need_siso_before_mux_counts(
     const std::vector<TileEarlyStopCounter>& counters)
 {
@@ -421,6 +438,8 @@ PipelineResult run_pipeline(const Params& params,
         matrix::rx_info_from_bit_llr(decode_result.quantized_pre_decoder_llr, params);
   }
   auto rx_info_bits_post = matrix::rx_info_from_bit_llr(decode_result.post_decoder_llr, params);
+  auto level56_buffered_time_samples =
+      collect_level56_buffered_time_samples(decode_result.tile_stats);
 
   if (verbose) {
     log << "[INFO] (" << label << ") rx_info_bits: " << rx_info_bits_pre.size()
@@ -457,7 +476,8 @@ PipelineResult run_pipeline(const Params& params,
   result.post_fec_tile_windows =
       compute_ber_per_tile_window(tx_info_bits_ref, rx_info_bits_post, params);
   result.post_fec = compute_and_print_ber(tx_info_bits_ref, rx_info_bits_post, post_label.c_str(),
-                                          params, &result.post_fec_error_positions, config.quiet);
+                                          params, &result.post_fec_error_positions,
+                                          config.quiet);
   result.tile_early_stop_pct = compute_early_stop_percentages(decode_result.tile_stats);
   result.tile_row_early_stop_pct = compute_row_early_stop_percentages(decode_result.tile_stats);
   result.tile_early_stop_samples =
@@ -468,6 +488,8 @@ PipelineResult run_pipeline(const Params& params,
       collect_hybrid_class_counts(decode_result.tile_stats);
   result.level56_schedule_samples =
       collect_level56_schedule_samples(decode_result.tile_stats);
+  result.level56_buffered_time_samples =
+      std::move(level56_buffered_time_samples);
   result.tile_hard_finish_count =
       collect_hard_finish_counts(decode_result.tile_stats);
   result.tile_hard_finish_pct =
