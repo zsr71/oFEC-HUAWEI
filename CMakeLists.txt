@@ -199,6 +199,11 @@ add_executable(ofec_hybrid_regression_check
 )
 target_link_libraries(ofec_hybrid_regression_check PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
 
+add_executable(ofec_hybrid_class_truth_check
+  apps/ofec_hybrid_class_truth_check.cpp
+)
+target_link_libraries(ofec_hybrid_class_truth_check PRIVATE newcode_frontend decoder_plain decoder_ebchPF)
+
 add_executable(ofec_level56_shared_regression_check
   apps/ofec_level56_shared_regression_check.cpp
 )

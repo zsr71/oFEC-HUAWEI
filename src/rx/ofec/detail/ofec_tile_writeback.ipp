@@ -12,7 +12,8 @@ void writeback_tile(const TilePrepared<LLR>& prep,
                     size_t tile_top_row_global,
                     bool capture_last_tile_history,
                     matrix::Matrix<LLR>* tile_out,
-                    matrix::Matrix<float>* last_tile_history_accum)
+                    matrix::Matrix<float>* last_tile_history_accum,
+                    bool preserve_history_when_not_produced = true)
 {
   // 输入:
   // - prep: tile 输入准备阶段留下的映射关系和 trace 信息。
@@ -174,8 +175,11 @@ void writeback_tile(const TilePrepared<LLR>& prep,
                   Adapter::combine(extrinsic_llr, prior_llr);
               (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
                   history_value(combined, extrinsic_llr_last_tile, prior_llr);
-            } else {
+            } else if (preserve_history_when_not_produced) {
               // 未调度行没有新 extrinsic，但最终 history 必须透传当前 prior。
+              // Buffered FIFO 的 pending/AlreadyDecoded 行在后续服务时刻没有
+              // 产生新结果；此时由调用方关闭该透传，避免覆盖同一物理行已经
+              // 写入的最终 Level 6 history。
               (*last_tile_history_accum)[rr_idx_global][cc_idx_global] =
                   qfloat::llr_to_float(prior_llr);
             }

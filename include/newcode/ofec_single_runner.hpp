@@ -23,6 +23,8 @@ struct Config {
   bool normalize_extrinsic;
   unsigned bits_per_symbol;
   int bitgen_seed;
+  // 0 表示沿用 Params 默认帧长；非 0 时覆盖 NUM_INFO_BITS。
+  std::size_t num_info_bits = 0;
   int channel_seed;
   bool enable_early_stop = true;
   std::vector<int> early_stop_enable_list;
@@ -67,8 +69,11 @@ struct Config {
   int level56_temporal_group_load_threshold = 16;
   bool level56_buffered_fifo_enable = false;
   std::size_t level56_buffer_rows = 32;
+  bool level56_buffered_fifo_drain_at_frame_end = false;
+  unsigned level56_hiso_allowed_class_mask = 0x0fu;
   int level56_shared_hiso_active = 32;
   int level56_shared_siso_active = 32;
+  std::size_t level56_group4_max_entries = 8;
   newcode::Level56PriorityMode level56_priority_mode =
       newcode::Level56PriorityMode::Level5First;
   newcode::Level56ScheduleMode level56_schedule_mode =
@@ -80,6 +85,17 @@ struct Config {
   bool dump_level56_schedule_stats = false;
   std::string level56_schedule_rounds_output_path;
   std::string level56_schedule_codes_output_path;
+  // 默认关闭的只读观测；单独导出，避免把它和日常调度统计混在一起。
+  bool dump_level56_equivalence_observation = false;
+  std::string level56_equivalence_observation_output_path;
+  // 第三步：只导出一个指定的 (buffered batch, Level, code) 的完整
+  // 输入/输出和写回映射，避免逐 code 哈希 CSV 之外再生成整帧大日志。
+  bool level56_target_trace_enable = false;
+  std::size_t level56_target_trace_batch =
+      std::numeric_limits<std::size_t>::max();
+  int level56_target_trace_level = -1;
+  int level56_target_trace_code = -1;
+  std::string level56_target_trace_output_path;
   std::string interleaver_name;
   std::string decoder_name;
   bool generate_random_bits = true;

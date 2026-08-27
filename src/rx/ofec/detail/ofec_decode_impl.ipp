@@ -148,6 +148,14 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
     win_start += POP_PUSH_ROWS;
   }
 
+  if (p.LEVEL56_BUFFERED_FIFO_ENABLE &&
+      p.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END) {
+    drain_level56_buffered_fifo_at_frame_end(
+        work_llr, channel_llr, p, stats_ptr, normalize_extrinsic, tx_llr_ref,
+        core_fn, &last_tile_history_llr, &level56_shared_invocation,
+        &level56_buffered_state);
+  }
+
   if (tile_stats) {
     *tile_stats = std::move(local_tile_stats);
   }

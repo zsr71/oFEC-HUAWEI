@@ -49,6 +49,7 @@ generated_ppt/
 
 # Local tool dependencies
 tools/ppt/
+node_modules/
 
 # IDE
 .vscode/

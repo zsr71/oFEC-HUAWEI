@@ -310,6 +310,16 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                   copy_channel_tile_from_global(head.tile_top6);
             };
             bool captured_pending_before = false;
+            // Group4 normally has the hardware-defined eight group-entry
+            // budget.  A larger value is allowed only for a software
+            // immediate-reference run that keeps the same Group4 selection.
+            // GlobalPriority is used by the 32/32 FIFO control run, where
+            // the common scheduler itself enforces its configured capacities.
+            const std::size_t buffered_max_group_entries =
+                p.LEVEL56_SCHEDULE_MODE ==
+                        newcode::Level56ScheduleMode::Group4LoadSortedMultiround
+                    ? p.LEVEL56_GROUP4_MAX_ENTRIES
+                    : kLevel56GroupedCodeCount;
             const auto classify_head = [&](auto* head) {
               // A buffered batch stores only FIFO metadata. Its decode input is
               // read from the single shared SRAM image when it reaches the head.
@@ -337,9 +347,9 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                   head->tile_top5, head->tile_top6, invocation,
                   normalize_extrinsic, tx_llr_ref, core_fn,
                   last_tile_history_accum, &head->entries,
-                  kLevel56MaxGroupEntries, 0, true,
+                  buffered_max_group_entries, 0, true,
                   &head->early5, &head->early6, &output5, &output6,
-                  true);
+                  true, head->batch_id, level56_buffered_state->service_time);
               head->entries = result.dispatch;
               update_tile_stats(kLevel5TileIndex, result.level5);
               update_tile_stats(kLevel6TileIndex, result.level6);
@@ -368,7 +378,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                   head->tile_top5, head->tile_top6, invocation,
                   normalize_extrinsic, tx_llr_ref, core_fn,
                   last_tile_history_accum, &head->entries,
-                  kLevel56MaxGroupEntries, 0, true,
+                  buffered_max_group_entries, 0, true,
                   &head->early5, &head->early6, &output5, &output6,
                   true);
               head->entries = result.dispatch;
@@ -647,11 +657,17 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             ++t;
             continue;
           }
+          const std::size_t nonbuffered_max_group_entries =
+              params5.LEVEL56_SCHEDULE_MODE ==
+                      newcode::Level56ScheduleMode::Group4LoadSortedMultiround
+                  ? params5.LEVEL56_GROUP4_MAX_ENTRIES
+                  : kLevel56GroupedCodeCount;
           auto shared = process_level56_shared(
               tile_in5, ch_tile5, tile_in6, ch_tile6,
               params5, params6, top5, top6, invocation,
               normalize_extrinsic, tx_llr_ref, core_fn,
-              last_tile_history_accum);
+              last_tile_history_accum, nullptr,
+              nonbuffered_max_group_entries);
           update_tile_stats(kLevel5TileIndex, shared.level5);
           update_tile_stats(kLevel6TileIndex, shared.level6);
           if (tile_stats && shared.has_schedule_sample) {
@@ -716,6 +732,180 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
 
     update_tile_stats(t, tile_result);
     write_tile_to_work(t, tile_top_row, tile_result.tile_out);
+  }
+}
+
+// 帧尾 drain 仅用于离线等价性/BER 验证：输入帧的所有正常到达时刻都已
+// 执行完毕后，不再引入新 batch，也不再处理 Level 1--4；只让已经进入
+// Level 5/6 FIFO 的队首按原有 FIFO 规则继续获得服务，直至队列清空。
+// 在线固定吞吐路径不调用此函数。
+template <typename LLR>
+void drain_level56_buffered_fifo_at_frame_end(
+    matrix::Matrix<LLR>& work_llr,
+    const matrix::Matrix<LLR>& channel_llr,
+    const newcode::Params& p,
+    std::vector<TileEarlyStopCounter>* tile_stats,
+    bool normalize_extrinsic,
+    const matrix::Matrix<float>* tx_llr_ref,
+    CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn,
+    matrix::Matrix<float>* last_tile_history_accum,
+    std::size_t* level56_shared_invocation,
+    Level56BufferedFifoState<LLR>* state) {
+  if (!state || state->fifo.empty()) {
+    return;
+  }
+  if (!p.LEVEL56_BUFFERED_FIFO_ENABLE) {
+    throw std::logic_error("LEVEL56 frame-end drain requires buffered FIFO");
+  }
+
+  const std::size_t tile_height_rows = p.tile_height_rows();
+  const std::size_t rows_to_decode =
+      static_cast<std::size_t>(p.CHASE_SBR) *
+      newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  const std::size_t N = newcode::Params::NUM_SUBBLOCK_COLS *
+                        newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  const std::size_t max_group_entries =
+      p.LEVEL56_SCHEDULE_MODE ==
+              newcode::Level56ScheduleMode::Group4LoadSortedMultiround
+          ? p.LEVEL56_GROUP4_MAX_ENTRIES
+          : kLevel56GroupedCodeCount;
+
+  const auto copy_tile = [&](std::size_t top_row,
+                             const matrix::Matrix<LLR>& source) {
+    matrix::Matrix<LLR> tile(tile_height_rows, N);
+    for (std::size_t r = 0; r < tile_height_rows; ++r) {
+      for (std::size_t c = 0; c < N; ++c) {
+        tile[r][c] = source[top_row + r][c];
+      }
+    }
+    return tile;
+  };
+  const auto write_tile = [&](std::size_t top_row,
+                              const matrix::Matrix<LLR>& tile) {
+    for (std::size_t r = 0; r < tile.rows(); ++r) {
+      for (std::size_t c = 0; c < tile.cols(); ++c) {
+        work_llr[top_row + r][c] = tile[r][c];
+      }
+    }
+  };
+  const auto update_stats = [&](std::size_t tile_index,
+                                const TileProcessResult<LLR>& result) {
+    if (!tile_stats || tile_index >= tile_stats->size()) {
+      return;
+    }
+    auto& counter = (*tile_stats)[tile_index];
+    ++counter.total;
+    if (result.early_stop_triggered) {
+      ++counter.triggered;
+    }
+    counter.row_total += result.rows_total;
+    counter.row_triggered += result.rows_early_stop;
+    counter.row_hard_finish += result.rows_hard_finish;
+    counter.row_need_siso_before_mux += result.rows_need_siso_before_mux;
+    counter.row_unscheduled += result.rows_unscheduled;
+    counter.samples.push_back(TileEarlyStopSample{
+        .invocation = counter.total,
+        .tile_index = tile_index,
+        .rows_total = result.rows_total,
+        .rows_passed = result.rows_early_stop,
+        .rows_hard_finish = result.rows_hard_finish,
+        .rows_need_siso_before_mux = result.rows_need_siso_before_mux,
+        .rows_unscheduled = result.rows_unscheduled,
+    });
+    counter.hybrid_class_counts.push_back(result.hybrid_class_count);
+  };
+
+  while (!state->fifo.empty()) {
+    Level56BufferedTimeSample time_sample;
+    time_sample.service_time = state->service_time;
+    // No batch arrives during a drain time. Keep this field out of the valid
+    // batch-id domain so the CSV cannot be mistaken for a normal arrival.
+    time_sample.arrived_batch_id = std::numeric_limits<std::size_t>::max();
+    time_sample.fifo_depth_before = state->fifo.size();
+    time_sample.window_start_before = state->window_start;
+
+    matrix::Matrix<LLR> input5;
+    matrix::Matrix<LLR> input6;
+    matrix::Matrix<LLR> channel5;
+    matrix::Matrix<LLR> channel6;
+    const auto load_head = [&](const auto& head) {
+      input5 = copy_tile(head.tile_top5, work_llr);
+      input6 = copy_tile(head.tile_top6, work_llr);
+      channel5 = copy_tile(head.tile_top5, channel_llr);
+      channel6 = copy_tile(head.tile_top6, channel_llr);
+    };
+    bool captured_pending_before = false;
+    const auto classify_head = [&](auto* head) {
+      load_head(*head);
+      classify_level56_buffered_batch(
+          head, input5, channel5, input6, channel6, rows_to_decode,
+          tx_llr_ref);
+      if (!captured_pending_before) {
+        time_sample.pending_before =
+            level56_buffered_pending_count(head->entries);
+        captured_pending_before = true;
+      }
+    };
+    const auto run_head = [&](auto* head) {
+      const std::size_t invocation = level56_shared_invocation
+          ? (*level56_shared_invocation)++
+          : 0u;
+      time_sample.ordinary_batch_id = head->batch_id;
+      time_sample.ordinary_schedule_invocation = invocation;
+      auto output5 = input5;
+      auto output6 = input6;
+      auto result = process_level56_shared(
+          input5, channel5, input6, channel6,
+          head->params5, head->params6,
+          head->tile_top5, head->tile_top6, invocation,
+          normalize_extrinsic, tx_llr_ref, core_fn,
+          last_tile_history_accum, &head->entries,
+          max_group_entries, 0, true,
+          &head->early5, &head->early6, &output5, &output6, true,
+          head->batch_id, state->service_time);
+      head->entries = result.dispatch;
+      update_stats(kLevel5TileIndex, result.level5);
+      update_stats(kLevel6TileIndex, result.level6);
+      if (tile_stats && result.has_schedule_sample) {
+        result.schedule_sample.buffered_fifo_enabled = true;
+        result.schedule_sample.buffered_service_time = state->service_time;
+        result.schedule_sample.buffered_batch_id = head->batch_id;
+        (*tile_stats)[kLevel5TileIndex].level56_schedule_samples.push_back(
+            std::move(result.schedule_sample));
+      }
+      write_tile(head->tile_top5, result.level5.tile_out);
+      write_tile(head->tile_top6, result.level6.tile_out);
+    };
+    const auto full_early_stop = run_head;
+    const auto outcome = service_level56_buffered_fifo_time(
+        state, false, classify_head, run_head, full_early_stop);
+    if (!outcome.ordinary_service_used && outcome.completed_batches == 0) {
+      throw std::logic_error("LEVEL56 frame-end drain made no FIFO progress");
+    }
+    time_sample.had_head_before = outcome.had_head_before;
+    time_sample.head_batch_id_before = outcome.head_batch_id_before;
+    time_sample.ordinary_service_used = outcome.ordinary_service_used;
+    time_sample.completed_batches = outcome.completed_batches;
+    time_sample.full_early_stop_batches = outcome.full_early_stop_batches;
+    time_sample.forced_evicted_batches = outcome.forced_evicted_batches;
+    time_sample.retirements = outcome.retirements;
+    time_sample.forced_evicted_global_rows = outcome.forced_evicted_global_rows;
+    state->window_start = level56_buffered_next_window_start(
+        time_sample.window_start_before, time_sample.completed_batches,
+        p.LEVEL56_BUFFER_ROWS);
+    time_sample.window_start_after = state->window_start;
+    time_sample.fifo_depth_after = state->fifo.size();
+    if (!state->fifo.empty()) {
+      const auto& next_head = state->fifo.front();
+      time_sample.pending_after = next_head.classified
+          ? level56_buffered_pending_count(next_head.entries)
+          : 0u;
+    }
+    if (tile_stats) {
+      (*tile_stats)[kLevel5TileIndex].level56_buffered_time_samples.push_back(
+          std::move(time_sample));
+    }
+    ++state->service_time;
   }
 }
 

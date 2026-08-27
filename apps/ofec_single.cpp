@@ -110,6 +110,10 @@ static constexpr const char* kLevel56ScheduleRoundsPath =
     "data/level56_schedule/ofec_single_level56_schedule_rounds.csv";
 static constexpr const char* kLevel56ScheduleCodesPath =
     "data/level56_schedule/ofec_single_level56_schedule_codes.csv";
+// 5.2 等价性验证：只读逐 code 输入/输出哈希，默认关闭。
+static constexpr bool kDumpLevel56EquivalenceObservation = false;
+static constexpr const char* kLevel56EquivalenceObservationPath =
+    "data/level56_observation/ofec_single_level56_equivalence_observation.csv";
 
 // LLR 导出相关
 static constexpr bool        kDumpQuantizedLlr = false;                         // 是否导出量化后的信道 LLR
@@ -124,7 +128,11 @@ static constexpr const char* kTileEarlyStopGroupBindDebugSamplesPath =
     "data/early_stop_debug/ofec_single_group_bind_debug.csv";                  // group-bind debug CSV 路径
 
 namespace {
-constexpr long BitIndexToRow(long bit_index) { return bit_index / 111 + 352; } // 把 info bit 编号映射回矩阵行号
+// rx_info_from_bit_llr() 会先跳过全部已知前缀；本配置的前缀为
+// 6 tiles × 22 block rows/tile × 16 bit rows/block row = 2112 行。
+// 因而 Post-FEC error position 不是从全局矩阵第 0 行开始，而是从
+// global row 2112 开始编号。此函数仅供关闭状态下的调试 target 映射使用。
+constexpr long BitIndexToRow(long bit_index) { return bit_index / 111 + 2112; }
 constexpr long BitIndexToCol(long bit_index) { return bit_index % 111; }        // 把 info bit 编号映射回矩阵列号
 struct TraceBitSpec {
   long bit_index;
@@ -177,10 +185,30 @@ static constexpr const char* kDecoderTraceCsvDir      = "data/chase_csv"; // Cha
 int main() {
   bool level56_buffered_fifo_enable = kLevel56BufferedFifoEnable;
   std::size_t level56_buffer_rows = kLevel56BufferRows;
+  std::size_t num_info_bits = 0;
+  bool level56_buffered_fifo_drain_at_frame_end = false;
+  unsigned level56_hiso_allowed_class_mask = 0x0fu;
+  int bitgen_seed = kBitgenSeed;
+  int channel_seed = kChannelSeed;
+  int level56_shared_hiso_active = kLevel56SharedHisoActive;
+  int level56_shared_siso_active = kLevel56SharedSisoActive;
+  std::size_t level56_group4_max_entries = 8;
+  auto level56_schedule_mode = kLevel56ScheduleMode;
   float ebn0_db = kEbN0_db;
+  std::vector<float> hybrid_hard_llr_mag_list = kHybridHardLlrMagList;
   std::string run_label = kLabel;
   std::string level56_schedule_rounds_path = kLevel56ScheduleRoundsPath;
   std::string level56_schedule_codes_path = kLevel56ScheduleCodesPath;
+  bool dump_level56_equivalence_observation =
+      kDumpLevel56EquivalenceObservation;
+  std::string level56_equivalence_observation_path =
+      kLevel56EquivalenceObservationPath;
+  bool level56_target_trace_enable = false;
+  std::size_t level56_target_trace_batch =
+      std::numeric_limits<std::size_t>::max();
+  int level56_target_trace_level = -1;
+  int level56_target_trace_code = -1;
+  std::string level56_target_trace_path;
   std::string tile_early_stop_samples_path = kTileEarlyStopSamplesPath;
   std::string tile_early_stop_group_bind_debug_samples_path =
       kTileEarlyStopGroupBindDebugSamplesPath;
@@ -197,6 +225,74 @@ int main() {
     }
     ebn0_db = parsed;
     run_suffix += "_ebn0" + text;
+  }
+
+  if (const char* value = std::getenv("OFEC_NUM_INFO_BITS")) {
+    const std::string text(value);
+    const auto parse_result = std::from_chars(
+        text.data(), text.data() + text.size(), num_info_bits);
+    if (text.empty() || parse_result.ec != std::errc{} ||
+        parse_result.ptr != text.data() + text.size() || num_info_bits == 0) {
+      std::cerr << "[ERROR] OFEC_NUM_INFO_BITS must be a positive integer\n";
+      return 2;
+    }
+    run_suffix += "_nbits" + std::to_string(num_info_bits);
+  }
+
+  // 实验覆盖：逗号分隔、长度必须为 6 的 tile 级 HISO hard-finish 幅度。
+  // 例如 OFEC_HYBRID_HARD_LLR_MAG_LIST=0,0,0,0,30,30。
+  // 未设置时严格保持 kHybridHardLlrMagList 的既有默认配置。
+  if (const char* value = std::getenv("OFEC_HYBRID_HARD_LLR_MAG_LIST")) {
+    const std::string text(value);
+    std::vector<float> parsed;
+    std::size_t begin = 0;
+    while (begin <= text.size()) {
+      const std::size_t end = text.find(',', begin);
+      const std::string token = text.substr(
+          begin, end == std::string::npos ? std::string::npos : end - begin);
+      char* parse_end = nullptr;
+      const float magnitude = std::strtof(token.c_str(), &parse_end);
+      if (token.empty() || parse_end != token.c_str() + token.size() ||
+          !std::isfinite(magnitude)) {
+        std::cerr << "[ERROR] OFEC_HYBRID_HARD_LLR_MAG_LIST must be six "
+                     "finite comma-separated floats\n";
+        return 2;
+      }
+      parsed.push_back(magnitude);
+      if (end == std::string::npos) break;
+      begin = end + 1u;
+    }
+    if (parsed.size() != kHybridHardLlrMagList.size()) {
+      std::cerr << "[ERROR] OFEC_HYBRID_HARD_LLR_MAG_LIST must contain exactly "
+                << kHybridHardLlrMagList.size() << " values\n";
+      return 2;
+    }
+    hybrid_hard_llr_mag_list = std::move(parsed);
+    run_suffix += "_hybridhard" + text;
+  }
+
+  const auto parse_seed = [&](const char* env_name,
+                              int* destination,
+                              const char* suffix_name) -> bool {
+    const char* value = std::getenv(env_name);
+    if (!value) {
+      return true;
+    }
+    const std::string text(value);
+    const auto parse_result = std::from_chars(
+        text.data(), text.data() + text.size(), *destination);
+    if (text.empty() || parse_result.ec != std::errc{} ||
+        parse_result.ptr != text.data() + text.size()) {
+      std::cerr << "[ERROR] " << env_name << " must be an integer\n";
+      return false;
+    }
+    run_suffix += std::string("_") + suffix_name +
+                  std::to_string(*destination);
+    return true;
+  };
+  if (!parse_seed("OFEC_BITGEN_SEED", &bitgen_seed, "bitseed") ||
+      !parse_seed("OFEC_CHANNEL_SEED", &channel_seed, "chseed")) {
+    return 2;
   }
 
   if (const char* value = std::getenv("LEVEL56_BUFFERED_FIFO_ENABLE")) {
@@ -225,6 +321,154 @@ int main() {
     run_suffix += "_rbuf" + std::to_string(level56_buffer_rows);
   }
 
+  if (const char* value = std::getenv("LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END")) {
+    const std::string text(value);
+    if (text == "0") {
+      level56_buffered_fifo_drain_at_frame_end = false;
+    } else if (text == "1") {
+      level56_buffered_fifo_drain_at_frame_end = true;
+    } else {
+      std::cerr << "[ERROR] LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END must be 0 or 1\n";
+      return 2;
+    }
+    run_suffix += level56_buffered_fifo_drain_at_frame_end ? "_drain1" : "_drain0";
+  }
+
+  if (const char* value = std::getenv("LEVEL56_HISO_CLASS_MASK")) {
+    const std::string text(value);
+    const auto parse_result = std::from_chars(
+        text.data(), text.data() + text.size(), level56_hiso_allowed_class_mask,
+        10);
+    if (text.empty() || parse_result.ec != std::errc{} ||
+        parse_result.ptr != text.data() + text.size() ||
+        level56_hiso_allowed_class_mask > 0x0fu) {
+      std::cerr << "[ERROR] LEVEL56_HISO_CLASS_MASK must be an integer in [0,15] "
+                   "(bits: ParityOnly/OneMain/OneMainPlusParity/TwoMain)\\n";
+      return 2;
+    }
+    run_suffix += "_hisomask" + std::to_string(level56_hiso_allowed_class_mask);
+  }
+
+  const auto parse_level56_capacity = [&](const char* env_name,
+                                          int* destination,
+                                          const char* suffix_name) -> bool {
+    const char* value = std::getenv(env_name);
+    if (!value) {
+      return true;
+    }
+    const std::string text(value);
+    const auto parse_result = std::from_chars(
+        text.data(), text.data() + text.size(), *destination);
+    if (text.empty() || parse_result.ec != std::errc{} ||
+        parse_result.ptr != text.data() + text.size() ||
+        *destination < 0 || *destination > 64) {
+      std::cerr << "[ERROR] " << env_name
+                << " must be an integer in [0,64]\n";
+      return false;
+    }
+    run_suffix += std::string("_") + suffix_name +
+                  std::to_string(*destination);
+    return true;
+  };
+  if (!parse_level56_capacity("LEVEL56_SHARED_HISO_ACTIVE",
+                              &level56_shared_hiso_active, "hiso") ||
+      !parse_level56_capacity("LEVEL56_SHARED_SISO_ACTIVE",
+                              &level56_shared_siso_active, "siso")) {
+    return 2;
+  }
+
+  if (const char* value = std::getenv("LEVEL56_GROUP4_MAX_ENTRIES")) {
+    const std::string text(value);
+    const auto parse_result = std::from_chars(
+        text.data(), text.data() + text.size(), level56_group4_max_entries);
+    if (text.empty() || parse_result.ec != std::errc{} ||
+        parse_result.ptr != text.data() + text.size() ||
+        level56_group4_max_entries == 0 || level56_group4_max_entries > 64) {
+      std::cerr << "[ERROR] LEVEL56_GROUP4_MAX_ENTRIES must be an integer in [1,64]\n";
+      return 2;
+    }
+    run_suffix += "_g4entries" + std::to_string(level56_group4_max_entries);
+  }
+
+  if (const char* value = std::getenv("LEVEL56_SCHEDULE_MODE")) {
+    const std::string text(value);
+    if (text == "global") {
+      level56_schedule_mode = newcode::Level56ScheduleMode::GlobalPriority;
+    } else if (text == "group4") {
+      level56_schedule_mode =
+          newcode::Level56ScheduleMode::Group4LoadSortedMultiround;
+    } else {
+      std::cerr << "[ERROR] LEVEL56_SCHEDULE_MODE must be global or group4\n";
+      return 2;
+    }
+    run_suffix += "_sched" + text;
+  }
+
+  if (const char* value = std::getenv("LEVEL56_EQUIVALENCE_OBSERVATION")) {
+    const std::string text(value);
+    if (text == "0") {
+      dump_level56_equivalence_observation = false;
+    } else if (text == "1") {
+      dump_level56_equivalence_observation = true;
+    } else {
+      std::cerr << "[ERROR] LEVEL56_EQUIVALENCE_OBSERVATION must be 0 or 1\n";
+      return 2;
+    }
+    if (dump_level56_equivalence_observation) {
+      run_suffix += "_eqobs1";
+    }
+  }
+
+  if (const char* value = std::getenv("LEVEL56_TARGET_TRACE")) {
+    const std::string text(value);
+    if (text == "0") {
+      level56_target_trace_enable = false;
+    } else if (text == "1") {
+      level56_target_trace_enable = true;
+    } else {
+      std::cerr << "[ERROR] LEVEL56_TARGET_TRACE must be 0 or 1, got ["
+                << text << "]\n";
+      return 2;
+    }
+  }
+  const auto parse_target_trace_number = [&](const char* env_name,
+                                             auto* destination) -> bool {
+    const char* value = std::getenv(env_name);
+    if (!value) return true;
+    const std::string text(value);
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(),
+                                        *destination);
+    if (text.empty() || parsed.ec != std::errc{} ||
+        parsed.ptr != text.data() + text.size()) {
+      std::cerr << "[ERROR] " << env_name << " must be an integer, got ["
+                << text << "]\n";
+      return false;
+    }
+    return true;
+  };
+  if (!parse_target_trace_number("LEVEL56_TRACE_BATCH",
+                                 &level56_target_trace_batch) ||
+      !parse_target_trace_number("LEVEL56_TRACE_LEVEL",
+                                 &level56_target_trace_level) ||
+      !parse_target_trace_number("LEVEL56_TRACE_CODE",
+                                 &level56_target_trace_code)) {
+    return 2;
+  }
+  if (level56_target_trace_enable) {
+    if (level56_target_trace_batch ==
+            std::numeric_limits<std::size_t>::max() ||
+        (level56_target_trace_level != 5 && level56_target_trace_level != 6) ||
+        level56_target_trace_code < 1 || level56_target_trace_code > 64) {
+      std::cerr << "[ERROR] LEVEL56_TARGET_TRACE=1 requires "
+                   "LEVEL56_TRACE_BATCH, LEVEL56_TRACE_LEVEL=5|6, and "
+                   "LEVEL56_TRACE_CODE=1..64\n";
+      return 2;
+    }
+    run_suffix += "_traceB" + std::to_string(level56_target_trace_batch) +
+                  "L" + std::to_string(level56_target_trace_level) +
+                  "C" + std::to_string(level56_target_trace_code);
+  }
+
   if (!run_suffix.empty()) {
     run_label += run_suffix;
     level56_schedule_rounds_path =
@@ -233,6 +477,14 @@ int main() {
     level56_schedule_codes_path =
         "data/level56_schedule/ofec_single" + run_suffix +
         "_level56_schedule_codes.csv";
+    level56_equivalence_observation_path =
+        "data/level56_observation/ofec_single" + run_suffix +
+        "_level56_equivalence_observation.csv";
+    if (level56_target_trace_enable) {
+      level56_target_trace_path =
+          "data/level56_target_trace/ofec_single" + run_suffix +
+          "_level56_target_trace.txt";
+    }
     tile_early_stop_samples_path =
         "data/early_stop_hist/ofec_single" + run_suffix +
         "_tile_early_stop_samples.csv";
@@ -252,8 +504,9 @@ int main() {
     .chase_group_minima_bits = kChaseGroupMinimaBits,
     .normalize_extrinsic = kNormalizeExtrinsic,
     .bits_per_symbol = kBitsPerSymbol,
-    .bitgen_seed = kBitgenSeed,
-    .channel_seed = kChannelSeed,
+    .bitgen_seed = bitgen_seed,
+    .num_info_bits = num_info_bits,
+    .channel_seed = channel_seed,
     .enable_early_stop = kEnableEarlyStop,
     .early_stop_enable_list = kEarlyStopEnableList,
     .early_stop_condition_mode = kEarlyStopConditionMode,
@@ -282,7 +535,7 @@ int main() {
     .hybrid_enable = kHybridEnable,
     .hybrid_enable_list = kHybridEnableList,
     .hybrid_hard_llr_mag = kHybridHardLlrMag,
-    .hybrid_hard_llr_mag_list = kHybridHardLlrMagList,
+    .hybrid_hard_llr_mag_list = hybrid_hard_llr_mag_list,
     .hybrid_classifier_mode = kHybridClassifierMode,
     .hybrid_siso_backfill_mode = kHybridSisoBackfillMode,
     .hybrid_normalize_soft_only = kHybridNormalizeSoftOnly,
@@ -291,10 +544,14 @@ int main() {
     .level56_temporal_group_load_threshold = kLevel56TemporalGroupLoadThreshold,
     .level56_buffered_fifo_enable = level56_buffered_fifo_enable,
     .level56_buffer_rows = level56_buffer_rows,
-    .level56_shared_hiso_active = kLevel56SharedHisoActive,
-    .level56_shared_siso_active = kLevel56SharedSisoActive,
+    .level56_buffered_fifo_drain_at_frame_end =
+        level56_buffered_fifo_drain_at_frame_end,
+    .level56_hiso_allowed_class_mask = level56_hiso_allowed_class_mask,
+    .level56_shared_hiso_active = level56_shared_hiso_active,
+    .level56_shared_siso_active = level56_shared_siso_active,
+    .level56_group4_max_entries = level56_group4_max_entries,
     .level56_priority_mode = kLevel56PriorityMode,
-    .level56_schedule_mode = kLevel56ScheduleMode,
+    .level56_schedule_mode = level56_schedule_mode,
     .level56_early_stop_group_update_mode = kLevel56EarlyStopGroupUpdateMode,
     .level56_single_level_select_enable = kLevel56SingleLevelSelectEnable,
     .level56_unselected_early_stop_action_enable =
@@ -302,6 +559,15 @@ int main() {
     .dump_level56_schedule_stats = kDumpLevel56ScheduleStats,
     .level56_schedule_rounds_output_path = level56_schedule_rounds_path,
     .level56_schedule_codes_output_path = level56_schedule_codes_path,
+    .dump_level56_equivalence_observation =
+        dump_level56_equivalence_observation,
+    .level56_equivalence_observation_output_path =
+        level56_equivalence_observation_path,
+    .level56_target_trace_enable = level56_target_trace_enable,
+    .level56_target_trace_batch = level56_target_trace_batch,
+    .level56_target_trace_level = level56_target_trace_level,
+    .level56_target_trace_code = level56_target_trace_code,
+    .level56_target_trace_output_path = level56_target_trace_path,
     .interleaver_name = kInterleaverName,
     .decoder_name = kDecoderName,
     .generate_random_bits = kGenerateRandomBits,

@@ -12,6 +12,22 @@ std::optional<newcode::Params> build_params(const Config& cfg,
                                             io::DualWriter& log) {
   newcode::Params params;
   params.BITGEN_SEED = cfg.bitgen_seed;
+  if (cfg.num_info_bits != 0) {
+    constexpr std::size_t kInfoBitsPerCodeRow =
+        newcode::Params::BCH_K -
+        newcode::Params::NUM_SUBBLOCK_COLS *
+            newcode::Params::BITS_PER_SUBBLOCK_DIM;
+    constexpr std::size_t kInputRectRows =
+        2u * newcode::Params::BITS_PER_SUBBLOCK_DIM;
+    constexpr std::size_t kInputRectBits =
+        kInputRectRows * kInfoBitsPerCodeRow;
+    if (cfg.num_info_bits % kInputRectBits != 0) {
+      log << "[ERROR] num_info_bits 必须是 " << kInputRectBits
+          << " 的整数倍，以满足 oFEC 编码输入矩形对齐\n";
+      return std::nullopt;
+    }
+    params.NUM_INFO_BITS = cfg.num_info_bits;
+  }
   params.CHANNEL_SEED = cfg.channel_seed;
   params.BITGEN_RANDOM_BITS = cfg.generate_random_bits;
   params.NORMALIZE_KNOWN_PREFIX_TAIL = cfg.normalize_known_prefix_tail;
@@ -218,14 +234,27 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.LEVEL56_BUFFERED_FIFO_ENABLE =
       cfg.level56_buffered_fifo_enable;
   params.LEVEL56_BUFFER_ROWS = cfg.level56_buffer_rows;
+  params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END =
+      cfg.level56_buffered_fifo_drain_at_frame_end;
+  params.LEVEL56_HISO_ALLOWED_CLASS_MASK =
+      cfg.level56_hiso_allowed_class_mask;
   params.LEVEL56_SHARED_HISO_ACTIVE = cfg.level56_shared_hiso_active;
   params.LEVEL56_SHARED_SISO_ACTIVE = cfg.level56_shared_siso_active;
+  params.LEVEL56_GROUP4_MAX_ENTRIES = cfg.level56_group4_max_entries;
   params.LEVEL56_PRIORITY_MODE = cfg.level56_priority_mode;
   params.LEVEL56_SCHEDULE_MODE = cfg.level56_schedule_mode;
   params.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
       cfg.level56_early_stop_group_update_mode;
   params.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE =
       cfg.dump_level56_schedule_stats;
+  params.LEVEL56_EQUIVALENCE_OBSERVATION_ENABLE =
+      cfg.dump_level56_equivalence_observation;
+  params.LEVEL56_TARGET_TRACE_ENABLE = cfg.level56_target_trace_enable;
+  params.LEVEL56_TARGET_TRACE_BATCH = cfg.level56_target_trace_batch;
+  params.LEVEL56_TARGET_TRACE_LEVEL = cfg.level56_target_trace_level;
+  params.LEVEL56_TARGET_TRACE_CODE = cfg.level56_target_trace_code;
+  params.LEVEL56_TARGET_TRACE_OUTPUT_PATH =
+      cfg.level56_target_trace_output_path;
   params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE =
       cfg.level56_single_level_select_enable;
   params.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE =
@@ -235,6 +264,27 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       params.LEVEL56_SHARED_SISO_ACTIVE < 0 ||
       params.LEVEL56_SHARED_SISO_ACTIVE > 64) {
     log << "[ERROR] LEVEL56 shared HISO/SISO 容量必须在 [0,64]\n";
+    return std::nullopt;
+  }
+  if (params.LEVEL56_HISO_ALLOWED_CLASS_MASK > 0x0fu) {
+    log << "[ERROR] LEVEL56 HISO 类别准入掩码必须在 [0,15]\\n";
+    return std::nullopt;
+  }
+  if (params.LEVEL56_TARGET_TRACE_ENABLE &&
+      (params.LEVEL56_TARGET_TRACE_BATCH ==
+           std::numeric_limits<std::size_t>::max() ||
+       (params.LEVEL56_TARGET_TRACE_LEVEL != 5 &&
+        params.LEVEL56_TARGET_TRACE_LEVEL != 6) ||
+       params.LEVEL56_TARGET_TRACE_CODE < 1 ||
+       params.LEVEL56_TARGET_TRACE_CODE > 64 ||
+       params.LEVEL56_TARGET_TRACE_OUTPUT_PATH.empty())) {
+    log << "[ERROR] Level56 target trace requires batch, level (5/6), code "
+           "(1..64), and output path\\n";
+    return std::nullopt;
+  }
+  if (params.LEVEL56_GROUP4_MAX_ENTRIES == 0 ||
+      params.LEVEL56_GROUP4_MAX_ENTRIES > 64) {
+    log << "[ERROR] LEVEL56 Group4 entry 数必须在 [1,64]\n";
     return std::nullopt;
   }
   if (params.LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD < 0 ||
@@ -253,9 +303,16 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       log << "[ERROR] LEVEL56 分组多轮调度要求开启第五/六级共享\n";
       return std::nullopt;
     }
-    if (params.LEVEL56_SHARED_HISO_ACTIVE != 8 ||
-        params.LEVEL56_SHARED_SISO_ACTIVE != 8) {
-      log << "[ERROR] LEVEL56 分组多轮调度要求 HISO/SISO 容量为 8/8\n";
+    const int grouped_capacity =
+        static_cast<int>(params.LEVEL56_GROUP4_MAX_ENTRIES);
+    const bool grouped_siso_only = params.LEVEL56_SHARED_HISO_ACTIVE == 0 &&
+                                   params.LEVEL56_SHARED_SISO_ACTIVE ==
+                                       grouped_capacity;
+    if (!grouped_siso_only &&
+        (params.LEVEL56_SHARED_HISO_ACTIVE != grouped_capacity ||
+         params.LEVEL56_SHARED_SISO_ACTIVE != grouped_capacity)) {
+      log << "[ERROR] LEVEL56 分组多轮调度要求 HISO/SISO 容量等于 "
+             "Group4 entry 数，或显式 SISO-only 的 0/entry 数\n";
       return std::nullopt;
     }
     if (params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE) {

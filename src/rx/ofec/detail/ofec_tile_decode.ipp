@@ -404,7 +404,8 @@ void execute_hybrid_hard_class(
     HybridRowClass hard_class,
     const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
     const newcode::Params& p,
-    std::array<float, newcode::Params::BCH_N>* y2) {
+    std::array<float, newcode::Params::BCH_N>* y2,
+    std::array<uint8_t, newcode::Params::BCH_N>* corrected_cw_out = nullptr) {
   auto cw = hard_decision_bits_256(lin_vec);
 
   switch (hard_class) {
@@ -447,6 +448,10 @@ void execute_hybrid_hard_class(
 
   if (!hard_word_valid_256(cw)) {
     throw std::runtime_error("corrected hard word is not a valid BCH+overall codeword");
+  }
+  // 仅供只读 trace 取回 BCH/overall 合法的硬纠码字；不参与后续执行。
+  if (corrected_cw_out) {
+    *corrected_cw_out = cw;
   }
   materialize_hard_finish_lout(cw, lin_vec, p, y2);
 }

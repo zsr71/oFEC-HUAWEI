@@ -84,6 +84,26 @@ struct Level56ScheduleCodeSample {
   bool pending = false;
   bool forced_evicted = false;
   bool writeback_complete = false;
+  // 以下字段仅在 LEVEL56_EQUIVALENCE_OBSERVATION_ENABLE 时填写。
+  // 哈希均是对实际数值的 deterministic FNV-1a-64 指纹，0 表示未采集。
+  uint64_t channel_input_hash = 0;
+  uint64_t decoder_input_hash = 0;
+  uint64_t decoder_output_hash = 0;
+  uint64_t tile_row_hash_after_writeback = 0;
+  uint64_t level6_history_hash_after_writeback = 0;
+  bool decoder_output_available = false;
+  bool level6_history_available = false;
+  // 仅在 LEVEL56_EQUIVALENCE_OBSERVATION_ENABLE 时对实际 HISO 动作填写。
+  // 基于同一输入、同一 hard-class 的只读 BCH/overall 重放；不参与调度、
+  // 真实硬译码、写回或 BER 统计。
+  bool hiso_hard_word_observation_available = false;
+  std::size_t hiso_lin_hard_bit_errors_vs_expected = 0;
+  std::size_t hiso_corrected_hard_bit_errors_vs_expected = 0;
+  // 只对“BCH/HISO 硬输出仍不同于真实发送 word”的 HISO code 填写。
+  // 前者是 256-bit BCH word 内的位置；后者是其中能映射到最终
+  // rx_info_from_bit_llr() 信息位流的全局 bit index。二者均为只读观测。
+  std::vector<std::size_t> hiso_corrected_hard_error_positions;
+  std::vector<std::size_t> hiso_corrected_error_info_positions;
 };
 
 struct Level56BufferedRetirementSample {
@@ -143,6 +163,10 @@ struct Level56ScheduleSample {
   std::vector<Level56ScheduleRoundSample> rounds;
   std::array<std::size_t, 16> group_entry_counts{};
   std::size_t total_group_entries = 0;
+  // Capacity of one HISO/SISO lane for this scheduling invocation.  It is
+  // normally the hardware Group4 width (8), but software-only immediate
+  // reference runs may deliberately use up to 32 entries.
+  std::size_t entry_capacity = 8;
   std::size_t planned_hiso_count = 0;
   std::size_t planned_siso_count = 0;
   std::vector<Level56ScheduleCodeSample> codes;

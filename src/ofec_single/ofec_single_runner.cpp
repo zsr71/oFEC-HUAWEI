@@ -268,8 +268,12 @@ void dump_level56_schedule_rounds_csv(
           << sample.total_group_entries << ','
           << sample.planned_hiso_count << ','
           << sample.planned_siso_count << ','
-          << (8u - sample.planned_hiso_count) << ','
-          << (8u - sample.planned_siso_count) << '\n';
+          << (sample.entry_capacity >= sample.planned_hiso_count
+                  ? sample.entry_capacity - sample.planned_hiso_count
+                  : 0u) << ','
+          << (sample.entry_capacity >= sample.planned_siso_count
+                  ? sample.entry_capacity - sample.planned_siso_count
+                  : 0u) << '\n';
     };
     if (sample.rounds.empty()) {
       const std::vector<std::size_t> no_groups;
@@ -341,6 +345,74 @@ void dump_level56_schedule_codes_csv(
           << code.produced << ',' << code.already_decoded << ','
           << code.pending << ',' << code.forced_evicted << ','
           << code.writeback_complete << '\n';
+    }
+  }
+}
+
+void dump_level56_equivalence_observation_csv(
+    const std::vector<newcode::Level56ScheduleSample>& samples,
+    const std::filesystem::path& output_path,
+    const std::string& run_id,
+    const std::string& label,
+    const std::vector<std::size_t>& post_fec_error_positions) {
+  const auto parent = output_path.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent);
+  }
+  std::ofstream out(output_path);
+  out << "run_id,label,invocation,buffered_fifo_enabled,buffered_t,"
+         "buffered_batch,code,source_level,source_local_row,source_global_row,"
+         "early_stop_hit,hybrid_class,resource_eligibility,final_action,"
+         "planned_hiso,planned_siso,assigned_entry_slot,assigned_core,"
+         "produced,already_decoded,pending,forced_evicted,writeback_complete,"
+         "channel_input_hash,decoder_input_hash,decoder_output_available,"
+         "decoder_output_hash,tile_row_hash_after_writeback,"
+         "level6_history_available,level6_history_hash_after_writeback,"
+         "hiso_hard_word_observation_available,"
+         "hiso_lin_hard_bit_errors_vs_expected,"
+         "hiso_corrected_hard_bit_errors_vs_expected,"
+         "hiso_corrected_hard_error_positions,"
+         "hiso_corrected_error_info_positions,"
+         "hiso_error_info_positions_in_final_post_fec_count\n";
+  for (const auto& sample : samples) {
+    for (const auto& code : sample.codes) {
+      std::size_t final_overlap = 0;
+      for (const auto position : code.hiso_corrected_error_info_positions) {
+        if (std::binary_search(post_fec_error_positions.begin(),
+                               post_fec_error_positions.end(), position)) {
+          ++final_overlap;
+        }
+      }
+      out << run_id << ',' << label << ',' << sample.invocation << ','
+          << sample.buffered_fifo_enabled << ',';
+      if (sample.buffered_fifo_enabled) {
+        out << sample.buffered_service_time << ",B"
+            << sample.buffered_batch_id;
+      } else {
+        out << ',';
+      }
+      out << ',' << (code.code_index + 1u) << ',' << code.source_level << ','
+          << (code.source_local_row + 1u) << ',' << code.source_global_row
+          << ',' << code.early_stop_hit << ','
+          << level56_hybrid_class_name(code.hybrid_class) << ','
+          << level56_eligibility_name(code.resource_eligibility) << ','
+          << level56_action_name(code.final_action) << ','
+          << code.planned_hiso << ',' << code.planned_siso << ','
+          << code.assigned_entry_slot << ',' << code.assigned_core << ','
+          << code.produced << ',' << code.already_decoded << ','
+          << code.pending << ',' << code.forced_evicted << ','
+          << code.writeback_complete << ',' << code.channel_input_hash << ','
+          << code.decoder_input_hash << ',' << code.decoder_output_available
+          << ',' << code.decoder_output_hash << ','
+          << code.tile_row_hash_after_writeback << ','
+          << code.level6_history_available << ','
+          << code.level6_history_hash_after_writeback << ','
+          << code.hiso_hard_word_observation_available << ','
+          << code.hiso_lin_hard_bit_errors_vs_expected << ','
+          << code.hiso_corrected_hard_bit_errors_vs_expected << ','
+          << join_numbers(code.hiso_corrected_hard_error_positions) << ','
+          << join_numbers(code.hiso_corrected_error_info_positions) << ','
+          << final_overlap << '\n';
     }
   }
 }
@@ -649,6 +721,19 @@ int run_ofec_single(const Config& config) {
         << codes_path.string() << "\n";
     log << "[INFO] Level56 buffered times saved to "
         << buffered_times_path.string() << "\n";
+  }
+  if (config.dump_level56_equivalence_observation) {
+    std::filesystem::path output_path =
+        config.level56_equivalence_observation_output_path;
+    if (output_path.empty()) {
+      output_path = std::filesystem::path("data/level56_observation") /
+                    (config.label + "_level56_equivalence_observation.csv");
+    }
+    dump_level56_equivalence_observation_csv(
+        result.level56_schedule_samples, output_path, run_id, config.label,
+        result.post_fec_error_positions);
+    log << "[INFO] Level56 equivalence observation saved to "
+        << output_path.string() << "\n";
   }
   detail::log_pipeline_results(result, log);
   log << "[INFO] log saved at " << log_path << "\n";

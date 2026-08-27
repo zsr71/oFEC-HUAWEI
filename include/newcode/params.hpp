@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <cstddef>
+#include <limits>
 #include <vector>
 #include <string>
 #include <memory>
@@ -146,13 +147,37 @@ struct Params {
   bool LEVEL56_BUFFERED_FIFO_ENABLE = false;
   // 连续 SRAM 中位于 44-row Level 5/6 解码区之前的可调 buffer 行数。
   size_t LEVEL56_BUFFER_ROWS = 32;
+  // 仿真验证选项：帧内最后一次正常到达后，继续服务已进入 Level 5/6
+  // FIFO 的 batch，直到队列清空。默认关闭，以保持固定吞吐的在线路径；
+  // 开启后不再引入新 batch，也不执行 Level 1--4，只用于获得“全帧已完成”
+  // 的最终 BER。
+  bool LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END = false;
+  // HISO 类别准入掩码，用于受控消融。bit 0..3 分别对应
+  // ParityOnly / OneMain / OneMainPlusParity / TwoMain。默认 0x0f 保持
+  // 原有“这四类均可走 HISO”的行为；未获准的非 EarlyStop code 仍是
+  // SISO/pending 候选，绝不视为已完成。
+  unsigned LEVEL56_HISO_ALLOWED_CLASS_MASK = 0x0fu;
   int LEVEL56_SHARED_HISO_ACTIVE = 32;
   int LEVEL56_SHARED_SISO_ACTIVE = 32;
+  // Group4 一次 shared 调用可使用的 group-entry 数。正常硬件/FIFO 路径固定
+  // 为 8；大于 8 仅用于“Group4 选路保持不变”的软件充足资源参考。
+  std::size_t LEVEL56_GROUP4_MAX_ENTRIES = 8;
   Level56PriorityMode LEVEL56_PRIORITY_MODE =
       Level56PriorityMode::Level5First;
   Level56ScheduleMode LEVEL56_SCHEDULE_MODE =
       Level56ScheduleMode::GlobalPriority;
   bool LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE = false;
+  // 5.2 等价性验证用的只读逐 code 观测。打开后记录 Level 5/6
+  // shared 调用的输入/输出哈希；该开关不参与任何调度或译码决策。
+  bool LEVEL56_EQUIVALENCE_OBSERVATION_ENABLE = false;
+  // 第三步因果定位用的定点只读追踪。仅当 batch/level/code 三元组
+  // 精确匹配时导出完整向量和写回映射；绝不参与调度、译码或写回决策。
+  bool LEVEL56_TARGET_TRACE_ENABLE = false;
+  std::size_t LEVEL56_TARGET_TRACE_BATCH =
+      std::numeric_limits<std::size_t>::max();
+  int LEVEL56_TARGET_TRACE_LEVEL = -1;  // 5 或 6
+  int LEVEL56_TARGET_TRACE_CODE = -1;   // batch 内 1-based，范围 1..64
+  std::string LEVEL56_TARGET_TRACE_OUTPUT_PATH;
   // Group4 多轮调度中，哪些组允许执行 early-stop 动作。
   Level56EarlyStopGroupUpdateMode LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
       Level56EarlyStopGroupUpdateMode::AllGroups;
@@ -248,6 +273,7 @@ struct Params {
            (LEVEL56_SHARED_HISO_ACTIVE <= 64) &&
            (LEVEL56_SHARED_SISO_ACTIVE >= 0) &&
            (LEVEL56_SHARED_SISO_ACTIVE <= 64) &&
+           (LEVEL56_HISO_ALLOWED_CLASS_MASK <= 0x0fu) &&
            (LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD >= 0) &&
            (LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD <= 48) &&
            (CHASE_SBR == 1 || CHASE_SBR == 2);

@@ -197,9 +197,15 @@ void log_run_overview(const Config& cfg,
       << ", buffered_fifo = "
       << (params.LEVEL56_BUFFERED_FIFO_ENABLE ? "ON" : "OFF")
       << ", buffer_rows = " << params.LEVEL56_BUFFER_ROWS
+      << ", drain_at_frame_end = "
+      << (params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END ? "ON" : "OFF")
+      << ", hiso_class_mask = 0x" << std::hex
+      << params.LEVEL56_HISO_ALLOWED_CLASS_MASK << std::dec
       << ", HISO/SISO = "
       << params.LEVEL56_SHARED_HISO_ACTIVE << "/"
       << params.LEVEL56_SHARED_SISO_ACTIVE
+      << ", group4_max_entries = "
+      << params.LEVEL56_GROUP4_MAX_ENTRIES
       << ", priority_mode = "
       << static_cast<int>(params.LEVEL56_PRIORITY_MODE)
       << ", schedule_mode = "
@@ -213,6 +219,8 @@ void log_run_overview(const Config& cfg,
       << (params.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE ? "ON" : "OFF")
       << ", schedule_observability = "
       << (params.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE ? "ON" : "OFF")
+      << ", equivalence_observation = "
+      << (params.LEVEL56_EQUIVALENCE_OBSERVATION_ENABLE ? "ON" : "OFF")
       << "\n";
   log << "[INFO] Dump quantized LLR = "
       << (cfg.dump_quantized_llr ? "ON" : "OFF");
