@@ -1,5 +1,5 @@
-# CMake build outputs
-/build/
+# CMake build outputs (including per-worktree build directories)
+/build*/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
