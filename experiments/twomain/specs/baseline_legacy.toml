@@ -1,0 +1,81 @@
+schema_version = 1
+
+[identity]
+experiment_id = "baseline_legacy"
+scheme_id = "TM-A0"
+name = "原始全类别HISO基线"
+purpose = "冻结当前TwoMain策略修改前的完整长帧行为"
+
+[channel]
+ebn0_db = 3.065
+bitgen_seed = 20260319
+channel_seed = 3182026
+generate_random_bits = true
+bits_per_symbol = 1
+
+[frame]
+num_info_bits = 60014592
+ber_skip_prefix_windows = 4
+ber_skip_suffix_windows = 2
+
+[decoder]
+name = "chase_baseline"
+chase_l = 6
+chase_n_test = 64
+chase_topk_keep = 24
+llr_bits = 6
+quant_clip_ratio = 0.5
+normalize_extrinsic = false
+normalize_known_prefix_tail = false
+
+[early_stop]
+enabled = true
+per_tile_enabled = [1, 1, 1, 1, 1, 1]
+condition_mode = 1
+action_mode = 7
+bind_group_size = 1
+condition_v1_require_bch = true
+condition_v1_require_overall = true
+action_beta = [99.857143, 99.179301, 99.253626, 99.119585, 99.0, 99.0]
+
+[level56]
+shared_enabled = true
+temporal_lookahead_enabled = false
+buffered_fifo_enabled = true
+buffer_rows = 16000
+drain_at_frame_end = true
+hiso_active = 8
+siso_active = 8
+group4_max_entries = 8
+schedule_mode = "group4"
+priority_mode = "level5_first"
+early_stop_group_update_mode = "all_groups"
+unselected_early_stop_action_enabled = true
+
+[twomain]
+admission_policy = "always_allow"
+output_policy = "legacy_fixed"
+hiso_class_mask = 15
+hybrid_hard_llr_mag_per_tile = [0.0, 0.0, 0.0, 0.0, 99.0, 99.0]
+
+[outputs]
+schedule_stats = true
+equivalence_observation = false
+target_trace = false
+post_fec_error_positions = true
+
+[expected]
+post_fec_errors = 159
+post_fec_total = 58608000
+post_fec_positions_sha256 = "4bb119ad038c04489378523d0108292a93a3e5171f861d03c4f52e7e6d3796a7"
+forced_evicted = 0
+completed_batches = 16897
+max_fifo_depth = 1888
+level5_actions = [420184, 31506, 89014, 73024]
+level6_actions = [534530, 702, 5472, 73024]
+entry_hiso_siso_idle_totals = [94486, 32208, 94486, 121224, 58946]
+class_parityonly_actions = [318, 464, 202]
+class_onemain_actions = [28999, 74681, 26150]
+class_onemainplusparity_actions = [40, 186, 98]
+class_twomain_actions = [2851, 13576, 8704]
+class_hardfail_actions = [0, 5579, 5270]

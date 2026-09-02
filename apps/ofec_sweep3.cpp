@@ -59,7 +59,7 @@ static constexpr bool kNormalizeKnownPrefixTail = false;            // 是否对
 static const std::vector<int> kChaseLCandidates = {6};              // Chase L 扫描候选
 static constexpr int kChaseNTest = 64;                              // 默认 Chase NTEST；若不单独扫则等于实际使用值
 static const std::vector<int> kChaseNTestCandidates = {};           // Chase NTEST 扫描候选；空表示不单独扫描
-static constexpr int kChaseTopkKeep = 8;                            // top-k/pruned decoder 保留候选数
+static constexpr int kChaseTopkKeep = 24;                           // 与阶段三冻结基线一致；chase_baseline 下仅作为公共参数留档
 static const std::vector<int> kChaseTopkKeepCandidates = {};        // top-k 保留数扫描候选
 static constexpr int kChaseGroupMinimaBits = 4;                     // group-minima decoder 的分组 bit 数
 static const std::vector<int> kChaseGroupMinimaBitsCandidates = {4}; // group-minima 分组 bit 数扫描候选
@@ -86,14 +86,71 @@ static constexpr newcode::HybridSisoBackfillMode kHybridSisoBackfillMode =
     newcode::HybridSisoBackfillMode::ParityOneAndTwoErrorPriority;  // Disabled / TwoErrorOnly / OneAndTwoErrorPriority / ParityOneAndTwoErrorPriority
 static constexpr bool kHybridNormalizeSoftOnly = false;             // true=只归一化 soft rows，false=保持兼容行为
 
+// 阶段三 TwoMain 策略预设。一次进程只选择其中一种策略，并只展开
+// Eb/N0 维度；三种策略分别启动三次，避免在同一任务中混合算法配置。
+struct TwoMainSweepPolicy {
+  const char* label;
+  newcode::TwoMainHisoOutputMode output_mode;
+  float m2;
+  float rho_corr;
+  float rho_keep;
+  unsigned hiso_class_mask;
+};
+
+enum class TwoMainSweepSelection {
+  Legacy,
+  Scheme1NoTwoMainHiso,
+  Scheme6AM2_48,
+};
+
+static constexpr TwoMainSweepSelection kDefaultTwoMainSweepSelection =
+    TwoMainSweepSelection::Legacy;
+
+constexpr TwoMainSweepPolicy selected_twomain_policy(
+    TwoMainSweepSelection selection) {
+  switch (selection) {
+    case TwoMainSweepSelection::Legacy:
+      return {"legacy", newcode::TwoMainHisoOutputMode::Legacy,
+              99.0f, 1.0f, 1.0f, 0x0fu};
+    case TwoMainSweepSelection::Scheme1NoTwoMainHiso:
+      return {"scheme1_no_twomain_hiso",
+              newcode::TwoMainHisoOutputMode::Legacy,
+              99.0f, 1.0f, 1.0f, 0x07u};
+    case TwoMainSweepSelection::Scheme6AM2_48:
+      return {"scheme6a_m2_48",
+              newcode::TwoMainHisoOutputMode::UnifiedParameterized,
+              48.0f, 1.0f, 1.0f, 0x0fu};
+  }
+  return {"legacy", newcode::TwoMainHisoOutputMode::Legacy,
+          99.0f, 1.0f, 1.0f, 0x0fu};
+}
+
+TwoMainSweepSelection parse_twomain_policy_selection(
+    const std::string& value) {
+  if (value == "legacy") {
+    return TwoMainSweepSelection::Legacy;
+  }
+  if (value == "scheme1_no_twomain_hiso") {
+    return TwoMainSweepSelection::Scheme1NoTwoMainHiso;
+  }
+  if (value == "scheme6a_m2_48") {
+    return TwoMainSweepSelection::Scheme6AM2_48;
+  }
+  throw std::invalid_argument(
+      "unknown TwoMain policy '" + value +
+      "'; expected legacy, scheme1_no_twomain_hiso, or scheme6a_m2_48");
+}
+
 // Level 5/6 共享：四行分组、负载排序与多轮 MUX 调度
 static constexpr bool kLevel56SharedEnable = true;                  // true=第五/六级共享 HISO/SISO
 static constexpr bool kLevel56TemporalLookaheadEnable = false;      // 旧三时刻 lookahead；与 buffered FIFO 互斥
 static constexpr int kLevel56TemporalGroupLoadThreshold = 16;       // temporal 分支阈值：X+K1+K2 小于该值时补解 t=0
 static constexpr bool kLevel56BufferedFifoEnable = true;            // 新方案：完整 64-code batch FIFO
-static constexpr std::size_t kLevel56BufferRows = 32;               // R_buf，单位为 block row
+static constexpr std::size_t kLevel56BufferRows = 16000;            // 阶段三参考条件：足够长的 R_buf，用于隔离 TwoMain 动作
+static constexpr bool kLevel56DrainAtFrameEnd = true;               // 每个 Monte Carlo chunk 末尾排空 FIFO
 static constexpr int kLevel56SharedHisoActive = 8;                  // 新分组方案固定使用 8 个共享 HISO entry slot
 static constexpr int kLevel56SharedSisoActive = 8;                  // 新分组方案固定使用 8 个共享 SISO entry slot
+static constexpr std::size_t kLevel56Group4MaxEntries = 8;          // 与阶段三冻结基线一致
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
     newcode::Level56PriorityMode::Level5First; // Level5First=组负载相同时 Level 5 优先；Level6First=Level 6 优先
 static constexpr newcode::Level56ScheduleMode kLevel56ScheduleMode =
@@ -102,7 +159,10 @@ static constexpr newcode::Level56EarlyStopGroupUpdateMode
     kLevel56EarlyStopGroupUpdateMode =
         newcode::Level56EarlyStopGroupUpdateMode::AllGroups; // temporal 方案固定使用 AllGroups
 static constexpr bool kLevel56SingleLevelSelectEnable = false; // 新分组多轮模式必须关闭；true=按 early-stop 命中数动态只解一级
-static constexpr bool kLevel56UnselectedEarlyStopActionEnable = false; // 仅 single-level selection 开启时有效
+static constexpr bool kLevel56UnselectedEarlyStopActionEnable = true; // 与阶段三冻结基线一致；single-level selection 关闭时不改变动作
+// 只读观测：用于在服务器扫描结果中同时核查 FIFO 闭环和 TwoMain 动作。
+// 不参与分类、调度、译码或写回决策。
+static constexpr bool kLevel56ScheduleObservabilityEnable = true;
 
 // 早停参数：总开关 -> 条件 -> 条件细参 -> 动作 -> 动作细参
 static constexpr bool kEnableEarlyStop = true;                      // 早停总开关
@@ -171,6 +231,12 @@ struct AggregatedPointResult {
   double post_ber_upper_bound = std::numeric_limits<double>::quiet_NaN();
   StopReason stop_reason = StopReason::NoData;
   double elapsed_seconds = 0.0;
+  std::size_t level56_completed_batches = 0;
+  std::size_t level56_forced_evicted_batches = 0;
+  std::size_t level56_max_fifo_depth = 0;
+  std::size_t twomain_hiso_actions = 0;
+  std::size_t twomain_siso_actions = 0;
+  std::size_t twomain_pending_actions = 0;
 };
 
 struct PointState {
@@ -259,6 +325,17 @@ const char* hybrid_siso_backfill_mode_name(newcode::HybridSisoBackfillMode mode)
   return "unknown";
 }
 
+const char* twomain_hiso_output_mode_name(
+    newcode::TwoMainHisoOutputMode mode) {
+  switch (mode) {
+    case newcode::TwoMainHisoOutputMode::Legacy:
+      return "legacy";
+    case newcode::TwoMainHisoOutputMode::UnifiedParameterized:
+      return "unified_parameterized";
+  }
+  return "unknown";
+}
+
 std::string format_duration(std::chrono::duration<double> duration) {
   if (duration.count() < 0.0) {
     duration = std::chrono::duration<double>(0.0);
@@ -297,12 +374,14 @@ void ensure_csv_header_sweep3(const std::string& csv_path) {
           "pre_ber,pre_errs,pre_total,post_ber,post_errs,post_total,"
           "chunk_num_info_bits,chunks_completed,target_post_errors,max_post_fec_total_bits,"
           "confidence_level,post_ber_is_upper_bound,post_ber_upper_bound,stop_reason,elapsed_seconds,"
+          "level56_completed_batches,level56_forced_evicted_batches,level56_max_fifo_depth,twomain_hiso_actions,twomain_siso_actions,twomain_pending_actions,"
           "bitgen_seed_base,channel_seed_base,"
           "alpha_list,beta_list,early_stop_beta_list,"
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
           "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_bypass_scheme,"
           "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_siso_backfill_mode,hybrid_normalize_soft_only,"
-          "level56_shared_enable,level56_temporal_lookahead_enable,level56_buffered_fifo_enable,level56_buffer_rows,level56_shared_hiso_active,level56_shared_siso_active,level56_priority_mode,level56_schedule_mode,level56_early_stop_group_update_mode,"
+          "twomain_policy,twomain_hiso_output_mode,twomain_hiso_m2,twomain_hiso_rho_corr,twomain_hiso_rho_keep,level56_hiso_allowed_class_mask,"
+          "level56_shared_enable,level56_temporal_lookahead_enable,level56_buffered_fifo_enable,level56_buffer_rows,level56_drain_at_frame_end,level56_group4_max_entries,level56_shared_hiso_active,level56_shared_siso_active,level56_priority_mode,level56_schedule_mode,level56_early_stop_group_update_mode,"
           "early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
@@ -336,6 +415,12 @@ void write_csv_row_sweep3(std::ostream& csv,
   }
   csv << stop_reason_to_string(point.stop_reason) << ','
       << point.elapsed_seconds << ','
+      << point.level56_completed_batches << ','
+      << point.level56_forced_evicted_batches << ','
+      << point.level56_max_fifo_depth << ','
+      << point.twomain_hiso_actions << ','
+      << point.twomain_siso_actions << ','
+      << point.twomain_pending_actions << ','
       << point.scenario.bitgen_seed << ','
       << point.scenario.channel_seed << ','
       << '"' << join_vec(point.scenario.alpha_list, '|', 6) << "\","
@@ -354,12 +439,22 @@ void write_csv_row_sweep3(std::ostream& csv,
       << hybrid_classifier_mode_name(kHybridClassifierMode) << ','
       << hybrid_siso_backfill_mode_name(kHybridSisoBackfillMode) << ','
       << (kHybridNormalizeSoftOnly ? 1 : 0) << ','
+      << point.scenario.twomain_policy_label << ','
+      << twomain_hiso_output_mode_name(
+             point.scenario.twomain_hiso_output_mode)
+      << ','
+      << point.scenario.twomain_hiso_m2 << ','
+      << point.scenario.twomain_hiso_rho_corr << ','
+      << point.scenario.twomain_hiso_rho_keep << ','
+      << point.scenario.level56_hiso_allowed_class_mask << ','
       << (kLevel56SharedEnable ? 1 : 0) << ','
       << (kLevel56TemporalLookaheadEnable ? 1 : 0) << ','
       << (kLevel56BufferedFifoEnable ? 1 : 0) << ','
       << kLevel56BufferRows << ','
-      << kLevel56SharedHisoActive << ','
-      << kLevel56SharedSisoActive << ','
+      << (kLevel56DrainAtFrameEnd ? 1 : 0) << ','
+      << kLevel56Group4MaxEntries << ','
+      << point.scenario.level56_shared_hiso_active << ','
+      << point.scenario.level56_shared_siso_active << ','
       << static_cast<int>(kLevel56PriorityMode) << ','
       << static_cast<int>(kLevel56ScheduleMode) << ','
       << level56_early_stop_group_update_mode_name(
@@ -462,6 +557,34 @@ void accumulate_chunk(AggregatedPointResult& point, const ChunkResult& chunk) {
                 static_cast<double>(point.post_fec.total);
 
   ++point.chunks_completed;
+
+  for (const auto& sample : chunk.result.level56_buffered_time_samples) {
+    point.level56_completed_batches += sample.completed_batches;
+    point.level56_forced_evicted_batches += sample.forced_evicted_batches;
+    point.level56_max_fifo_depth = std::max(
+        point.level56_max_fifo_depth,
+        std::max(sample.fifo_depth_before, sample.fifo_depth_after));
+  }
+
+  constexpr uint8_t kTwoMainClass =
+      static_cast<uint8_t>(newcode::detail::HybridRowClass::TwoMain);
+  constexpr uint8_t kHisoAction = 1;
+  constexpr uint8_t kSisoAction = 2;
+  constexpr uint8_t kPendingAction = 3;
+  for (const auto& sample : chunk.result.level56_schedule_samples) {
+    for (const auto& code : sample.codes) {
+      if (code.hybrid_class != kTwoMainClass) {
+        continue;
+      }
+      if (code.final_action == kHisoAction) {
+        ++point.twomain_hiso_actions;
+      } else if (code.final_action == kSisoAction) {
+        ++point.twomain_siso_actions;
+      } else if (code.final_action == kPendingAction) {
+        ++point.twomain_pending_actions;
+      }
+    }
+  }
 }
 
 newcode::Params make_params_for_scenario(const ofec_sweep::detail::SweepScenario& scenario,
@@ -506,7 +629,37 @@ newcode::Params make_params_for_scenario(const ofec_sweep::detail::SweepScenario
       scenario.early_stop_cond_v2_include_overall;
   params.EARLY_STOP_ACTION_HARD_LLR_MAG =
       scenario.early_stop_action_hard_llr_mag;
+  params.TWOMAIN_HISO_OUTPUT_MODE = scenario.twomain_hiso_output_mode;
+  params.TWOMAIN_HISO_M2 = scenario.twomain_hiso_m2;
+  params.TWOMAIN_HISO_RHO_CORR = scenario.twomain_hiso_rho_corr;
+  params.TWOMAIN_HISO_RHO_KEEP = scenario.twomain_hiso_rho_keep;
+  params.LEVEL56_HISO_ALLOWED_CLASS_MASK =
+      scenario.level56_hiso_allowed_class_mask;
+  params.LEVEL56_SHARED_HISO_ACTIVE = scenario.level56_shared_hiso_active;
+  params.LEVEL56_SHARED_SISO_ACTIVE = scenario.level56_shared_siso_active;
   return params;
+}
+
+std::vector<ofec_sweep::detail::SweepScenario> apply_twomain_policy(
+    const std::vector<ofec_sweep::detail::SweepScenario>& base_scenarios,
+    const TwoMainSweepPolicy& policy) {
+  std::vector<ofec_sweep::detail::SweepScenario> scenarios;
+  scenarios.reserve(base_scenarios.size());
+
+  for (const auto& base : base_scenarios) {
+    ofec_sweep::detail::SweepScenario scenario = base;
+    scenario.twomain_policy_label = policy.label;
+    scenario.twomain_hiso_output_mode = policy.output_mode;
+    scenario.twomain_hiso_m2 = policy.m2;
+    scenario.twomain_hiso_rho_corr = policy.rho_corr;
+    scenario.twomain_hiso_rho_keep = policy.rho_keep;
+    scenario.level56_hiso_allowed_class_mask = policy.hiso_class_mask;
+    scenario.level56_shared_hiso_active = kLevel56SharedHisoActive;
+    scenario.level56_shared_siso_active = kLevel56SharedSisoActive;
+    scenario.name = std::string(policy.label) + "_" + base.name;
+    scenarios.push_back(std::move(scenario));
+  }
+  return scenarios;
 }
 
 ChunkResult run_chunk(const ofec_sweep::detail::SweepScenario& scenario,
@@ -877,6 +1030,10 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.LEVEL56_BUFFERED_FIFO_ENABLE =
       kLevel56BufferedFifoEnable;
   config.base_params.LEVEL56_BUFFER_ROWS = kLevel56BufferRows;
+  config.base_params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END =
+      kLevel56DrainAtFrameEnd;
+  config.base_params.LEVEL56_GROUP4_MAX_ENTRIES =
+      kLevel56Group4MaxEntries;
   config.base_params.LEVEL56_SHARED_HISO_ACTIVE = kLevel56SharedHisoActive;
   config.base_params.LEVEL56_SHARED_SISO_ACTIVE = kLevel56SharedSisoActive;
   config.base_params.LEVEL56_PRIORITY_MODE = kLevel56PriorityMode;
@@ -887,6 +1044,8 @@ ofec_sweep::SweepParameterConfig build_config() {
       kLevel56SingleLevelSelectEnable;
   config.base_params.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE =
       kLevel56UnselectedEarlyStopActionEnable;
+  config.base_params.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE =
+      kLevel56ScheduleObservabilityEnable;
   if (!kHybridEnableList.empty() &&
       kHybridEnableList.size() != kTilesPerWindow) {
     throw std::invalid_argument(
@@ -1038,20 +1197,33 @@ ofec_sweep::SweepParameterConfig build_config() {
 
 }  // namespace
 
-int main() {
-  const std::filesystem::path data_dir = "data";
-  io::ensure_dir(data_dir);
-  const std::string run_id = utils::now_stamp();
-  const std::string log_path =
-      (data_dir / ("run_" + run_id + "_sweep3.log")).string();
-  ofec_sweep::detail::DualOut out(std::cout, log_path, !kQuietConsole);
-
-  const std::string csv_path =
-      (data_dir / ("ofec_sweep3_results_" + run_id + ".csv")).string();
-  ensure_csv_header_sweep3(csv_path);
-  std::ofstream csv(csv_path, std::ios::out | std::ios::app);
-  csv.setf(std::ios::fixed);
-  csv << std::setprecision(10);
+int main(int argc, char** argv) {
+  TwoMainSweepSelection selection = kDefaultTwoMainSweepSelection;
+  bool dry_run = false;
+  try {
+    for (int index = 1; index < argc; ++index) {
+      const std::string arg = argv[index];
+      if (arg == "--dry-run") {
+        dry_run = true;
+      } else if (arg == "--policy") {
+        if (index + 1 >= argc) {
+          throw std::invalid_argument("--policy requires a value");
+        }
+        selection = parse_twomain_policy_selection(argv[++index]);
+      } else if (arg.rfind("--policy=", 0) == 0) {
+        selection = parse_twomain_policy_selection(arg.substr(9));
+      } else {
+        throw std::invalid_argument("unknown argument '" + arg + "'");
+      }
+    }
+  } catch (const std::invalid_argument& error) {
+    std::cerr << "[ERROR] " << error.what() << "\n"
+              << "Usage: " << argv[0]
+              << " [--policy legacy|scheme1_no_twomain_hiso|scheme6a_m2_48]"
+                 " [--dry-run]\n";
+    return 2;
+  }
+  const TwoMainSweepPolicy policy = selected_twomain_policy(selection);
 
   ofec_sweep::SweepParameterConfig config = build_config();
   const std::vector<float> ebn0_values =
@@ -1064,13 +1236,63 @@ int main() {
       config.channel_seed_candidates.empty()
           ? std::vector<int>{config.base_params.CHANNEL_SEED}
           : config.channel_seed_candidates;
-  auto scenarios = ofec_sweep::detail::build_scenarios(
+  const auto base_scenarios = ofec_sweep::detail::build_scenarios(
       config, ebn0_values, bitgen_seeds, channel_seeds);
+  auto scenarios = apply_twomain_policy(base_scenarios, policy);
 
   if (scenarios.empty()) {
     std::cerr << "[ERROR] no scenarios generated for ofec_sweep3\n";
     return 1;
   }
+
+  if (dry_run) {
+    std::cout << "[DRY-RUN] ofec_sweep3 will not start Monte Carlo work\n"
+              << "[DRY-RUN] base scenarios=" << base_scenarios.size()
+              << ", total points=" << scenarios.size() << "\n"
+              << "[DRY-RUN] Eb/N0=" << kEbN0Start << ".." << kEbN0End
+              << " (" << kEbN0Points << " points), bitgen/channel seed="
+              << kBitgenSeed << '/' << kChannelSeed << "\n"
+              << "[DRY-RUN] chunk bits=" << kChunkNumInfoBits
+              << ", target post errors=" << kTargetPostErrors
+              << ", max post bits=" << kMaxPostFecTotalBits << "\n"
+              << "[DRY-RUN] Level56 FIFO R_buf=" << kLevel56BufferRows
+              << ", drain=" << (kLevel56DrainAtFrameEnd ? "on" : "off")
+              << ", HISO/SISO=" << kLevel56SharedHisoActive << '/'
+              << kLevel56SharedSisoActive << "\n"
+              << "[DRY-RUN] policy=" << policy.label
+              << ", output_mode="
+              << twomain_hiso_output_mode_name(policy.output_mode)
+              << ", M2=" << policy.m2
+              << ", rho_corr/keep=" << policy.rho_corr << '/'
+              << policy.rho_keep
+              << ", HISO class mask=" << policy.hiso_class_mask << "\n";
+    return 0;
+  }
+
+  const std::filesystem::path data_dir = "data";
+  io::ensure_dir(data_dir);
+  const std::string run_id = utils::now_stamp();
+  const std::string log_path =
+      (data_dir /
+       ("run_" + run_id + "_sweep3_" + policy.label + ".log"))
+          .string();
+  ofec_sweep::detail::DualOut out(std::cout, log_path, !kQuietConsole);
+
+  const std::string csv_path =
+      (data_dir /
+       ("ofec_sweep3_results_" + run_id + "_" + policy.label + ".csv"))
+          .string();
+  ensure_csv_header_sweep3(csv_path);
+  std::ofstream csv(csv_path, std::ios::out | std::ios::app);
+  csv.setf(std::ios::fixed);
+  csv << std::setprecision(10);
+
+  out << "[CONFIG] TwoMain policy=" << policy.label
+      << " output_mode=" << twomain_hiso_output_mode_name(policy.output_mode)
+      << " M2=" << policy.m2
+      << " rho_corr/keep=" << policy.rho_corr << '/' << policy.rho_keep
+      << " HISO_class_mask=" << policy.hiso_class_mask
+      << " points=" << scenarios.size() << "\n";
 
   const unsigned available_workers =
       ofec_sweep::detail::resolve_worker_count(config);

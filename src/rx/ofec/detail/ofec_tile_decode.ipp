@@ -407,6 +407,8 @@ void execute_hybrid_hard_class(
     std::array<float, newcode::Params::BCH_N>* y2,
     std::array<uint8_t, newcode::Params::BCH_N>* corrected_cw_out = nullptr) {
   auto cw = hard_decision_bits_256(lin_vec);
+  const auto input_hard_cw = cw;
+  std::array<bool, newcode::Params::BCH_N> corrected_positions{};
 
   switch (hard_class) {
     case HybridRowClass::ParityOnly:
@@ -440,6 +442,15 @@ void execute_hybrid_hard_class(
         cw[i] = decoded[i];
       }
       recompute_overall_parity(&cw);
+      std::size_t changed_main_positions = 0;
+      for (std::size_t i = 0; i < newcode::Params::BCH_OVERALL_IDX; ++i) {
+        corrected_positions[i] = input_hard_cw[i] != cw[i];
+        changed_main_positions += corrected_positions[i] ? 1u : 0u;
+      }
+      if (changed_main_positions != 2u) {
+        throw std::runtime_error(
+            "BCH t=2 corrected-position set does not contain exactly two main bits");
+      }
       break;
     }
     default:
@@ -453,7 +464,15 @@ void execute_hybrid_hard_class(
   if (corrected_cw_out) {
     *corrected_cw_out = cw;
   }
-  materialize_hard_finish_lout(cw, lin_vec, p, y2);
+  if (hard_class == HybridRowClass::TwoMain &&
+      p.TWOMAIN_HISO_OUTPUT_MODE ==
+          newcode::TwoMainHisoOutputMode::UnifiedParameterized) {
+    materialize_twomain_parameterized_lout(
+        cw, lin_vec, corrected_positions, p, y2);
+  } else {
+    // Legacy 默认以及所有非 TwoMain 类别显式保持旧输出函数。
+    materialize_hard_finish_lout(cw, lin_vec, p, y2);
+  }
 }
 
 template <typename LLR>

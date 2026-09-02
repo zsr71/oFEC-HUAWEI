@@ -9,6 +9,7 @@
 #include "newcode/quantized_llr_dump.hpp"
 
 #include <string>
+#include <cmath>
 #include <utility>
 #include <vector>
 
@@ -42,6 +43,16 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
       throw std::invalid_argument("ofec_decode_llr: llr_mat cols != N.");
 
   assert(p.valid());
+  if (!std::isfinite(p.TWOMAIN_HISO_M2) || p.TWOMAIN_HISO_M2 < 0.0f ||
+      !std::isfinite(p.TWOMAIN_HISO_RHO_CORR) ||
+      p.TWOMAIN_HISO_RHO_CORR < 0.0f ||
+      p.TWOMAIN_HISO_RHO_CORR > 1.0f ||
+      !std::isfinite(p.TWOMAIN_HISO_RHO_KEEP) ||
+      p.TWOMAIN_HISO_RHO_KEEP < 0.0f ||
+      p.TWOMAIN_HISO_RHO_KEEP > 1.0f) {
+    throw std::invalid_argument(
+        "ofec_decode_llr: invalid TwoMain HISO output parameters");
+  }
   validate_level56_shared_config(p);
   const std::size_t mux_tile_count =
       p.LEVEL56_SHARED_ENABLE ? kLevel5TileIndex : p.TILES_PER_WIN;

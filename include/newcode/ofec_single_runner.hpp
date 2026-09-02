@@ -59,6 +59,11 @@ struct Config {
   std::vector<int> hybrid_enable_list;
   float hybrid_hard_llr_mag = 99.0f;
   std::vector<float> hybrid_hard_llr_mag_list;
+  newcode::TwoMainHisoOutputMode twomain_hiso_output_mode =
+      newcode::TwoMainHisoOutputMode::Legacy;
+  float twomain_hiso_m2 = 99.0f;
+  float twomain_hiso_rho_corr = 1.0f;
+  float twomain_hiso_rho_keep = 1.0f;
   newcode::HybridClassifierMode hybrid_classifier_mode =
       newcode::HybridClassifierMode::LegacyHardDecode;
   newcode::HybridSisoBackfillMode hybrid_siso_backfill_mode =

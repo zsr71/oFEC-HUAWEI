@@ -15,6 +15,17 @@ namespace detail {
 struct SweepScenario {
   std::string name;
   std::string decoder_name;
+  // ofec_sweep3 使用的 TwoMain 策略维度。其他 sweep 入口不展开该维度，
+  // 因而保持 Params 的默认 Legacy 语义。
+  std::string twomain_policy_label = "legacy";
+  newcode::TwoMainHisoOutputMode twomain_hiso_output_mode =
+      newcode::TwoMainHisoOutputMode::Legacy;
+  float twomain_hiso_m2 = 99.0f;
+  float twomain_hiso_rho_corr = 1.0f;
+  float twomain_hiso_rho_keep = 1.0f;
+  unsigned level56_hiso_allowed_class_mask = 0x0fu;
+  int level56_shared_hiso_active = 32;
+  int level56_shared_siso_active = 32;
   std::vector<float> alpha_list;
   std::vector<float> beta_list;
   std::vector<float> early_stop_action_sign_beta_list;

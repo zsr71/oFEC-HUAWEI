@@ -196,6 +196,10 @@ int main() {
   auto level56_schedule_mode = kLevel56ScheduleMode;
   float ebn0_db = kEbN0_db;
   std::vector<float> hybrid_hard_llr_mag_list = kHybridHardLlrMagList;
+  auto twomain_hiso_output_mode = newcode::TwoMainHisoOutputMode::Legacy;
+  float twomain_hiso_m2 = 99.0f;
+  float twomain_hiso_rho_corr = 1.0f;
+  float twomain_hiso_rho_keep = 1.0f;
   std::string run_label = kLabel;
   std::string level56_schedule_rounds_path = kLevel56ScheduleRoundsPath;
   std::string level56_schedule_codes_path = kLevel56ScheduleCodesPath;
@@ -269,6 +273,47 @@ int main() {
     }
     hybrid_hard_llr_mag_list = std::move(parsed);
     run_suffix += "_hybridhard" + text;
+  }
+
+  if (const char* value = std::getenv("OFEC_TWOMAIN_HISO_OUTPUT_MODE")) {
+    const std::string text(value);
+    if (text == "legacy") {
+      twomain_hiso_output_mode = newcode::TwoMainHisoOutputMode::Legacy;
+    } else if (text == "parameterized") {
+      twomain_hiso_output_mode =
+          newcode::TwoMainHisoOutputMode::UnifiedParameterized;
+    } else {
+      std::cerr << "[ERROR] OFEC_TWOMAIN_HISO_OUTPUT_MODE must be "
+                   "legacy or parameterized\n";
+      return 2;
+    }
+    run_suffix += "_tmout" + text;
+  }
+
+  const auto parse_twomain_float = [&](const char* env_name,
+                                        float* destination,
+                                        const char* suffix_name) -> bool {
+    const char* value = std::getenv(env_name);
+    if (!value) return true;
+    const std::string text(value);
+    char* end = nullptr;
+    const float parsed = std::strtof(text.c_str(), &end);
+    if (text.empty() || end != text.c_str() + text.size() ||
+        !std::isfinite(parsed)) {
+      std::cerr << "[ERROR] " << env_name << " must be a finite number\n";
+      return false;
+    }
+    *destination = parsed;
+    run_suffix += std::string("_") + suffix_name + text;
+    return true;
+  };
+  if (!parse_twomain_float("OFEC_TWOMAIN_HISO_M2", &twomain_hiso_m2,
+                           "tmm2") ||
+      !parse_twomain_float("OFEC_TWOMAIN_HISO_RHO_CORR",
+                           &twomain_hiso_rho_corr, "tmrc") ||
+      !parse_twomain_float("OFEC_TWOMAIN_HISO_RHO_KEEP",
+                           &twomain_hiso_rho_keep, "tmrk")) {
+    return 2;
   }
 
   const auto parse_seed = [&](const char* env_name,
@@ -536,6 +581,10 @@ int main() {
     .hybrid_enable_list = kHybridEnableList,
     .hybrid_hard_llr_mag = kHybridHardLlrMag,
     .hybrid_hard_llr_mag_list = hybrid_hard_llr_mag_list,
+    .twomain_hiso_output_mode = twomain_hiso_output_mode,
+    .twomain_hiso_m2 = twomain_hiso_m2,
+    .twomain_hiso_rho_corr = twomain_hiso_rho_corr,
+    .twomain_hiso_rho_keep = twomain_hiso_rho_keep,
     .hybrid_classifier_mode = kHybridClassifierMode,
     .hybrid_siso_backfill_mode = kHybridSisoBackfillMode,
     .hybrid_normalize_soft_only = kHybridNormalizeSoftOnly,

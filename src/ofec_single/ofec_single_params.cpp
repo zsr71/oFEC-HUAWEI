@@ -221,6 +221,10 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.HYBRID_ENABLE_LIST = cfg.hybrid_enable_list;
   params.HYBRID_HARD_LLR_MAG = cfg.hybrid_hard_llr_mag;
   params.HYBRID_HARD_LLR_MAG_LIST = cfg.hybrid_hard_llr_mag_list;
+  params.TWOMAIN_HISO_OUTPUT_MODE = cfg.twomain_hiso_output_mode;
+  params.TWOMAIN_HISO_M2 = cfg.twomain_hiso_m2;
+  params.TWOMAIN_HISO_RHO_CORR = cfg.twomain_hiso_rho_corr;
+  params.TWOMAIN_HISO_RHO_KEEP = cfg.twomain_hiso_rho_keep;
   params.HYBRID_CLASSIFIER_MODE = cfg.hybrid_classifier_mode;
   params.HYBRID_SISO_BACKFILL_MODE = cfg.hybrid_siso_backfill_mode;
   params.HYBRID_USE_FAST_CLASSIFIER =
@@ -338,6 +342,19 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   }
   if (!std::isfinite(params.HYBRID_HARD_LLR_MAG)) {
     log << "[ERROR] hybrid_hard_llr_mag 必须是有限数\n";
+    return std::nullopt;
+  }
+  if (!std::isfinite(params.TWOMAIN_HISO_M2) ||
+      params.TWOMAIN_HISO_M2 < 0.0f) {
+    log << "[ERROR] twomain_hiso_m2 必须是有限非负数\n";
+    return std::nullopt;
+  }
+  const auto valid_twomain_rho = [](float value) {
+    return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
+  };
+  if (!valid_twomain_rho(params.TWOMAIN_HISO_RHO_CORR) ||
+      !valid_twomain_rho(params.TWOMAIN_HISO_RHO_KEEP)) {
+    log << "[ERROR] twomain_hiso_rho_corr/keep 必须是 [0,1] 内的有限数\n";
     return std::nullopt;
   }
   if (!params.HYBRID_HARD_LLR_MAG_LIST.empty() &&

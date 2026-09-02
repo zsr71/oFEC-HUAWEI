@@ -23,6 +23,13 @@ enum class HybridSisoBackfillMode : uint8_t {
   ParityOneAndTwoErrorPriority = 3
 };
 
+// TwoMain HISO 的输出策略。Legacy 显式保持既有固定后验幅度语义；
+// UnifiedParameterized 使用同一条参数化公式形成方案六-A/六-B/六-C。
+enum class TwoMainHisoOutputMode : uint8_t {
+  Legacy = 0,
+  UnifiedParameterized = 1
+};
+
 enum class Level56PriorityMode : uint8_t {
   Level5First = 1,
   Level6First = 2
@@ -129,6 +136,11 @@ struct Params {
   std::vector<int> HYBRID_ENABLE_LIST;                            // 按 tile 覆盖 hybrid 开关：0=关，非 0=开；空表示沿用 HYBRID_ENABLE
   float HYBRID_HARD_LLR_MAG = 99.0f;                              // hybrid hard-finish 专用 |LLR| 大小
   std::vector<float> HYBRID_HARD_LLR_MAG_LIST;                    // 按 tile 覆盖 hybrid hard-finish 的 |LLR| 大小；空表示沿用 HYBRID_HARD_LLR_MAG
+  TwoMainHisoOutputMode TWOMAIN_HISO_OUTPUT_MODE =
+      TwoMainHisoOutputMode::Legacy;                              // 默认显式走旧输出路径
+  float TWOMAIN_HISO_M2 = 99.0f;                                  // 方案六的基础后验幅度
+  float TWOMAIN_HISO_RHO_CORR = 1.0f;                             // BCH 实际纠正位置的幅度系数
+  float TWOMAIN_HISO_RHO_KEEP = 1.0f;                             // 未纠正位置的幅度系数
   HybridClassifierMode HYBRID_CLASSIFIER_MODE =
       HybridClassifierMode::LegacyHardDecode;                     // hybrid prepass 的分类器模式；Legacy=直接 perform_hard_decode
   HybridSisoBackfillMode HYBRID_SISO_BACKFILL_MODE =

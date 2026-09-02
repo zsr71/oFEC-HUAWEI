@@ -54,6 +54,14 @@ void materialize_hard_finish_lout(
     const newcode::Params& p,
     std::array<float, newcode::Params::BCH_N>* y2);
 
+template <typename CoreLLR>
+void materialize_twomain_parameterized_lout(
+    const std::array<uint8_t, newcode::Params::BCH_N>& corrected_cw,
+    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
+    const std::array<bool, newcode::Params::BCH_N>& corrected_positions,
+    const newcode::Params& p,
+    std::array<float, newcode::Params::BCH_N>* y2);
+
 newcode::HybridClassifierMode effective_hybrid_classifier_mode(
     const newcode::Params& p);
 

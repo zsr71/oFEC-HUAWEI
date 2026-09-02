@@ -1,0 +1,81 @@
+schema_version = 1
+
+[identity]
+experiment_id = "baseline_pure_siso"
+scheme_id = "TM-A2"
+name = "纯SISO参考基线"
+purpose = "冻结五六级不使用HISO时的完整长帧行为"
+
+[channel]
+ebn0_db = 3.065
+bitgen_seed = 20260319
+channel_seed = 3182026
+generate_random_bits = true
+bits_per_symbol = 1
+
+[frame]
+num_info_bits = 60014592
+ber_skip_prefix_windows = 4
+ber_skip_suffix_windows = 2
+
+[decoder]
+name = "chase_baseline"
+chase_l = 6
+chase_n_test = 64
+chase_topk_keep = 24
+llr_bits = 6
+quant_clip_ratio = 0.5
+normalize_extrinsic = false
+normalize_known_prefix_tail = false
+
+[early_stop]
+enabled = true
+per_tile_enabled = [1, 1, 1, 1, 1, 1]
+condition_mode = 1
+action_mode = 7
+bind_group_size = 1
+condition_v1_require_bch = true
+condition_v1_require_overall = true
+action_beta = [99.857143, 99.179301, 99.253626, 99.119585, 99.0, 99.0]
+
+[level56]
+shared_enabled = true
+temporal_lookahead_enabled = false
+buffered_fifo_enabled = true
+buffer_rows = 16000
+drain_at_frame_end = true
+hiso_active = 0
+siso_active = 8
+group4_max_entries = 8
+schedule_mode = "group4"
+priority_mode = "level5_first"
+early_stop_group_update_mode = "all_groups"
+unselected_early_stop_action_enabled = true
+
+[twomain]
+admission_policy = "no_hiso_for_any_class"
+output_policy = "legacy_fixed"
+hiso_class_mask = 0
+hybrid_hard_llr_mag_per_tile = [0.0, 0.0, 0.0, 0.0, 99.0, 99.0]
+
+[outputs]
+schedule_stats = true
+equivalence_observation = false
+target_trace = false
+post_fec_error_positions = true
+
+[expected]
+post_fec_errors = 11
+post_fec_total = 58608000
+post_fec_positions_sha256 = "2f8f4568a68e4835eb6c5c157dabddf4417416d9830257bc120a105b9b26704f"
+forced_evicted = 0
+completed_batches = 16897
+max_fifo_depth = 4476
+level5_actions = [420543, 0, 120161, 196608]
+level6_actions = [535365, 0, 5339, 196608]
+entry_hiso_siso_idle_totals = [125500, 0, 125500, 184328, 58828]
+class_parityonly_actions = [0, 781, 465]
+class_onemain_actions = [0, 103280, 61118]
+class_onemainplusparity_actions = [0, 228, 208]
+class_twomain_actions = [0, 16036, 16075]
+class_hardfail_actions = [0, 5175, 8027]

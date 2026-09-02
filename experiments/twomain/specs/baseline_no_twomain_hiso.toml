@@ -1,0 +1,81 @@
+schema_version = 1
+
+[identity]
+experiment_id = "baseline_no_twomain_hiso"
+scheme_id = "TM-A1"
+name = "禁止TwoMain使用HISO基线"
+purpose = "冻结只撤销TwoMain HISO准入后的完整长帧行为"
+
+[channel]
+ebn0_db = 3.065
+bitgen_seed = 20260319
+channel_seed = 3182026
+generate_random_bits = true
+bits_per_symbol = 1
+
+[frame]
+num_info_bits = 60014592
+ber_skip_prefix_windows = 4
+ber_skip_suffix_windows = 2
+
+[decoder]
+name = "chase_baseline"
+chase_l = 6
+chase_n_test = 64
+chase_topk_keep = 24
+llr_bits = 6
+quant_clip_ratio = 0.5
+normalize_extrinsic = false
+normalize_known_prefix_tail = false
+
+[early_stop]
+enabled = true
+per_tile_enabled = [1, 1, 1, 1, 1, 1]
+condition_mode = 1
+action_mode = 7
+bind_group_size = 1
+condition_v1_require_bch = true
+condition_v1_require_overall = true
+action_beta = [99.857143, 99.179301, 99.253626, 99.119585, 99.0, 99.0]
+
+[level56]
+shared_enabled = true
+temporal_lookahead_enabled = false
+buffered_fifo_enabled = true
+buffer_rows = 16000
+drain_at_frame_end = true
+hiso_active = 8
+siso_active = 8
+group4_max_entries = 8
+schedule_mode = "group4"
+priority_mode = "level5_first"
+early_stop_group_update_mode = "all_groups"
+unselected_early_stop_action_enabled = true
+
+[twomain]
+admission_policy = "deny_all"
+output_policy = "legacy_fixed"
+hiso_class_mask = 7
+hybrid_hard_llr_mag_per_tile = [0.0, 0.0, 0.0, 0.0, 99.0, 99.0]
+
+[outputs]
+schedule_stats = true
+equivalence_observation = false
+target_trace = false
+post_fec_error_positions = true
+
+[expected]
+post_fec_errors = 9
+post_fec_total = 58608000
+post_fec_positions_sha256 = "093f8328d2c913f87742b588bf333191f59819e4a34b3332dcb192278cf1ac7c"
+forced_evicted = 0
+completed_batches = 16897
+max_fifo_depth = 1923
+level5_actions = [420604, 29924, 90176, 76800]
+level6_actions = [535417, 411, 4876, 76800]
+entry_hiso_siso_idle_totals = [95052, 30335, 95052, 124041, 59324]
+class_parityonly_actions = [323, 460, 215]
+class_onemain_actions = [29963, 73176, 26344]
+class_onemainplusparity_actions = [49, 174, 99]
+class_twomain_actions = [0, 16052, 8722]
+class_hardfail_actions = [0, 5190, 4891]

@@ -38,6 +38,17 @@ const char* hybrid_siso_backfill_mode_name(newcode::HybridSisoBackfillMode mode)
   return "unknown";
 }
 
+const char* twomain_hiso_output_mode_name(
+    newcode::TwoMainHisoOutputMode mode) {
+  switch (mode) {
+    case newcode::TwoMainHisoOutputMode::Legacy:
+      return "legacy";
+    case newcode::TwoMainHisoOutputMode::UnifiedParameterized:
+      return "parameterized";
+  }
+  return "unknown";
+}
+
 const char* level56_early_stop_group_update_mode_name(
     newcode::Level56EarlyStopGroupUpdateMode mode) {
   switch (mode) {
@@ -188,6 +199,12 @@ void log_run_overview(const Config& cfg,
       << hybrid_siso_backfill_mode_name(params.HYBRID_SISO_BACKFILL_MODE)
       << ", normalize_soft_only = "
       << (params.HYBRID_NORMALIZE_SOFT_ONLY ? "ON" : "OFF") << "\n";
+  log << "[INFO] TwoMain HISO output = "
+      << twomain_hiso_output_mode_name(params.TWOMAIN_HISO_OUTPUT_MODE)
+      << ", M2/rho_corr/rho_keep = "
+      << params.TWOMAIN_HISO_M2 << "/"
+      << params.TWOMAIN_HISO_RHO_CORR << "/"
+      << params.TWOMAIN_HISO_RHO_KEEP << "\n";
   log << "[INFO] Level5/6 shared = "
       << (params.LEVEL56_SHARED_ENABLE ? "ON" : "OFF")
       << ", temporal_lookahead = "

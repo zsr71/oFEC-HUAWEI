@@ -409,6 +409,92 @@ void check_common_parameter_validation() {
           "Level 5/6 common parameter mismatch must be rejected");
 }
 
+void check_twomain_parameterized_output() {
+  std::vector<uint8_t> info(newcode::Params::BCH_K, 0u);
+  for (std::size_t i = 0; i < info.size(); ++i) {
+    info[i] = static_cast<uint8_t>(((i * 17u + 5u) % 11u) < 5u);
+  }
+  const auto transmitted = bch::bch_255_239_encode(info);
+  auto received = transmitted;
+  constexpr std::size_t kErrorA = 153;
+  constexpr std::size_t kErrorB = 199;
+  received[kErrorA] ^= 1u;
+  received[kErrorB] ^= 1u;
+
+  std::array<float, newcode::Params::BCH_N> lin{};
+  for (std::size_t i = 0; i < lin.size(); ++i) {
+    const float magnitude = 0.5f + static_cast<float>(i % 13u) * 0.125f;
+    lin[i] = received[i] ? -magnitude : magnitude;
+  }
+
+  newcode::Params legacy;
+  legacy.HYBRID_HARD_LLR_MAG = 99.0f;
+  std::array<float, newcode::Params::BCH_N> legacy_lout{};
+  std::array<uint8_t, newcode::Params::BCH_N> legacy_corrected{};
+  newcode::detail::execute_hybrid_hard_class(
+      newcode::detail::HybridRowClass::TwoMain, lin, legacy,
+      &legacy_lout, &legacy_corrected);
+  require(legacy_corrected == transmitted,
+          "Legacy TwoMain HISO did not recover the transmitted codeword");
+  for (std::size_t i = 0; i < legacy_lout.size(); ++i) {
+    const float sign = transmitted[i] ? -1.0f : 1.0f;
+    require(std::fabs(legacy_lout[i] - (sign * 99.0f - lin[i])) < 1e-6f,
+            "Legacy TwoMain output changed after adding scheme 6");
+  }
+
+  auto uniform = legacy;
+  uniform.TWOMAIN_HISO_OUTPUT_MODE =
+      newcode::TwoMainHisoOutputMode::UnifiedParameterized;
+  uniform.TWOMAIN_HISO_M2 = 32.0f;
+  uniform.TWOMAIN_HISO_RHO_CORR = 1.0f;
+  uniform.TWOMAIN_HISO_RHO_KEEP = 1.0f;
+  std::array<float, newcode::Params::BCH_N> uniform_lout{};
+  std::array<uint8_t, newcode::Params::BCH_N> uniform_corrected{};
+  newcode::detail::execute_hybrid_hard_class(
+      newcode::detail::HybridRowClass::TwoMain, lin, uniform,
+      &uniform_lout, &uniform_corrected);
+  require(uniform_corrected == legacy_corrected,
+          "scheme 6-A changed BCH correction rather than only its output");
+  for (std::size_t i = 0; i < uniform_lout.size(); ++i) {
+    const float sign = transmitted[i] ? -1.0f : 1.0f;
+    require(std::fabs(uniform_lout[i] - (sign * 32.0f - lin[i])) < 1e-6f,
+            "scheme 6-A did not apply one uniform posterior magnitude");
+  }
+
+  auto differential = uniform;
+  differential.TWOMAIN_HISO_RHO_CORR = 0.75f;
+  differential.TWOMAIN_HISO_RHO_KEEP = 0.25f;
+  std::array<float, newcode::Params::BCH_N> differential_lout{};
+  newcode::detail::execute_hybrid_hard_class(
+      newcode::detail::HybridRowClass::TwoMain, lin, differential,
+      &differential_lout);
+  for (std::size_t i = 0; i < differential_lout.size(); ++i) {
+    const bool corrected = i == kErrorA || i == kErrorB;
+    const float expected_mag = corrected ? 24.0f : 8.0f;
+    const float sign = transmitted[i] ? -1.0f : 1.0f;
+    require(std::fabs(differential_lout[i] -
+                      (sign * expected_mag - lin[i])) < 1e-6f,
+            "scheme 6-B/6-C did not distinguish corrected and kept positions");
+  }
+
+  // 方案六参数不得影响任何非 TwoMain 类别。
+  auto parity_received = transmitted;
+  parity_received[newcode::Params::BCH_OVERALL_IDX] ^= 1u;
+  for (std::size_t i = 0; i < lin.size(); ++i) {
+    lin[i] = parity_received[i] ? -1.25f : 1.25f;
+  }
+  std::array<float, newcode::Params::BCH_N> parity_legacy{};
+  std::array<float, newcode::Params::BCH_N> parity_scheme6{};
+  newcode::detail::execute_hybrid_hard_class(
+      newcode::detail::HybridRowClass::ParityOnly, lin, legacy,
+      &parity_legacy);
+  newcode::detail::execute_hybrid_hard_class(
+      newcode::detail::HybridRowClass::ParityOnly, lin, differential,
+      &parity_scheme6);
+  require(parity_legacy == parity_scheme6,
+          "scheme 6 parameters affected a non-TwoMain HISO class");
+}
+
 void check_per_level_siso_postprocessing() {
   auto make_prep = [](float beta, float alpha) {
     newcode::detail::TilePrepared<float> prep;
@@ -1876,6 +1962,7 @@ int main() {
     check_bypassed_slice_executes_only_preserved_early_stop_actions();
     check_single_level_selection_uses_fewer_early_stops();
     check_common_parameter_validation();
+    check_twomain_parameterized_output();
     check_per_level_siso_postprocessing();
     check_unscheduled_last_tile_history_passes_through_prior();
     check_level_priority_modes();

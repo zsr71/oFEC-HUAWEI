@@ -397,7 +397,12 @@ inline void dump_level56_target_trace(
       << (row < decoded.produced_rows.size() && decoded.produced_rows[row])
       << "\n"
       << "alpha=" << params.ALPHA << "\n"
-      << "hybrid_hard_llr_mag=" << params.HYBRID_HARD_LLR_MAG << "\n\n";
+      << "hybrid_hard_llr_mag=" << params.HYBRID_HARD_LLR_MAG << "\n"
+      << "twomain_hiso_output_mode="
+      << static_cast<unsigned>(params.TWOMAIN_HISO_OUTPUT_MODE) << "\n"
+      << "twomain_hiso_m2=" << params.TWOMAIN_HISO_M2 << "\n"
+      << "twomain_hiso_rho_corr=" << params.TWOMAIN_HISO_RHO_CORR << "\n"
+      << "twomain_hiso_rho_keep=" << params.TWOMAIN_HISO_RHO_KEEP << "\n\n";
 
   level56_target_trace_vector(&out, "lch", prep.lch_matrix[row]);
   level56_target_trace_vector(&out, "lin", prep.lin_matrix[row]);

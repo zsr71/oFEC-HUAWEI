@@ -1,0 +1,68 @@
+schema_version = 1
+
+[identity]
+experiment_id = "scheme6b_dir2_m2_48_corr75_keep100_long"
+scheme_id = "TM-F-D48-75-100"
+name = "方案六-B方向二长帧M2等于48纠正位系数0.75"
+purpose = "固定非纠正位幅度并降低两个BCH纠正位置的seed01长帧筛选"
+
+[channel]
+ebn0_db = 3.065
+bitgen_seed = 20260319
+channel_seed = 3182026
+generate_random_bits = true
+bits_per_symbol = 1
+
+[frame]
+num_info_bits = 60014592
+ber_skip_prefix_windows = 4
+ber_skip_suffix_windows = 2
+
+[decoder]
+name = "chase_baseline"
+chase_l = 6
+chase_n_test = 64
+chase_topk_keep = 24
+llr_bits = 6
+quant_clip_ratio = 0.5
+normalize_extrinsic = false
+normalize_known_prefix_tail = false
+
+[early_stop]
+enabled = true
+per_tile_enabled = [1, 1, 1, 1, 1, 1]
+condition_mode = 1
+action_mode = 7
+bind_group_size = 1
+condition_v1_require_bch = true
+condition_v1_require_overall = true
+action_beta = [99.857143, 99.179301, 99.253626, 99.119585, 99.0, 99.0]
+
+[level56]
+shared_enabled = true
+temporal_lookahead_enabled = false
+buffered_fifo_enabled = true
+buffer_rows = 16000
+drain_at_frame_end = true
+hiso_active = 8
+siso_active = 8
+group4_max_entries = 8
+schedule_mode = "group4"
+priority_mode = "level5_first"
+early_stop_group_update_mode = "all_groups"
+unselected_early_stop_action_enabled = true
+
+[twomain]
+admission_policy = "always_allow"
+output_policy = "scheme6_parameterized"
+hiso_class_mask = 15
+hybrid_hard_llr_mag_per_tile = [0.0, 0.0, 0.0, 0.0, 99.0, 99.0]
+m2 = 48.0
+rho_corr = 0.75
+rho_keep = 1.0
+
+[outputs]
+schedule_stats = true
+equivalence_observation = false
+target_trace = false
+post_fec_error_positions = true

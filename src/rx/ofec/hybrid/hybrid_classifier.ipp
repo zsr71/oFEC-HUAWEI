@@ -115,6 +115,28 @@ inline void materialize_hard_finish_lout(
   }
 }
 
+template <typename CoreLLR>
+inline void materialize_twomain_parameterized_lout(
+    const std::array<uint8_t, newcode::Params::BCH_N>& corrected_cw,
+    const std::array<CoreLLR, newcode::Params::BCH_N>& lin_vec,
+    const std::array<bool, newcode::Params::BCH_N>& corrected_positions,
+    const newcode::Params& p,
+    std::array<float, newcode::Params::BCH_N>* y2) {
+  // 方案六统一公式：纠正位置与保持位置只通过两个 rho 参数区分。
+  // rho=0 在本实现中的精确定义是“零后验”，因此 lout=-lin；阶段三
+  // 的局部检查与冒烟测试不使用该边界值。
+  const float base_mag = std::fabs(p.TWOMAIN_HISO_M2);
+  for (std::size_t i = 0; i < corrected_cw.size(); ++i) {
+    const float rho = corrected_positions[i]
+                          ? p.TWOMAIN_HISO_RHO_CORR
+                          : p.TWOMAIN_HISO_RHO_KEEP;
+    const float sign = corrected_cw[i] ? -1.0f : 1.0f;
+    const float lpost = sign * base_mag * rho;
+    const float lin = qfloat::llr_to_float(lin_vec[i]);
+    (*y2)[i] = lpost - lin;
+  }
+}
+
 inline bool hard_word_valid_256(
     const std::array<uint8_t, newcode::Params::BCH_N>& cw) {
   return bch::bch_255_239_syndromes_zero_cw_255(cw.data()) &&
