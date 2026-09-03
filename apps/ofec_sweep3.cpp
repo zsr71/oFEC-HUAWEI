@@ -91,6 +91,7 @@ static constexpr bool kLevel56SharedEnable = true;                  // true=第�
 static constexpr bool kLevel56TemporalLookaheadEnable = false;      // 旧三时刻 lookahead；与 buffered FIFO 互斥
 static constexpr int kLevel56TemporalGroupLoadThreshold = 16;       // temporal 分支阈值：X+K1+K2 小于该值时补解 t=0
 static constexpr bool kLevel56BufferedFifoEnable = true;            // 新方案：完整 64-code batch FIFO
+static constexpr bool kLevel56BufferedFifoDrainAtFrameEnd = true;   // BER 扫描在每个 chunk 帧尾排空 FIFO
 static constexpr std::size_t kLevel56BufferRows = 32;               // R_buf，单位为 block row
 static constexpr int kLevel56SharedHisoActive = 8;                  // 新分组方案固定使用 8 个共享 HISO entry slot
 static constexpr int kLevel56SharedSisoActive = 8;                  // 新分组方案固定使用 8 个共享 SISO entry slot
@@ -876,6 +877,8 @@ ofec_sweep::SweepParameterConfig build_config() {
       kLevel56TemporalGroupLoadThreshold;
   config.base_params.LEVEL56_BUFFERED_FIFO_ENABLE =
       kLevel56BufferedFifoEnable;
+  config.base_params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END =
+      kLevel56BufferedFifoDrainAtFrameEnd;
   config.base_params.LEVEL56_BUFFER_ROWS = kLevel56BufferRows;
   config.base_params.LEVEL56_SHARED_HISO_ACTIVE = kLevel56SharedHisoActive;
   config.base_params.LEVEL56_SHARED_SISO_ACTIVE = kLevel56SharedSisoActive;

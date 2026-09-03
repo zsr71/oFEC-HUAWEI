@@ -113,6 +113,15 @@ struct Level56BufferedRetirementSample {
       Level56BufferedBatchRetirement::Normal;
 };
 
+struct Level56BufferedOrdinaryServiceSample {
+  std::size_t batch_id = 0;
+  std::size_t schedule_invocation = 0;
+  std::size_t entry_budget = 0;
+  std::size_t entry_slot_offset = 0;
+  std::size_t entries_used = 0;
+  bool completed = false;
+};
+
 struct Level56BufferedTimeSample {
   std::size_t service_time = 0;
   std::size_t arrived_batch_id = 0;
@@ -128,8 +137,11 @@ struct Level56BufferedTimeSample {
   std::size_t window_start_before = 0;
   std::size_t window_start_after = 0;
   bool ordinary_service_used = false;
+  std::size_t ordinary_service_count = 0;
+  std::size_t ordinary_entries_used = 0;
   std::size_t ordinary_batch_id = 0;
   std::size_t ordinary_schedule_invocation = 0;
+  std::vector<Level56BufferedOrdinaryServiceSample> ordinary_services;
   std::vector<Level56BufferedRetirementSample> retirements;
   std::vector<std::size_t> forced_evicted_global_rows;
 };
@@ -162,6 +174,11 @@ struct Level56ScheduleSample {
   Level56ScheduleBranch branch = Level56ScheduleBranch::K0;
   std::vector<Level56ScheduleRoundSample> rounds;
   std::array<std::size_t, 16> group_entry_counts{};
+  // For a second FIFO batch, slots continue after the first batch. Keep the
+  // absolute end position for legacy total_group_entries consumers while
+  // exposing the per-invocation values explicitly.
+  std::size_t entry_slot_offset = 0;
+  std::size_t group_entries_used = 0;
   std::size_t total_group_entries = 0;
   // Capacity of one HISO/SISO lane for this scheduling invocation.  It is
   // normally the hardware Group4 width (8), but software-only immediate

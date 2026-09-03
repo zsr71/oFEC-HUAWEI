@@ -6,6 +6,7 @@
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <map>
 #include <sstream>
 
 namespace {
@@ -211,7 +212,8 @@ void dump_level56_schedule_rounds_csv(
          "K,branch,time_index,round_index,used_entries_before,"
          "used_entries_after,initial_counts,remaining_before,selected_groups_1based,"
          "remaining_after,group_entry_counts,t0_group_entry_counts,"
-         "t1_group_entry_counts,total_group_entries,planned_hiso,"
+         "t1_group_entry_counts,entry_slot_offset,group_entries_used,"
+         "total_group_entries,planned_hiso,"
          "planned_siso,idle_hiso_capacity,idle_siso_capacity\n";
   for (const auto& sample : samples) {
     const auto write_row = [&](long round_index,
@@ -265,6 +267,8 @@ void dump_level56_schedule_rounds_csv(
           << join_numbers(group_entry_counts) << "\",\""
           << join_numbers(sample.temporal_t0_group_entry_counts) << "\",\""
           << join_numbers(sample.temporal_t1_group_entry_counts) << "\","
+          << sample.entry_slot_offset << ','
+          << sample.group_entries_used << ','
           << sample.total_group_entries << ','
           << sample.planned_hiso_count << ','
           << sample.planned_siso_count << ','
@@ -429,7 +433,8 @@ void dump_level56_buffered_times_csv(
   std::ofstream out(output_path);
   out << "run_id,label,t,arrived_batch,fifo_depth_before,had_head_before,"
          "head_batch_before,pending_before,ordinary_service_used,"
-         "ordinary_batch,ordinary_schedule_invocation,C_t,"
+         "ordinary_batch,ordinary_schedule_invocation,ordinary_service_count,"
+         "ordinary_entries_used,ordinary_services,C_t,"
          "full_early_stop_batches,forced_evicted_batches,S_t,S_next,"
          "fifo_depth_after,pending_after,retirements,forced_evicted_global_rows\n";
   for (const auto& sample : samples) {
@@ -464,7 +469,23 @@ void dump_level56_buffered_times_csv(
     } else {
       out << ',';
     }
-    out << ',' << sample.completed_batches << ','
+    std::ostringstream ordinary_services;
+    for (std::size_t index = 0; index < sample.ordinary_services.size();
+         ++index) {
+      if (index > 0) {
+        ordinary_services << '|';
+      }
+      const auto& service = sample.ordinary_services[index];
+      ordinary_services << 'B' << service.batch_id
+                        << ":I" << service.schedule_invocation
+                        << ":budget" << service.entry_budget
+                        << ":offset" << service.entry_slot_offset
+                        << ":used" << service.entries_used
+                        << ":complete" << service.completed;
+    }
+    out << ',' << sample.ordinary_service_count << ','
+        << sample.ordinary_entries_used << ',' << ordinary_services.str()
+        << ',' << sample.completed_batches << ','
         << sample.full_early_stop_batches << ','
         << sample.forced_evicted_batches << ',' << sample.window_start_before
         << ',' << sample.window_start_after << ',' << sample.fifo_depth_after
@@ -523,6 +544,8 @@ void log_level56_schedule_summary(
   std::size_t total_entries = 0;
   std::size_t total_hiso = 0;
   std::size_t total_siso = 0;
+  std::size_t total_entry_capacity = 0;
+  std::map<std::size_t, std::size_t> buffered_capacity_by_service_time;
   for (const auto& sample : samples) {
     ++branch_counts[static_cast<std::size_t>(sample.branch)];
     if (sample.temporal_lookahead_enabled) {
@@ -550,9 +573,24 @@ void log_level56_schedule_summary(
             sample.temporal_t0_new_produced;
       }
     }
-    total_entries += sample.total_group_entries;
+    // A temporal sample merges history and current scheduling into one
+    // observation, so its legacy absolute end position is the combined use.
+    // Buffered FIFO samples remain one invocation each and must use the
+    // per-invocation count to avoid counting the second batch's offset twice.
+    total_entries += sample.temporal_lookahead_enabled
+        ? sample.total_group_entries
+        : sample.group_entries_used;
     total_hiso += sample.planned_hiso_count;
     total_siso += sample.planned_siso_count;
+    if (sample.buffered_fifo_enabled) {
+      auto& capacity =
+          buffered_capacity_by_service_time[sample.buffered_service_time];
+      capacity = std::max(
+          capacity, sample.entry_slot_offset + sample.entry_capacity);
+    } else {
+      total_entry_capacity +=
+          sample.entry_slot_offset + sample.entry_capacity;
+    }
     for (std::size_t group = 0; group < group_entries.size(); ++group) {
       group_entries[group] += sample.group_entry_counts[group];
     }
@@ -569,6 +607,11 @@ void log_level56_schedule_summary(
         ++class_actions[code.hybrid_class][code.final_action];
       }
     }
+  }
+  for (const auto& [service_time, capacity] :
+       buffered_capacity_by_service_time) {
+    (void)service_time;
+    total_entry_capacity += capacity;
   }
   log << "[RESULT] Level56 schedule calls/branches(K0,K<8,K=8,K>8) = "
       << samples.size() << "/[" << branch_counts[0] << ", "
@@ -613,8 +656,12 @@ void log_level56_schedule_summary(
   }
   log << "[RESULT] Level56 entry/HISO/SISO/idle-HISO/idle-SISO totals = "
       << total_entries << '/' << total_hiso << '/' << total_siso << '/'
-      << (samples.size() * 8u - total_hiso) << '/'
-      << (samples.size() * 8u - total_siso) << "\n";
+      << (total_entry_capacity >= total_hiso
+              ? total_entry_capacity - total_hiso
+              : 0u) << '/'
+      << (total_entry_capacity >= total_siso
+              ? total_entry_capacity - total_siso
+              : 0u) << "\n";
   log << "[RESULT] Level56 per-group entry counts = ["
       << join_numbers(group_entries, ',') << "]\n";
   log << "[RESULT] Level5 actions(EarlyStop,HISO,SISO,Unscheduled) = ["

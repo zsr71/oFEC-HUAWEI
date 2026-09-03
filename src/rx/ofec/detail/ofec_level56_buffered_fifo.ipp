@@ -34,9 +34,19 @@ struct Level56BufferedFifoState {
 };
 
 struct Level56BufferedServiceOutcome {
+  struct OrdinaryService {
+    std::size_t batch_id = 0;
+    std::size_t entry_budget = 0;
+    std::size_t entry_slot_offset = 0;
+    std::size_t entries_used = 0;
+    bool completed = false;
+  };
+
   bool had_head_before = false;
   std::size_t head_batch_id_before = 0;
   bool ordinary_service_used = false;
+  std::size_t ordinary_entries_used = 0;
+  std::vector<OrdinaryService> ordinary_services;
   std::size_t completed_batches = 0;
   std::size_t full_early_stop_batches = 0;
   std::size_t forced_evicted_batches = 0;
@@ -148,6 +158,7 @@ template <typename LLR, typename ClassifyFn, typename OrdinaryServiceFn,
 Level56BufferedServiceOutcome service_level56_buffered_fifo_time(
     Level56BufferedFifoState<LLR>* state,
     bool force_original_head_at_boundary,
+    std::size_t ordinary_entry_capacity,
     ClassifyFn classify,
     OrdinaryServiceFn ordinary_service,
     FullEarlyStopFn full_early_stop) {
@@ -158,6 +169,7 @@ Level56BufferedServiceOutcome service_level56_buffered_fifo_time(
 
   outcome.had_head_before = true;
   outcome.head_batch_id_before = state->fifo.front().batch_id;
+  std::size_t remaining_entries = ordinary_entry_capacity;
   const auto retire_head = [&](Level56BufferedBatchRetirement reason) {
     const auto& head = state->fifo.front();
     outcome.retirements.push_back(Level56BufferedRetirementSample{
@@ -170,6 +182,7 @@ Level56BufferedServiceOutcome service_level56_buffered_fifo_time(
 
   while (!state->fifo.empty()) {
     auto& head = state->fifo.front();
+    const bool was_classified = head.classified;
     classify(&head);
 
     if (level56_buffered_batch_all_early_stop(head.entries)) {
@@ -184,18 +197,49 @@ Level56BufferedServiceOutcome service_level56_buffered_fifo_time(
       continue;
     }
 
-    if (outcome.ordinary_service_used) {
+    if (outcome.ordinary_services.size() >= 2u || remaining_entries == 0u) {
+      // A newly exposed non-FullEarlyStop head may be inspected only to decide
+      // whether the zero-cost fast path can continue. It has not received an
+      // ordinary service, so do not cache this early classification across the
+      // next window's preceding tile updates.
+      if (!was_classified) {
+        head.classified = false;
+        head.entries.clear();
+      }
       break;
     }
     outcome.ordinary_service_used = true;
-    ordinary_service(&head);
-    if (!level56_buffered_batch_complete(head.entries)) {
+    const std::size_t slot_offset =
+        ordinary_entry_capacity - remaining_entries;
+    const std::size_t entries_used =
+        ordinary_service(&head, remaining_entries, slot_offset);
+    if (entries_used == 0u || entries_used > remaining_entries) {
+      throw std::logic_error(
+          "LEVEL56 ordinary service returned an invalid entry count");
+    }
+    remaining_entries -= entries_used;
+    outcome.ordinary_entries_used += entries_used;
+    const bool completed = level56_buffered_batch_complete(head.entries);
+    outcome.ordinary_services.push_back(
+        Level56BufferedServiceOutcome::OrdinaryService{
+            .batch_id = head.batch_id,
+            .entry_budget = remaining_entries + entries_used,
+            .entry_slot_offset = slot_offset,
+            .entries_used = entries_used,
+            .completed = completed,
+        });
+    if (!completed) {
+      if (entries_used < remaining_entries + entries_used) {
+        throw std::logic_error(
+            "LEVEL56 unfinished ordinary batch did not consume its budget");
+      }
       break;
     }
     ++outcome.completed_batches;
     retire_head(Level56BufferedBatchRetirement::Normal);
-    // The ordinary budget is consumed. Only full-EarlyStop heads may retire
-    // when the loop continues in this service time.
+    // The completed head has already written back. The next loop iteration
+    // classifies the new head from the updated shared-memory image. After two
+    // ordinary batches, only a run of full-EarlyStop heads may still retire.
   }
 
   if (force_original_head_at_boundary && outcome.had_head_before &&

@@ -1,7 +1,7 @@
 # Level5/6 FIFO 双 Batch 剩余机会填充方案
 
 日期：2026-09-02  
-状态：方案定义与旧数据收益预分析；尚未实现，尚未产生新方案实测 BER/FIFO 结果。
+状态：核心调度逻辑已实现并通过回归测试；已完成第一组同种子长帧 BER/FIFO 配对实验，尚需增加独立 seed 验证稳定性。
 
 ## 1. 背景
 
@@ -44,7 +44,7 @@ ordinary_batch_count <= 2
 
 不能为了平衡两个 batch 而改成 `4+4`，也不能让第二个 batch 抢占第一个 batch 能够使用的机会。
 
-这里的 FIFO 顺序表示优先级顺序。为了让第二个 batch 获得剩余机会，允许在同一个调度时刻越过“已经获得本时刻服务、但尚未退休”的第一个 batch；下一个调度时刻仍然从最早的未退休 batch 开始。
+这里不会越过尚未完成的第一个普通 batch。Group4 调度具有以下性质：第一个普通 batch 如果没有完成，就会用满本时刻全部 8 次机会；只有当它实际使用少于 8 次并已经完成、写回和退休后，新的队首才可能成为第二个普通 batch。
 
 ### 规则三：每时刻总 Group4 entry 仍然最多为 8
 
@@ -91,9 +91,12 @@ ordinary_batch_count = 0
     ordinary_batch_count += 1
 
     如果 batch 完成：
+        立即写回全局工作内存
         以 Normal 退休
     否则：
-        保留在 FIFO 原有相对顺序中
+        它必然已经用满本批次预算
+        保留在 FIFO 队首
+        结束本时刻普通调度
 
     如果 remaining_entries == 0：
         结束本时刻普通调度
@@ -122,9 +125,15 @@ min(第二个 batch 当前可用需求, remaining_entries)
 
 ### 4.3 FullEarlyStop
 
-沿用现有语义：FullEarlyStop 不占 entry，也不占两个普通 batch 名额。第一普通 batch 服务后即使未退休，本时刻仍允许继续检查其后位置，以找到第二个普通 batch；期间遇到的 FullEarlyStop batch 可直接退休。
+沿用现有语义：FullEarlyStop 不占 entry，也不占两个普通 batch 名额。第一普通 batch 完成、写回并退休后，可以继续处理新队首上的一个或多个 FullEarlyStop batch；随后遇到的普通 batch 才作为第二普通 batch。
 
-### 4.4 ForcedEvicted 与窗口边界
+### 4.4 写回后重新读取
+
+第一普通 batch 完成后，必须先把 Level 5、Level 6 结果写回全局工作内存，再从更新后的全局工作内存读取和分类第二普通 batch。不能在第一普通 batch 写回前缓存第二普通 batch 的输入或分类结果。
+
+实际坐标核验表明，相邻 batch 之间存在 512 个真实重复坐标：前一 batch 的 Level 5 历史写回会成为后一 batch 的 Level 6 当前行输入。因此上述顺序属于实际数据依赖要求。
+
+### 4.5 ForcedEvicted 与窗口边界
 
 现有实现是在一个调度时刻结束时，根据原始队首和 `S_t/window_start` 边界决定是否 ForcedEvicted。新方案中第二个 batch 提前获得服务后，不能简单套用“第二个 batch 也独立触发一次边界淘汰”的逻辑；否则会改变每时刻的缓冲窗口演进规则。
 
@@ -133,9 +142,9 @@ min(第二个 batch 当前可用需求, remaining_entries)
 - 一个调度时刻只执行一次全局 `S_t` 更新；
 - `completed_batches` 可以是该时刻所有退休 batch 的合计；
 - ForcedEvicted 仍以该时刻原始队首和既有边界规则为基准；
-- 通过单元测试覆盖“第一 batch 未完成、第二 batch 完成”“两个 batch 均完成”“中间存在 FullEarlyStop”等情况。
+- 通过单元测试覆盖“第一 batch 未完成时不服务第二 batch”“两个 batch 均完成”“中间存在 FullEarlyStop”等情况。
 
-### 4.5 HISO/SISO 容量
+### 4.6 HISO/SISO 容量
 
 三条规则直接规定的是 8 个 Group4 entry 总预算。当前 Group4 调度中，entry slot 和 HISO/SISO core 分配存在对应关系。实现第二个 batch 时，应从第一个 batch 已使用的 `entry_slot_offset` 继续编号，并验证同一时刻不会重复占用 core/slot。该约束是三条调度规则落到现有硬件资源模型后的实现结果，不另立为调度规则。
 
@@ -322,6 +331,50 @@ Pre-FEC 和 Post-FEC errors、BER、比较总比特数
 ## 10. 当前结论
 
 旧数据足以证明新方案具有明确的资源利用率动机：原策略在大量调度时刻只使用了 8 个 entry 中的一部分，而 FIFO 中通常还有第二个 batch。静态工作量重排显示 FIFO 峰值可能从“数千 batch”下降到“数百甚至百级”，但这一数字依赖于状态不变的强假设，只能作为新方案值得实现和测试的依据。
+
+实现后的短帧冒烟测试使用 `3.065 dB、710400 bits、R_buf=32、0/8、Group4 entries=8、drain=ON`。共观察到 34 个时刻服务两个普通 batch，其中输入阶段 21 个、帧尾 drain 阶段 13 个；每个时刻实际使用 entry 总数均不超过 8，第二 batch 的 slot 偏移等于第一 batch 的实际使用数，FIFO 最终排空。该运行用于验证控制流和日志，不用于得出正式 BER/FIFO 收益结论。
+
+### 10.1 第一组同种子长帧配对结果
+
+第一组正式配对固定以下配置，仅改变普通调度策略：
+
+```text
+Eb/N0 = 3.065 dB
+信息比特数 = 60014592
+bit seed = 20260319
+channel seed = 3182026
+FIFO = ON
+R_buf = 16000
+drain = ON
+HISO/SISO = 0/8
+Group4 entries = 8
+```
+
+| 指标 | 原单 Batch 策略 | 双 Batch 策略 | 变化 |
+|---|---:|---:|---:|
+| Pre-FEC errors / bits | 1292037 / 58608000 | 1292037 / 58608000 | 完全一致 |
+| Post-FEC errors / bits | 11 / 58608000 | 11 / 58608000 | 完全一致 |
+| Post-FEC BER | 1.87688e-7 | 1.87688e-7 | 完全一致 |
+| Level56 entry 总工作量 | 125500 | 125500 | 完全一致 |
+| FIFO 峰值 | 4476 | 360 | 下降 91.96% |
+| 输入结束积压 | 4475 | 197 | 下降 95.60% |
+| drain 时刻数 | 6074 | 202 | 下降 96.67% |
+| 输入加 drain 总时刻数 | 22971 | 17099 | 下降 25.56% |
+| 最小 `S_t` | 3852 | 15282 | 提高 11430 行 |
+| ForcedEvicted | 0 | 0 | 均为 0 |
+| Normal / FullEarlyStop | 16781 / 116 | 16781 / 116 | 完全一致 |
+
+在只统计“输入阶段发生普通服务”的时刻时，entry 利用率由 68.52% 提高到 92.05%，提高 23.53 个百分点。双 Batch 运行中共有 11125 个时刻服务了两个普通 batch，其中输入阶段 10984 个、drain 阶段 141 个；3012 个双 Batch 时刻中两个普通 batch 都完成。
+
+对全部 11125 个双普通 Batch 时刻执行轨迹约束检查，以下违例数量均为 0：
+
+- 第一普通 batch 未完成却继续服务第二普通 batch；
+- 第二普通 batch 的 slot 偏移不等于第一普通 batch 的实际使用数；
+- 第二普通 batch 的预算不等于 `8 - 第一普通 batch 实际使用数`；
+- 两个普通 batch 的使用数之和与时刻总使用数不一致；
+- 一个时刻的总使用数超过 8。
+
+这组结果说明，对该 seed，双 Batch 策略把相同的 125500 次 Group4 entry 工作更紧凑地安排到了输入阶段，显著减少了积压和 drain，同时没有改变 Pre-FEC/Post-FEC 错误数。新旧日志中展示的前 10 个 Post-FEC 错误位置也一致。由于目前只有一个正式长帧 seed，不能据此宣称所有 seed 的 BER 都必然不变；下一步仍应完成其余独立 seed 配对。
 
 最终应以新实现、相同 seed、`drain=ON` 的配对结果回答三个问题：
 

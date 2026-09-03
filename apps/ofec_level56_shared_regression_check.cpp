@@ -7,6 +7,7 @@
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -767,6 +768,43 @@ void check_grouped_fill_idle_entries_does_not_change_full_schedule() {
   require_state_conservation(fill_entries);
 }
 
+void check_grouped_two_batch_budget_and_slot_offset() {
+  auto first_entries = make_all_early_stop_grouped_entries();
+  activate_group_prefix(&first_entries, 0, 1);
+  activate_group_prefix(&first_entries, 1, 1);
+  activate_group_prefix(&first_entries, 2, 1);
+  auto second_entries = make_all_early_stop_grouped_entries();
+  activate_group_prefix(&second_entries, 3, 1);
+  activate_group_prefix(&second_entries, 4, 1);
+
+  auto p = make_grouped_params();
+  p.LEVEL56_SCHEDULE_OBSERVABILITY_ENABLE = false;
+  p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::EnteredGroupsOnly;
+  const std::size_t first_used = newcode::detail::schedule_level56_rows(
+      &first_entries, p, 0, nullptr, 8, 0, false);
+  const std::size_t second_used = newcode::detail::schedule_level56_rows(
+      &second_entries, p, 0, nullptr, 8 - first_used, first_used, false);
+
+  require(first_used == 3 && second_used == 2,
+          "two-batch scheduler returned the wrong per-batch entry usage");
+  std::vector<int> first_slots;
+  std::vector<int> second_slots;
+  for (const auto& entry : first_entries) {
+    if (entry.assigned_entry_slot >= 0) {
+      first_slots.push_back(entry.assigned_entry_slot);
+    }
+  }
+  for (const auto& entry : second_entries) {
+    if (entry.assigned_entry_slot >= 0) {
+      second_slots.push_back(entry.assigned_entry_slot);
+    }
+  }
+  require(first_slots == std::vector<int>({0, 1, 2}) &&
+              second_slots == std::vector<int>({3, 4}),
+          "two FIFO batches reused or skipped a Group4 entry slot");
+}
+
 void check_grouped_k8_runs_once_per_group() {
   auto entries = make_all_early_stop_grouped_entries();
   for (std::size_t group = 0; group < 8; ++group) {
@@ -1387,9 +1425,14 @@ void check_buffered_service_fast_path_and_fifo_order() {
   std::vector<std::size_t> classified;
   std::vector<std::size_t> ordinary;
   const auto outcome = newcode::detail::service_level56_buffered_fifo_time(
-      &state, false,
+      &state, false, 8,
       [&](auto* batch) { classified.push_back(batch->batch_id); },
-      [&](auto* batch) { ordinary.push_back(batch->batch_id); },
+      [&](auto* batch, std::size_t budget, std::size_t offset) {
+        ordinary.push_back(batch->batch_id);
+        require(budget == 8 && offset == 0,
+                "first ordinary batch did not receive the full budget");
+        return 8u;
+      },
       [](auto* batch) { mark_buffered_test_batch_complete(batch); });
 
   require(outcome.completed_batches == 2 &&
@@ -1413,7 +1456,8 @@ void check_buffered_service_fast_path_and_fifo_order() {
   std::size_t fast_callbacks = 0;
   const auto all_fast_outcome =
       newcode::detail::service_level56_buffered_fifo_time(
-          &all_fast, false, [](auto*) {}, [](auto*) {},
+          &all_fast, false, 8, [](auto*) {},
+          [](auto*, std::size_t, std::size_t) { return 8u; },
           [&](auto* batch) {
             mark_buffered_test_batch_complete(batch);
             ++fast_callbacks;
@@ -1429,30 +1473,65 @@ void check_buffered_service_ordinary_budget_boundary() {
   newcode::detail::Level56BufferedFifoState<float> ordinary_then_ordinary;
   ordinary_then_ordinary.fifo.push_back(make_buffered_test_batch(0, false));
   ordinary_then_ordinary.fifo.push_back(make_buffered_test_batch(1, false));
+  ordinary_then_ordinary.fifo.push_back(make_buffered_test_batch(2, false));
   std::vector<std::size_t> ordinary_calls;
   std::vector<std::pair<std::size_t, int>> observed_shared_versions;
   int shared_version = 0;
   const auto ordinary_outcome =
       newcode::detail::service_level56_buffered_fifo_time(
-          &ordinary_then_ordinary, false,
+          &ordinary_then_ordinary, false, 8,
           [&](auto* batch) {
             observed_shared_versions.emplace_back(
                 batch->batch_id, shared_version);
           },
-          [&](auto* batch) {
+          [&](auto* batch, std::size_t budget, std::size_t offset) {
             ordinary_calls.push_back(batch->batch_id);
             mark_buffered_test_batch_complete(batch);
-            shared_version = 1;
+            if (batch->batch_id == 0) {
+              require(budget == 8 && offset == 0,
+                      "B0 did not receive entries 0-2 from the full budget");
+              shared_version = 1;
+              return 3u;
+            }
+            require(batch->batch_id == 1 && budget == 5 && offset == 3,
+                    "B1 did not receive B0's five remaining entries");
+            shared_version = 2;
+            return 2u;
           },
           [](auto* batch) { mark_buffered_test_batch_complete(batch); });
-  require(ordinary_outcome.completed_batches == 1 &&
-              ordinary_calls == std::vector<std::size_t>({0}) &&
+  require(ordinary_outcome.completed_batches == 2 &&
+              ordinary_outcome.ordinary_entries_used == 5 &&
+              ordinary_outcome.ordinary_services.size() == 2 &&
+              ordinary_calls == std::vector<std::size_t>({0, 1}) &&
               ordinary_then_ordinary.fifo.size() == 1 &&
-              ordinary_then_ordinary.fifo.front().batch_id == 1,
-          "ordinary completion must not transfer unused entries to B1");
+              ordinary_then_ordinary.fifo.front().batch_id == 2,
+          "ordinary completion did not transfer unused entries to B1");
   require(observed_shared_versions ==
-              std::vector<std::pair<std::size_t, int>>({{0, 0}, {1, 1}}),
-          "B1 must inspect shared SRAM only after B0 writeback completes");
+              std::vector<std::pair<std::size_t, int>>(
+                  {{0, 0}, {1, 1}, {2, 2}}),
+          "each newly exposed head must inspect shared SRAM after prior writeback");
+
+  newcode::detail::Level56BufferedFifoState<float> full_budget_completion;
+  full_budget_completion.fifo.push_back(make_buffered_test_batch(0, false));
+  full_budget_completion.fifo.push_back(make_buffered_test_batch(1, false));
+  std::vector<std::size_t> full_budget_calls;
+  const auto full_budget_outcome =
+      newcode::detail::service_level56_buffered_fifo_time(
+          &full_budget_completion, false, 8, [](auto*) {},
+          [&](auto* batch, std::size_t budget, std::size_t offset) {
+            full_budget_calls.push_back(batch->batch_id);
+            require(budget == 8 && offset == 0,
+                    "full-budget B0 received an invalid slot range");
+            mark_buffered_test_batch_complete(batch);
+            return 8u;
+          },
+          [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(full_budget_outcome.completed_batches == 1 &&
+              full_budget_outcome.ordinary_entries_used == 8 &&
+              full_budget_calls == std::vector<std::size_t>({0}) &&
+              full_budget_completion.fifo.size() == 1 &&
+              full_budget_completion.fifo.front().batch_id == 1,
+          "a completed B0 that used all eight entries still served B1");
 
   newcode::detail::Level56BufferedFifoState<float> ordinary_then_fast;
   ordinary_then_fast.fifo.push_back(make_buffered_test_batch(0, false));
@@ -1460,8 +1539,16 @@ void check_buffered_service_ordinary_budget_boundary() {
   ordinary_then_fast.fifo.push_back(make_buffered_test_batch(2, false));
   const auto mixed_outcome =
       newcode::detail::service_level56_buffered_fifo_time(
-          &ordinary_then_fast, false, [](auto*) {},
-          [&](auto* batch) { mark_buffered_test_batch_complete(batch); },
+          &ordinary_then_fast, false, 8, [](auto*) {},
+          [&](auto* batch, std::size_t budget, std::size_t offset) {
+            if (batch->batch_id == 0) {
+              mark_buffered_test_batch_complete(batch);
+              return 3u;
+            }
+            require(batch->batch_id == 2 && budget == 5 && offset == 3,
+                    "ordinary batch after FullEarlyStop lost the remaining budget");
+            return 5u;
+          },
           [](auto* batch) { mark_buffered_test_batch_complete(batch); });
   require(mixed_outcome.completed_batches == 2 &&
               mixed_outcome.full_early_stop_batches == 1 &&
@@ -1472,7 +1559,103 @@ void check_buffered_service_ordinary_budget_boundary() {
                   newcode::Level56BufferedBatchRetirement::FullEarlyStop &&
               ordinary_then_fast.fifo.size() == 1 &&
               ordinary_then_fast.fifo.front().batch_id == 2,
-          "ordinary completion must still allow the following full-EarlyStop path");
+          "FullEarlyStop between ordinary batches broke FIFO fill ordering");
+
+  newcode::detail::Level56BufferedFifoState<float> second_remains_head;
+  second_remains_head.fifo.push_back(make_buffered_test_batch(0, false));
+  second_remains_head.fifo.push_back(make_buffered_test_batch(1, false));
+  second_remains_head.fifo.push_back(make_buffered_test_batch(2, false));
+  std::vector<std::tuple<std::size_t, std::size_t, std::size_t>>
+      remaining_head_calls;
+  const auto first_time = newcode::detail::service_level56_buffered_fifo_time(
+      &second_remains_head, false, 8, [](auto*) {},
+      [&](auto* batch, std::size_t budget, std::size_t offset) {
+        remaining_head_calls.emplace_back(batch->batch_id, budget, offset);
+        if (batch->batch_id == 0) {
+          mark_buffered_test_batch_complete(batch);
+          return 3u;
+        }
+        return 5u;
+      },
+      [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(first_time.completed_batches == 1 &&
+              first_time.ordinary_services.size() == 2 &&
+              !first_time.ordinary_services[1].completed &&
+              second_remains_head.fifo.front().batch_id == 1,
+          "unfinished second ordinary batch did not remain at the FIFO head");
+  const auto second_time = newcode::detail::service_level56_buffered_fifo_time(
+      &second_remains_head, false, 8, [](auto*) {},
+      [&](auto* batch, std::size_t budget, std::size_t offset) {
+        remaining_head_calls.emplace_back(batch->batch_id, budget, offset);
+        require(batch->batch_id == 1 && budget == 8 && offset == 0,
+                "prior second batch did not become the next time's first batch");
+        mark_buffered_test_batch_complete(batch);
+        return 8u;
+      },
+      [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(second_time.completed_batches == 1 &&
+              remaining_head_calls ==
+                  std::vector<std::tuple<std::size_t, std::size_t,
+                                         std::size_t>>(
+                      {{0, 8, 0}, {1, 5, 3}, {1, 8, 0}}),
+          "unfinished second-batch service sequence was not FIFO-stable");
+
+  newcode::detail::Level56BufferedFifoState<float> trailing_fast;
+  trailing_fast.fifo.push_back(make_buffered_test_batch(0, false));
+  trailing_fast.fifo.push_back(make_buffered_test_batch(1, false));
+  trailing_fast.fifo.push_back(make_buffered_test_batch(2, true));
+  trailing_fast.fifo.push_back(make_buffered_test_batch(3, false));
+  const auto trailing_fast_outcome =
+      newcode::detail::service_level56_buffered_fifo_time(
+          &trailing_fast, false, 8, [](auto*) {},
+          [&](auto* batch, std::size_t, std::size_t) {
+            mark_buffered_test_batch_complete(batch);
+            return batch->batch_id == 0 ? 3u : 2u;
+          },
+          [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(trailing_fast_outcome.completed_batches == 3 &&
+              trailing_fast_outcome.full_early_stop_batches == 1 &&
+              trailing_fast_outcome.ordinary_services.size() == 2 &&
+              trailing_fast.fifo.size() == 1 &&
+              trailing_fast.fifo.front().batch_id == 3,
+          "FullEarlyStop after the second ordinary batch did not retire");
+
+  newcode::detail::Level56BufferedFifoState<float> reclassify_third;
+  for (std::size_t id = 0; id < 3; ++id) {
+    auto batch = make_buffered_test_batch(id, false);
+    batch.classified = false;
+    batch.entries.clear();
+    reclassify_third.fifo.push_back(std::move(batch));
+  }
+  std::array<std::size_t, 3> classify_counts{};
+  const auto classify = [&](auto* batch) {
+    ++classify_counts[batch->batch_id];
+    if (!batch->classified) {
+      batch->entries = make_entries(32);
+      batch->classified = true;
+    }
+  };
+  newcode::detail::service_level56_buffered_fifo_time(
+      &reclassify_third, false, 8, classify,
+      [&](auto* batch, std::size_t, std::size_t) {
+        mark_buffered_test_batch_complete(batch);
+        return batch->batch_id == 0 ? 3u : 2u;
+      },
+      [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(!reclassify_third.fifo.front().classified &&
+              reclassify_third.fifo.front().entries.empty() &&
+              classify_counts[2] == 1,
+          "unserved third batch cached a speculative classification");
+  newcode::detail::service_level56_buffered_fifo_time(
+      &reclassify_third, false, 8, classify,
+      [](auto*, std::size_t budget, std::size_t offset) {
+        require(budget == 8 && offset == 0,
+                "reclassified third batch did not receive the next full budget");
+        return 8u;
+      },
+      [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(classify_counts[2] == 2,
+          "unserved third batch was not reclassified at the next time");
 }
 
 void check_buffered_service_forced_eviction_boundary() {
@@ -1480,7 +1663,8 @@ void check_buffered_service_forced_eviction_boundary() {
   state.fifo.push_back(make_buffered_test_batch(0, false));
   state.fifo.push_back(make_buffered_test_batch(1, true));
   const auto outcome = newcode::detail::service_level56_buffered_fifo_time(
-      &state, true, [](auto*) {}, [](auto*) {},
+      &state, true, 8, [](auto*) {},
+      [](auto*, std::size_t, std::size_t) { return 8u; },
       [](auto* batch) { mark_buffered_test_batch_complete(batch); });
   require(outcome.completed_batches == 0 &&
               outcome.forced_evicted_batches == 1 &&
@@ -1497,7 +1681,8 @@ void check_buffered_service_forced_eviction_boundary() {
   exposed_head.fifo.push_back(make_buffered_test_batch(1, false));
   const auto exposed_outcome =
       newcode::detail::service_level56_buffered_fifo_time(
-          &exposed_head, true, [](auto*) {}, [](auto*) {},
+          &exposed_head, true, 8, [](auto*) {},
+          [](auto*, std::size_t, std::size_t) { return 8u; },
           [](auto* batch) { mark_buffered_test_batch_complete(batch); });
   require(exposed_outcome.completed_batches == 1 &&
               exposed_outcome.forced_evicted_batches == 0 &&
@@ -1886,6 +2071,7 @@ int main() {
     check_grouped_fill_idle_entries_k0_selects_first_8_groups();
     check_grouped_fill_idle_entries_uses_ordinary_6_plus_2_supplemental();
     check_grouped_fill_idle_entries_does_not_change_full_schedule();
+    check_grouped_two_batch_budget_and_slot_offset();
     check_grouped_k8_runs_once_per_group();
     check_grouped_k6_uses_6_plus_2_entries();
     check_grouped_siso_only_multiround_reentry();
