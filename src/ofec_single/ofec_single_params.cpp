@@ -236,6 +236,8 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.LEVEL56_BUFFER_ROWS = cfg.level56_buffer_rows;
   params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END =
       cfg.level56_buffered_fifo_drain_at_frame_end;
+  params.LEVEL56_SISO_DECODER_LATENCY =
+      cfg.level56_siso_decoder_latency;
   params.LEVEL56_HISO_ALLOWED_CLASS_MASK =
       cfg.level56_hiso_allowed_class_mask;
   params.LEVEL56_SHARED_HISO_ACTIVE = cfg.level56_shared_hiso_active;

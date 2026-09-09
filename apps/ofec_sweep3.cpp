@@ -91,9 +91,13 @@ static constexpr bool kLevel56SharedEnable = true;                  // true=第�
 static constexpr bool kLevel56TemporalLookaheadEnable = false;      // 旧三时刻 lookahead；与 buffered FIFO 互斥
 static constexpr int kLevel56TemporalGroupLoadThreshold = 16;       // temporal 分支阈值：X+K1+K2 小于该值时补解 t=0
 static constexpr bool kLevel56BufferedFifoEnable = true;            // 新方案：完整 64-code batch FIFO
-static constexpr std::size_t kLevel56BufferRows = 32;               // R_buf，单位为 block row
+static constexpr std::size_t kLevel56BufferRows = 16000;            // R_buf，单位为 block row；低 BER 曲线避免 forced eviction 污染
+static constexpr bool kLevel56BufferedFifoDrainAtFrameEnd = true;   // 每个 Monte Carlo chunk 结束时排空 FIFO
+static constexpr std::size_t kLevel56SisoDecoderLatency = 16;       // SISO 细时钟级保护延迟
+static constexpr unsigned kLevel56HisoAllowedClassMask = 0x07u;     // 允许前三类走 HISO，TwoMain/HardFail 只能走 SISO
 static constexpr int kLevel56SharedHisoActive = 8;                  // 新分组方案固定使用 8 个共享 HISO entry slot
 static constexpr int kLevel56SharedSisoActive = 8;                  // 新分组方案固定使用 8 个共享 SISO entry slot
+static constexpr std::size_t kLevel56Group4MaxEntries = 8;          // 一个到达时刻内的细时钟/四码字组机会数
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
     newcode::Level56PriorityMode::Level5First; // Level5First=组负载相同时 Level 5 优先；Level6First=Level 6 优先
 static constexpr newcode::Level56ScheduleMode kLevel56ScheduleMode =
@@ -302,7 +306,7 @@ void ensure_csv_header_sweep3(const std::string& csv_path) {
           "chase_L,chase_n_test,chase_topk_keep,chase_group_minima_bits,"
           "mux_group_g,mux_scheduling_mode,mux_early_stop_priority_rule,mux_bypass_scheme,"
           "hybrid_enable,hybrid_enable_list,hybrid_classifier_mode,hybrid_siso_backfill_mode,hybrid_normalize_soft_only,"
-          "level56_shared_enable,level56_temporal_lookahead_enable,level56_buffered_fifo_enable,level56_buffer_rows,level56_shared_hiso_active,level56_shared_siso_active,level56_priority_mode,level56_schedule_mode,level56_early_stop_group_update_mode,"
+          "level56_shared_enable,level56_temporal_lookahead_enable,level56_buffered_fifo_enable,level56_buffer_rows,level56_buffered_fifo_drain_at_frame_end,level56_siso_decoder_latency,level56_hiso_allowed_class_mask,level56_shared_hiso_active,level56_shared_siso_active,level56_group4_max_entries,level56_priority_mode,level56_schedule_mode,level56_early_stop_group_update_mode,"
           "early_stop_condition_mode,early_stop_action_mode,early_stop_bind_group_size,"
           "early_stop_cond_v1_require_bch,early_stop_cond_v1_require_overall,"
           "early_stop_v2_llr_abs_threshold,early_stop_v2_max_unreliable_bits,early_stop_cond_v2_include_overall\n";
@@ -358,8 +362,12 @@ void write_csv_row_sweep3(std::ostream& csv,
       << (kLevel56TemporalLookaheadEnable ? 1 : 0) << ','
       << (kLevel56BufferedFifoEnable ? 1 : 0) << ','
       << kLevel56BufferRows << ','
+      << (kLevel56BufferedFifoDrainAtFrameEnd ? 1 : 0) << ','
+      << kLevel56SisoDecoderLatency << ','
+      << kLevel56HisoAllowedClassMask << ','
       << kLevel56SharedHisoActive << ','
       << kLevel56SharedSisoActive << ','
+      << kLevel56Group4MaxEntries << ','
       << static_cast<int>(kLevel56PriorityMode) << ','
       << static_cast<int>(kLevel56ScheduleMode) << ','
       << level56_early_stop_group_update_mode_name(
@@ -877,8 +885,16 @@ ofec_sweep::SweepParameterConfig build_config() {
   config.base_params.LEVEL56_BUFFERED_FIFO_ENABLE =
       kLevel56BufferedFifoEnable;
   config.base_params.LEVEL56_BUFFER_ROWS = kLevel56BufferRows;
+  config.base_params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END =
+      kLevel56BufferedFifoDrainAtFrameEnd;
+  config.base_params.LEVEL56_SISO_DECODER_LATENCY =
+      kLevel56SisoDecoderLatency;
+  config.base_params.LEVEL56_HISO_ALLOWED_CLASS_MASK =
+      kLevel56HisoAllowedClassMask;
   config.base_params.LEVEL56_SHARED_HISO_ACTIVE = kLevel56SharedHisoActive;
   config.base_params.LEVEL56_SHARED_SISO_ACTIVE = kLevel56SharedSisoActive;
+  config.base_params.LEVEL56_GROUP4_MAX_ENTRIES =
+      kLevel56Group4MaxEntries;
   config.base_params.LEVEL56_PRIORITY_MODE = kLevel56PriorityMode;
   config.base_params.LEVEL56_SCHEDULE_MODE = kLevel56ScheduleMode;
   config.base_params.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =

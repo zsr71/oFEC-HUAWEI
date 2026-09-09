@@ -152,6 +152,10 @@ struct Params {
   // 开启后不再引入新 batch，也不执行 Level 1--4，只用于获得“全帧已完成”
   // 的最终 BER。
   bool LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END = false;
+  // Level 5/6 FIFO 的细时钟级译码保护延迟。一个到达时刻固定包含
+  // 8 个 Group4 时钟；候选 batch 相对源 batch 距离达到 3 时，必须等到
+  // source.last_used_cycle + 本参数后才可获得普通服务。
+  std::size_t LEVEL56_SISO_DECODER_LATENCY = 0;
   // HISO 类别准入掩码，用于受控消融。bit 0..3 分别对应
   // ParityOnly / OneMain / OneMainPlusParity / TwoMain。默认 0x0f 保持
   // 原有“这四类均可走 HISO”的行为；未获准的非 EarlyStop code 仍是

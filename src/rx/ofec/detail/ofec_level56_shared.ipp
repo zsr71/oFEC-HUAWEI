@@ -520,6 +520,7 @@ struct Level56SharedResult {
   TileProcessResult<LLR> level5;
   TileProcessResult<LLR> level6;
   std::vector<Level56DispatchEntry> dispatch;
+  std::size_t group_entries_used = 0;
   bool has_schedule_sample = false;
   Level56ScheduleSample schedule_sample;
 };
@@ -715,6 +716,13 @@ inline void validate_level56_shared_config(const newcode::Params& p) {
     if (p.TILE_HEIGHT_BR != 22 || p.WINDOW_POP_PUSH != 2) {
       throw std::invalid_argument(
           "LEVEL56 buffered FIFO requires 22-row tiles and two-row push/pop");
+    }
+    if (p.LEVEL56_SCHEDULE_MODE !=
+            newcode::Level56ScheduleMode::Group4LoadSortedMultiround ||
+        p.LEVEL56_GROUP4_MAX_ENTRIES != kLevel56MaxGroupEntries) {
+      throw std::invalid_argument(
+          "LEVEL56 buffered FIFO requires Group4 scheduling with exactly "
+          "eight fine-clock entries");
     }
   }
   if (p.TILES_PER_WIN != 6 || p.CHASE_SBR != 2 ||
@@ -1186,7 +1194,7 @@ inline void plan_level56_group_entry(
   }
 }
 
-inline void schedule_level56_rows_group4_load_sorted_multiround(
+inline std::size_t schedule_level56_rows_group4_load_sorted_multiround(
     std::vector<Level56DispatchEntry>* entries,
     const newcode::Params& p,
     std::size_t selected_level,
@@ -1467,6 +1475,9 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
   }
 
   if (sample) {
+    sample->entry_slot_offset = entry_slot_offset;
+    sample->group_entries_used =
+        static_cast<std::size_t>(used_group_entries);
     sample->total_group_entries =
         entry_slot_offset + static_cast<std::size_t>(used_group_entries);
     sample->entry_capacity = max_group_entries;
@@ -1483,24 +1494,27 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
           entry, 1, Level56TemporalInfoType::DecodeInfo, false));
     }
   }
+  return static_cast<std::size_t>(used_group_entries);
 }
 
-inline void schedule_level56_rows(std::vector<Level56DispatchEntry>* entries,
-                                  const newcode::Params& p,
-                                  std::size_t selected_level = 0,
-                                  Level56ScheduleSample* sample = nullptr,
-                                  std::size_t max_group_entries =
-                                      kLevel56MaxGroupEntries,
-                                  std::size_t entry_slot_offset = 0,
-                                  bool preserve_entry_state = false) {
+inline std::size_t schedule_level56_rows(
+    std::vector<Level56DispatchEntry>* entries,
+    const newcode::Params& p,
+    std::size_t selected_level = 0,
+    Level56ScheduleSample* sample = nullptr,
+    std::size_t max_group_entries = kLevel56MaxGroupEntries,
+    std::size_t entry_slot_offset = 0,
+    bool preserve_entry_state = false) {
   if (p.LEVEL56_SCHEDULE_MODE ==
       newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
-    schedule_level56_rows_group4_load_sorted_multiround(
+    return schedule_level56_rows_group4_load_sorted_multiround(
         entries, p, selected_level, sample, max_group_entries,
         entry_slot_offset, preserve_entry_state);
-    return;
   }
   schedule_level56_rows_global_priority(entries, p, selected_level);
+  // GlobalPriority 没有 Group4 槽位语义，视为消耗本次全部预算，避免把
+  // Group4 专用的跨 batch 填充错误地扩展到该参考模式。
+  return max_group_entries;
 }
 
 inline void route_level56_g1_global_priority(
@@ -1951,7 +1965,7 @@ Level56SharedResult<LLR> process_level56_shared(
        params5.LEVEL56_EQUIVALENCE_OBSERVATION_ENABLE)
           ? &schedule_sample
           : nullptr;
-  schedule_level56_rows(
+  const std::size_t group_entries_used = schedule_level56_rows(
       &entries, params5, selected_level, schedule_sample_ptr,
       max_group_entries, entry_slot_offset, preserve_entry_state);
   route_level56_g1(&entries, params5, selected_level);
@@ -2079,6 +2093,7 @@ Level56SharedResult<LLR> process_level56_shared(
   }
 
   Level56SharedResult<LLR> result;
+  result.group_entries_used = group_entries_used;
   result.level5 = build_level56_tile_result(
       tile_in5, early5.raw, early5.effective, entries, 5, shared_invocation,
       params5, std::move(tile_out5));

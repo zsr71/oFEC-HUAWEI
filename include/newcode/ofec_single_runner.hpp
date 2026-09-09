@@ -70,6 +70,7 @@ struct Config {
   bool level56_buffered_fifo_enable = false;
   std::size_t level56_buffer_rows = 32;
   bool level56_buffered_fifo_drain_at_frame_end = false;
+  std::size_t level56_siso_decoder_latency = 0;
   unsigned level56_hiso_allowed_class_mask = 0x0fu;
   int level56_shared_hiso_active = 32;
   int level56_shared_siso_active = 32;

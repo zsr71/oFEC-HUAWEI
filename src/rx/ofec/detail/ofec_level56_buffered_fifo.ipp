@@ -22,6 +22,15 @@ struct Level56BufferedBatch {
   Level56EarlyStopEvaluation early6;
   std::vector<Level56DispatchEntry> entries;
   bool classified = false;
+  bool has_last_used_cycle = false;
+  std::size_t last_used_cycle = 0;
+  std::size_t release_cycle = 0;
+};
+
+struct Level56BufferedLatencyProtection {
+  std::size_t source_batch_id = 0;
+  std::size_t last_used_cycle = 0;
+  std::size_t release_cycle = 0;
 };
 
 template <typename LLR>
@@ -30,13 +39,34 @@ struct Level56BufferedFifoState {
   std::size_t next_batch_id = 0;
   std::size_t service_time = 0;
   std::size_t window_start = 0;
+  std::vector<Level56BufferedLatencyProtection> latency_protections;
   bool initialized = false;
 };
 
 struct Level56BufferedServiceOutcome {
+  struct OrdinaryService {
+    std::size_t batch_id = 0;
+    std::size_t entry_budget = 0;
+    std::size_t entry_slot_offset = 0;
+    std::size_t entries_used = 0;
+    std::size_t first_used_cycle = 0;
+    std::size_t last_used_cycle = 0;
+    std::size_t release_cycle = 0;
+    bool completed = false;
+  };
+
   bool had_head_before = false;
   std::size_t head_batch_id_before = 0;
   bool ordinary_service_used = false;
+  std::size_t interval_begin_cycle = 0;
+  std::size_t interval_end_cycle = 0;
+  std::size_t ordinary_entries_used = 0;
+  std::size_t latency_blocked_cycles = 0;
+  std::size_t effective_release_cycle = 0;
+  std::size_t latency_candidate_batch_id = 0;
+  bool had_latency_candidate = false;
+  std::vector<std::size_t> blocking_source_batches;
+  std::vector<OrdinaryService> ordinary_services;
   std::size_t completed_batches = 0;
   std::size_t full_early_stop_batches = 0;
   std::size_t forced_evicted_batches = 0;
@@ -143,59 +173,179 @@ void initialize_level56_buffered_fifo_state(
   }
 }
 
+inline std::size_t level56_buffered_effective_release_cycle(
+    const std::vector<Level56BufferedLatencyProtection>& protections,
+    std::size_t candidate_batch_id,
+    std::vector<std::size_t>* blocking_sources) {
+  std::size_t effective_release_cycle = 0;
+  if (blocking_sources) {
+    blocking_sources->clear();
+  }
+  for (const auto& protection : protections) {
+    if (candidate_batch_id < protection.source_batch_id + 3u) {
+      continue;
+    }
+    if (blocking_sources) {
+      blocking_sources->push_back(protection.source_batch_id);
+    }
+    effective_release_cycle =
+        std::max(effective_release_cycle, protection.release_cycle);
+  }
+  return effective_release_cycle;
+}
+
+inline void update_level56_buffered_latency_protection(
+    std::vector<Level56BufferedLatencyProtection>* protections,
+    std::size_t source_batch_id,
+    std::size_t last_used_cycle,
+    std::size_t release_cycle) {
+  const auto found = std::find_if(
+      protections->begin(), protections->end(),
+      [source_batch_id](const auto& protection) {
+        return protection.source_batch_id == source_batch_id;
+      });
+  if (found == protections->end()) {
+    protections->push_back(Level56BufferedLatencyProtection{
+        .source_batch_id = source_batch_id,
+        .last_used_cycle = last_used_cycle,
+        .release_cycle = release_cycle,
+    });
+    return;
+  }
+  found->last_used_cycle = last_used_cycle;
+  found->release_cycle = release_cycle;
+}
+
 template <typename LLR, typename ClassifyFn, typename OrdinaryServiceFn,
           typename FullEarlyStopFn>
 Level56BufferedServiceOutcome service_level56_buffered_fifo_time(
     Level56BufferedFifoState<LLR>* state,
     bool force_original_head_at_boundary,
+    std::size_t ordinary_entry_capacity,
+    std::size_t siso_decoder_latency,
     ClassifyFn classify,
     OrdinaryServiceFn ordinary_service,
     FullEarlyStopFn full_early_stop) {
   Level56BufferedServiceOutcome outcome;
+  outcome.interval_begin_cycle =
+      state->service_time * kLevel56MaxGroupEntries;
+  outcome.interval_end_cycle =
+      outcome.interval_begin_cycle + ordinary_entry_capacity;
+  std::erase_if(state->latency_protections, [&](const auto& protection) {
+    return protection.release_cycle <= outcome.interval_begin_cycle;
+  });
   if (state->fifo.empty()) {
     return outcome;
   }
 
   outcome.had_head_before = true;
   outcome.head_batch_id_before = state->fifo.front().batch_id;
-  const auto retire_head = [&](Level56BufferedBatchRetirement reason) {
-    const auto& head = state->fifo.front();
+  std::size_t cursor = outcome.interval_begin_cycle;
+  std::size_t service_index = 0;
+  const auto retire_at = [&](std::size_t index,
+                             Level56BufferedBatchRetirement reason) {
+    const auto& batch = state->fifo[index];
     outcome.retirements.push_back(Level56BufferedRetirementSample{
-        .batch_id = head.batch_id,
-        .arrival_time = head.arrival_time,
+        .batch_id = batch.batch_id,
+        .arrival_time = batch.arrival_time,
         .reason = reason,
     });
-    state->fifo.pop_front();
+    state->fifo.erase(state->fifo.begin() +
+                      static_cast<std::ptrdiff_t>(index));
   };
 
-  while (!state->fifo.empty()) {
-    auto& head = state->fifo.front();
-    classify(&head);
+  while (service_index < state->fifo.size()) {
+    if (cursor >= outcome.interval_end_cycle) {
+      break;
+    }
+    auto& batch = state->fifo[service_index];
+    const bool was_classified = batch.classified;
+    classify(&batch);
 
-    if (level56_buffered_batch_all_early_stop(head.entries)) {
-      full_early_stop(&head);
-      if (!level56_buffered_batch_complete(head.entries)) {
+    if (level56_buffered_batch_all_early_stop(batch.entries)) {
+      full_early_stop(&batch);
+      if (!level56_buffered_batch_complete(batch.entries)) {
         throw std::logic_error(
             "LEVEL56 full EarlyStop action did not complete every code");
       }
       ++outcome.completed_batches;
       ++outcome.full_early_stop_batches;
-      retire_head(Level56BufferedBatchRetirement::FullEarlyStop);
+      retire_at(service_index, Level56BufferedBatchRetirement::FullEarlyStop);
       continue;
     }
 
-    if (outcome.ordinary_service_used) {
+    std::vector<std::size_t> blocking_sources;
+    const std::size_t effective_release_cycle =
+        level56_buffered_effective_release_cycle(
+            state->latency_protections, batch.batch_id, &blocking_sources);
+    if (effective_release_cycle > cursor) {
+      outcome.had_latency_candidate = true;
+      outcome.latency_candidate_batch_id = batch.batch_id;
+      outcome.effective_release_cycle = effective_release_cycle;
+      outcome.blocking_source_batches = blocking_sources;
+      const std::size_t next_cursor =
+          std::min(effective_release_cycle, outcome.interval_end_cycle);
+      outcome.latency_blocked_cycles += next_cursor - cursor;
+      cursor = next_cursor;
+    }
+    if (cursor >= outcome.interval_end_cycle) {
+      // Classification before a blocked ordinary service is speculative: the
+      // shared SRAM may change before the next interval reaches this batch.
+      if (!was_classified) {
+        batch.classified = false;
+        batch.entries.clear();
+      }
+      break;
+    }
+
+    const std::size_t entry_budget = outcome.interval_end_cycle - cursor;
+    const std::size_t slot_offset = cursor - outcome.interval_begin_cycle;
+    const std::size_t entries_used =
+        ordinary_service(&batch, entry_budget, slot_offset);
+    if (entries_used > entry_budget) {
+      throw std::logic_error(
+          "LEVEL56 ordinary service exceeded its remaining entry budget");
+    }
+    if (entries_used == 0u) {
+      // A non-fast batch that makes no ordinary progress must stop this
+      // interval; otherwise an unchanged batch could cause a busy loop.
+      if (!was_classified) {
+        batch.classified = false;
+        batch.entries.clear();
+      }
       break;
     }
     outcome.ordinary_service_used = true;
-    ordinary_service(&head);
-    if (!level56_buffered_batch_complete(head.entries)) {
-      break;
+    const std::size_t first_used_cycle = cursor;
+    const std::size_t last_used_cycle = cursor + entries_used - 1u;
+    cursor += entries_used;
+    batch.has_last_used_cycle = true;
+    batch.last_used_cycle = last_used_cycle;
+    batch.release_cycle = last_used_cycle + siso_decoder_latency;
+    update_level56_buffered_latency_protection(
+        &state->latency_protections, batch.batch_id,
+        batch.last_used_cycle, batch.release_cycle);
+    outcome.ordinary_entries_used += entries_used;
+
+    const bool completed = level56_buffered_batch_complete(batch.entries);
+    outcome.ordinary_services.push_back(
+        Level56BufferedServiceOutcome::OrdinaryService{
+            .batch_id = batch.batch_id,
+            .entry_budget = entry_budget,
+            .entry_slot_offset = slot_offset,
+            .entries_used = entries_used,
+            .first_used_cycle = first_used_cycle,
+            .last_used_cycle = last_used_cycle,
+            .release_cycle = batch.release_cycle,
+            .completed = completed,
+        });
+    if (completed) {
+      ++outcome.completed_batches;
+      retire_at(service_index, Level56BufferedBatchRetirement::Normal);
+    } else {
+      // 本时刻临时向后服务；下一时刻仍会从 FIFO 最早未完成 batch 开始。
+      ++service_index;
     }
-    ++outcome.completed_batches;
-    retire_head(Level56BufferedBatchRetirement::Normal);
-    // The ordinary budget is consumed. Only full-EarlyStop heads may retire
-    // when the loop continues in this service time.
   }
 
   if (force_original_head_at_boundary && outcome.had_head_before &&
@@ -208,7 +358,7 @@ Level56BufferedServiceOutcome service_level56_buffered_fifo_time(
     }
     mark_level56_batch_forced_evicted(&state->fifo.front().entries);
     ++outcome.forced_evicted_batches;
-    retire_head(Level56BufferedBatchRetirement::ForcedEvicted);
+    retire_at(0, Level56BufferedBatchRetirement::ForcedEvicted);
   }
   return outcome;
 }

@@ -199,6 +199,8 @@ void log_run_overview(const Config& cfg,
       << ", buffer_rows = " << params.LEVEL56_BUFFER_ROWS
       << ", drain_at_frame_end = "
       << (params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END ? "ON" : "OFF")
+      << ", siso_decoder_latency = "
+      << params.LEVEL56_SISO_DECODER_LATENCY
       << ", hiso_class_mask = 0x" << std::hex
       << params.LEVEL56_HISO_ALLOWED_CLASS_MASK << std::dec
       << ", HISO/SISO = "

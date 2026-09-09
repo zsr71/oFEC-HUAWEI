@@ -429,7 +429,10 @@ void dump_level56_buffered_times_csv(
   std::ofstream out(output_path);
   out << "run_id,label,t,arrived_batch,fifo_depth_before,had_head_before,"
          "head_batch_before,pending_before,ordinary_service_used,"
-         "ordinary_batch,ordinary_schedule_invocation,C_t,"
+         "ordinary_batch,ordinary_schedule_invocation,interval_begin_cycle,"
+         "interval_end_cycle,ordinary_service_count,ordinary_entries_used,"
+         "latency_blocked_cycles,latency_candidate,effective_release_cycle,"
+         "blocking_source_batches,ordinary_services,C_t,"
          "full_early_stop_batches,forced_evicted_batches,S_t,S_next,"
          "fifo_depth_after,pending_after,retirements,forced_evicted_global_rows\n";
   for (const auto& sample : samples) {
@@ -464,7 +467,42 @@ void dump_level56_buffered_times_csv(
     } else {
       out << ',';
     }
-    out << ',' << sample.completed_batches << ','
+    std::ostringstream blocking_sources;
+    for (std::size_t index = 0;
+         index < sample.blocking_source_batches.size(); ++index) {
+      if (index > 0) {
+        blocking_sources << '|';
+      }
+      blocking_sources << 'B' << sample.blocking_source_batches[index];
+    }
+    std::ostringstream ordinary_services;
+    for (std::size_t index = 0; index < sample.ordinary_services.size();
+         ++index) {
+      if (index > 0) {
+        ordinary_services << '|';
+      }
+      const auto& service = sample.ordinary_services[index];
+      ordinary_services << 'B' << service.batch_id
+                        << ":I" << service.schedule_invocation
+                        << ":budget" << service.entry_budget
+                        << ":offset" << service.entry_slot_offset
+                        << ":used" << service.entries_used
+                        << ":cycles" << service.first_used_cycle << '-'
+                        << service.last_used_cycle
+                        << ":release" << service.release_cycle
+                        << ":complete" << service.completed;
+    }
+    out << ',' << sample.interval_begin_cycle << ','
+        << sample.interval_end_cycle << ','
+        << sample.ordinary_service_count << ','
+        << sample.ordinary_entries_used << ','
+        << sample.latency_blocked_cycles << ',';
+    if (sample.had_latency_candidate) {
+      out << 'B' << sample.latency_candidate_batch_id;
+    }
+    out << ',' << sample.effective_release_cycle << ','
+        << blocking_sources.str() << ',' << ordinary_services.str() << ','
+        << sample.completed_batches << ','
         << sample.full_early_stop_batches << ','
         << sample.forced_evicted_batches << ',' << sample.window_start_before
         << ',' << sample.window_start_after << ',' << sample.fifo_depth_after
@@ -523,6 +561,7 @@ void log_level56_schedule_summary(
   std::size_t total_entries = 0;
   std::size_t total_hiso = 0;
   std::size_t total_siso = 0;
+  std::size_t total_entry_capacity = 0;
   for (const auto& sample : samples) {
     ++branch_counts[static_cast<std::size_t>(sample.branch)];
     if (sample.temporal_lookahead_enabled) {
@@ -550,9 +589,12 @@ void log_level56_schedule_summary(
             sample.temporal_t0_new_produced;
       }
     }
-    total_entries += sample.total_group_entries;
+    total_entries += sample.temporal_lookahead_enabled
+        ? sample.total_group_entries
+        : sample.group_entries_used;
     total_hiso += sample.planned_hiso_count;
     total_siso += sample.planned_siso_count;
+    total_entry_capacity += sample.entry_capacity;
     for (std::size_t group = 0; group < group_entries.size(); ++group) {
       group_entries[group] += sample.group_entry_counts[group];
     }
@@ -613,8 +655,12 @@ void log_level56_schedule_summary(
   }
   log << "[RESULT] Level56 entry/HISO/SISO/idle-HISO/idle-SISO totals = "
       << total_entries << '/' << total_hiso << '/' << total_siso << '/'
-      << (samples.size() * 8u - total_hiso) << '/'
-      << (samples.size() * 8u - total_siso) << "\n";
+      << (total_entry_capacity >= total_hiso
+              ? total_entry_capacity - total_hiso
+              : 0u) << '/'
+      << (total_entry_capacity >= total_siso
+              ? total_entry_capacity - total_siso
+              : 0u) << "\n";
   log << "[RESULT] Level56 per-group entry counts = ["
       << join_numbers(group_entries, ',') << "]\n";
   log << "[RESULT] Level5 actions(EarlyStop,HISO,SISO,Unscheduled) = ["

@@ -334,10 +334,14 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                 captured_pending_before = true;
               }
             };
-            const auto ordinary_service = [&](auto* head) {
+            const auto ordinary_service = [&](auto* head,
+                                               std::size_t entry_budget,
+                                               std::size_t slot_offset) {
               const std::size_t invocation = next_invocation();
-              time_sample.ordinary_batch_id = head->batch_id;
-              time_sample.ordinary_schedule_invocation = invocation;
+              if (!time_sample.ordinary_service_used) {
+                time_sample.ordinary_batch_id = head->batch_id;
+                time_sample.ordinary_schedule_invocation = invocation;
+              }
               auto output5 = service_input5;
               auto output6 = service_input6;
               auto result = process_level56_shared(
@@ -347,7 +351,7 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                   head->tile_top5, head->tile_top6, invocation,
                   normalize_extrinsic, tx_llr_ref, core_fn,
                   last_tile_history_accum, &head->entries,
-                  buffered_max_group_entries, 0, true,
+                  entry_budget, slot_offset, true,
                   &head->early5, &head->early6, &output5, &output6,
                   true, head->batch_id, level56_buffered_state->service_time);
               head->entries = result.dispatch;
@@ -366,6 +370,19 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                   kLevel5TileIndex, head->tile_top5, result.level5.tile_out);
               write_tile_to_work(
                   kLevel6TileIndex, head->tile_top6, result.level6.tile_out);
+              const bool completed =
+                  level56_buffered_batch_complete(head->entries);
+              time_sample.ordinary_services.push_back(
+                  Level56BufferedOrdinaryServiceSample{
+                      .batch_id = head->batch_id,
+                      .schedule_invocation = invocation,
+                      .entry_budget = entry_budget,
+                      .entry_slot_offset = slot_offset,
+                      .entries_used = result.group_entries_used,
+                      .completed = completed,
+                  });
+              time_sample.ordinary_service_used = true;
+              return result.group_entries_used;
             };
             const auto full_early_stop = [&](auto* head) {
               const std::size_t invocation = next_invocation();
@@ -402,12 +419,41 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             const auto service_outcome = service_level56_buffered_fifo_time(
                 level56_buffered_state,
                 time_sample.window_start_before == 0,
+                buffered_max_group_entries,
+                p.LEVEL56_SISO_DECODER_LATENCY,
                 classify_head, ordinary_service, full_early_stop);
             time_sample.had_head_before = service_outcome.had_head_before;
             time_sample.head_batch_id_before =
                 service_outcome.head_batch_id_before;
             time_sample.ordinary_service_used =
                 service_outcome.ordinary_service_used;
+            time_sample.interval_begin_cycle =
+                service_outcome.interval_begin_cycle;
+            time_sample.interval_end_cycle =
+                service_outcome.interval_end_cycle;
+            time_sample.ordinary_service_count =
+                service_outcome.ordinary_services.size();
+            time_sample.ordinary_entries_used =
+                service_outcome.ordinary_entries_used;
+            time_sample.latency_blocked_cycles =
+                service_outcome.latency_blocked_cycles;
+            time_sample.effective_release_cycle =
+                service_outcome.effective_release_cycle;
+            time_sample.latency_candidate_batch_id =
+                service_outcome.latency_candidate_batch_id;
+            time_sample.had_latency_candidate =
+                service_outcome.had_latency_candidate;
+            time_sample.blocking_source_batches =
+                service_outcome.blocking_source_batches;
+            for (std::size_t index = 0;
+                 index < service_outcome.ordinary_services.size(); ++index) {
+              time_sample.ordinary_services[index].first_used_cycle =
+                  service_outcome.ordinary_services[index].first_used_cycle;
+              time_sample.ordinary_services[index].last_used_cycle =
+                  service_outcome.ordinary_services[index].last_used_cycle;
+              time_sample.ordinary_services[index].release_cycle =
+                  service_outcome.ordinary_services[index].release_cycle;
+            }
             time_sample.completed_batches =
                 service_outcome.completed_batches;
             time_sample.full_early_stop_batches =
@@ -846,12 +892,56 @@ void drain_level56_buffered_fifo_at_frame_end(
         captured_pending_before = true;
       }
     };
-    const auto run_head = [&](auto* head) {
+    const auto run_head = [&](auto* head,
+                              std::size_t entry_budget,
+                              std::size_t slot_offset) {
       const std::size_t invocation = level56_shared_invocation
           ? (*level56_shared_invocation)++
           : 0u;
-      time_sample.ordinary_batch_id = head->batch_id;
-      time_sample.ordinary_schedule_invocation = invocation;
+      if (!time_sample.ordinary_service_used) {
+        time_sample.ordinary_batch_id = head->batch_id;
+        time_sample.ordinary_schedule_invocation = invocation;
+      }
+      auto output5 = input5;
+      auto output6 = input6;
+      auto result = process_level56_shared(
+          input5, channel5, input6, channel6,
+          head->params5, head->params6,
+          head->tile_top5, head->tile_top6, invocation,
+          normalize_extrinsic, tx_llr_ref, core_fn,
+          last_tile_history_accum, &head->entries,
+          entry_budget, slot_offset, true,
+          &head->early5, &head->early6, &output5, &output6, true,
+          head->batch_id, state->service_time);
+      head->entries = result.dispatch;
+      update_stats(kLevel5TileIndex, result.level5);
+      update_stats(kLevel6TileIndex, result.level6);
+      if (tile_stats && result.has_schedule_sample) {
+        result.schedule_sample.buffered_fifo_enabled = true;
+        result.schedule_sample.buffered_service_time = state->service_time;
+        result.schedule_sample.buffered_batch_id = head->batch_id;
+        (*tile_stats)[kLevel5TileIndex].level56_schedule_samples.push_back(
+            std::move(result.schedule_sample));
+      }
+      write_tile(head->tile_top5, result.level5.tile_out);
+      write_tile(head->tile_top6, result.level6.tile_out);
+      const bool completed = level56_buffered_batch_complete(head->entries);
+      time_sample.ordinary_services.push_back(
+          Level56BufferedOrdinaryServiceSample{
+              .batch_id = head->batch_id,
+              .schedule_invocation = invocation,
+              .entry_budget = entry_budget,
+              .entry_slot_offset = slot_offset,
+              .entries_used = result.group_entries_used,
+              .completed = completed,
+          });
+      time_sample.ordinary_service_used = true;
+      return result.group_entries_used;
+    };
+    const auto full_early_stop = [&](auto* head) {
+      const std::size_t invocation = level56_shared_invocation
+          ? (*level56_shared_invocation)++
+          : 0u;
       auto output5 = input5;
       auto output6 = input6;
       auto result = process_level56_shared(
@@ -876,15 +966,35 @@ void drain_level56_buffered_fifo_at_frame_end(
       write_tile(head->tile_top5, result.level5.tile_out);
       write_tile(head->tile_top6, result.level6.tile_out);
     };
-    const auto full_early_stop = run_head;
     const auto outcome = service_level56_buffered_fifo_time(
-        state, false, classify_head, run_head, full_early_stop);
-    if (!outcome.ordinary_service_used && outcome.completed_batches == 0) {
+        state, false, max_group_entries, p.LEVEL56_SISO_DECODER_LATENCY,
+        classify_head, run_head, full_early_stop);
+    if (!outcome.ordinary_service_used && outcome.completed_batches == 0 &&
+        outcome.latency_blocked_cycles == 0) {
       throw std::logic_error("LEVEL56 frame-end drain made no FIFO progress");
     }
     time_sample.had_head_before = outcome.had_head_before;
     time_sample.head_batch_id_before = outcome.head_batch_id_before;
     time_sample.ordinary_service_used = outcome.ordinary_service_used;
+    time_sample.interval_begin_cycle = outcome.interval_begin_cycle;
+    time_sample.interval_end_cycle = outcome.interval_end_cycle;
+    time_sample.ordinary_service_count = outcome.ordinary_services.size();
+    time_sample.ordinary_entries_used = outcome.ordinary_entries_used;
+    time_sample.latency_blocked_cycles = outcome.latency_blocked_cycles;
+    time_sample.effective_release_cycle = outcome.effective_release_cycle;
+    time_sample.latency_candidate_batch_id =
+        outcome.latency_candidate_batch_id;
+    time_sample.had_latency_candidate = outcome.had_latency_candidate;
+    time_sample.blocking_source_batches = outcome.blocking_source_batches;
+    for (std::size_t index = 0; index < outcome.ordinary_services.size();
+         ++index) {
+      time_sample.ordinary_services[index].first_used_cycle =
+          outcome.ordinary_services[index].first_used_cycle;
+      time_sample.ordinary_services[index].last_used_cycle =
+          outcome.ordinary_services[index].last_used_cycle;
+      time_sample.ordinary_services[index].release_cycle =
+          outcome.ordinary_services[index].release_cycle;
+    }
     time_sample.completed_batches = outcome.completed_batches;
     time_sample.full_early_stop_batches = outcome.full_early_stop_batches;
     time_sample.forced_evicted_batches = outcome.forced_evicted_batches;

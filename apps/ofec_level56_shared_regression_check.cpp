@@ -7,6 +7,7 @@
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -1387,9 +1388,14 @@ void check_buffered_service_fast_path_and_fifo_order() {
   std::vector<std::size_t> classified;
   std::vector<std::size_t> ordinary;
   const auto outcome = newcode::detail::service_level56_buffered_fifo_time(
-      &state, false,
+      &state, false, 8, 0,
       [&](auto* batch) { classified.push_back(batch->batch_id); },
-      [&](auto* batch) { ordinary.push_back(batch->batch_id); },
+      [&](auto* batch, std::size_t budget, std::size_t offset) {
+        ordinary.push_back(batch->batch_id);
+        require(budget == 8 && offset == 0,
+                "first ordinary batch did not receive the full interval");
+        return 8u;
+      },
       [](auto* batch) { mark_buffered_test_batch_complete(batch); });
 
   require(outcome.completed_batches == 2 &&
@@ -1402,7 +1408,7 @@ void check_buffered_service_fast_path_and_fifo_order() {
           "full-EarlyStop retirement must preserve FIFO order");
   require(ordinary.size() == 1 && ordinary[0] == 2 &&
               state.fifo.size() == 2 && state.fifo.front().batch_id == 2,
-          "one t must serve only the first ordinary FIFO head");
+          "a full-budget ordinary batch must stop the interval");
   require(classified == std::vector<std::size_t>({0, 1, 2}),
           "scheduler classified a future batch beyond the blocked head");
 
@@ -1413,7 +1419,8 @@ void check_buffered_service_fast_path_and_fifo_order() {
   std::size_t fast_callbacks = 0;
   const auto all_fast_outcome =
       newcode::detail::service_level56_buffered_fifo_time(
-          &all_fast, false, [](auto*) {}, [](auto*) {},
+          &all_fast, false, 8, 0, [](auto*) {},
+          [](auto*, std::size_t, std::size_t) { return 0u; },
           [&](auto* batch) {
             mark_buffered_test_batch_complete(batch);
             ++fast_callbacks;
@@ -1434,22 +1441,31 @@ void check_buffered_service_ordinary_budget_boundary() {
   int shared_version = 0;
   const auto ordinary_outcome =
       newcode::detail::service_level56_buffered_fifo_time(
-          &ordinary_then_ordinary, false,
+          &ordinary_then_ordinary, false, 8, 0,
           [&](auto* batch) {
             observed_shared_versions.emplace_back(
                 batch->batch_id, shared_version);
           },
-          [&](auto* batch) {
+          [&](auto* batch, std::size_t budget, std::size_t offset) {
             ordinary_calls.push_back(batch->batch_id);
             mark_buffered_test_batch_complete(batch);
-            shared_version = 1;
+            if (batch->batch_id == 0) {
+              require(budget == 8 && offset == 0,
+                      "B0 did not start from slot zero");
+              shared_version = 1;
+              return 3u;
+            }
+            require(batch->batch_id == 1 && budget == 5 && offset == 3,
+                    "B1 did not receive B0's remaining five clocks");
+            shared_version = 2;
+            return 2u;
           },
           [](auto* batch) { mark_buffered_test_batch_complete(batch); });
-  require(ordinary_outcome.completed_batches == 1 &&
-              ordinary_calls == std::vector<std::size_t>({0}) &&
-              ordinary_then_ordinary.fifo.size() == 1 &&
-              ordinary_then_ordinary.fifo.front().batch_id == 1,
-          "ordinary completion must not transfer unused entries to B1");
+  require(ordinary_outcome.completed_batches == 2 &&
+              ordinary_outcome.ordinary_entries_used == 5 &&
+              ordinary_calls == std::vector<std::size_t>({0, 1}) &&
+              ordinary_then_ordinary.fifo.empty(),
+          "unused clocks did not continue into the next ordinary batch");
   require(observed_shared_versions ==
               std::vector<std::pair<std::size_t, int>>({{0, 0}, {1, 1}}),
           "B1 must inspect shared SRAM only after B0 writeback completes");
@@ -1460,19 +1476,134 @@ void check_buffered_service_ordinary_budget_boundary() {
   ordinary_then_fast.fifo.push_back(make_buffered_test_batch(2, false));
   const auto mixed_outcome =
       newcode::detail::service_level56_buffered_fifo_time(
-          &ordinary_then_fast, false, [](auto*) {},
-          [&](auto* batch) { mark_buffered_test_batch_complete(batch); },
+          &ordinary_then_fast, false, 8, 0, [](auto*) {},
+          [&](auto* batch, std::size_t, std::size_t) {
+            mark_buffered_test_batch_complete(batch);
+            return batch->batch_id == 0 ? 3u : 5u;
+          },
           [](auto* batch) { mark_buffered_test_batch_complete(batch); });
-  require(mixed_outcome.completed_batches == 2 &&
+  require(mixed_outcome.completed_batches == 3 &&
               mixed_outcome.full_early_stop_batches == 1 &&
-              mixed_outcome.retirements.size() == 2 &&
+              mixed_outcome.retirements.size() == 3 &&
               mixed_outcome.retirements[0].reason ==
                   newcode::Level56BufferedBatchRetirement::Normal &&
               mixed_outcome.retirements[1].reason ==
                   newcode::Level56BufferedBatchRetirement::FullEarlyStop &&
-              ordinary_then_fast.fifo.size() == 1 &&
-              ordinary_then_fast.fifo.front().batch_id == 2,
-          "ordinary completion must still allow the following full-EarlyStop path");
+              mixed_outcome.retirements[2].reason ==
+                  newcode::Level56BufferedBatchRetirement::Normal &&
+              ordinary_then_fast.fifo.empty(),
+          "FullEarlyStop interrupted remaining-clock transfer");
+}
+
+void check_buffered_multi_batch_latency_cycles() {
+  newcode::detail::Level56BufferedFifoState<float> state;
+  for (std::size_t id = 0; id < 6; ++id) {
+    state.fifo.push_back(make_buffered_test_batch(id, false));
+  }
+
+  std::vector<std::tuple<std::size_t, std::size_t, std::size_t>> calls;
+  const auto first = newcode::detail::service_level56_buffered_fifo_time(
+      &state, false, 8, 16, [](auto*) {},
+      [&](auto* batch, std::size_t budget, std::size_t offset) {
+        calls.emplace_back(batch->batch_id, budget, offset);
+        if (batch->batch_id < 3) {
+          mark_buffered_test_batch_complete(batch);
+          return 1u;
+        }
+        return 0u;
+      },
+      [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+
+  require(first.ordinary_services.size() == 3 &&
+              first.ordinary_entries_used == 3 &&
+              first.latency_blocked_cycles == 5 &&
+              first.had_latency_candidate &&
+              first.latency_candidate_batch_id == 3 &&
+              first.effective_release_cycle == 16 &&
+              first.blocking_source_batches == std::vector<std::size_t>({0}),
+          "third-following batch was not blocked by B0 through cycle 16");
+  require(calls ==
+              std::vector<std::tuple<std::size_t, std::size_t, std::size_t>>(
+                  {{0, 8, 0}, {1, 7, 1}, {2, 6, 2}}),
+          "one interval did not serve three ordinary batches before latency");
+
+  // At service_time=2 the interval is [16,24): B3 can start immediately at
+  // its exact release cycle. One-clock batches then continue without a fixed
+  // batch-count limit until a later dependency blocks the cursor.
+  state.service_time = 2;
+  const auto released = newcode::detail::service_level56_buffered_fifo_time(
+      &state, false, 8, 16, [](auto*) {},
+      [](auto* batch, std::size_t, std::size_t) {
+        mark_buffered_test_batch_complete(batch);
+        return 1u;
+      },
+      [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(!released.ordinary_services.empty() &&
+              released.ordinary_services.front().batch_id == 3 &&
+              released.ordinary_services.front().first_used_cycle == 16,
+          "candidate did not resume on the exact release cycle");
+
+  newcode::detail::Level56BufferedFifoState<float> middle_release;
+  middle_release.service_time = 3;
+  middle_release.fifo.push_back(make_buffered_test_batch(4, false));
+  middle_release.latency_protections.push_back(
+      {.source_batch_id = 1, .last_used_cycle = 12, .release_cycle = 28});
+  const auto middle = newcode::detail::service_level56_buffered_fifo_time(
+      &middle_release, false, 8, 16, [](auto*) {},
+      [](auto* batch, std::size_t budget, std::size_t offset) {
+        require(budget == 4 && offset == 4,
+                "middle release did not expose slots 4..7");
+        mark_buffered_test_batch_complete(batch);
+        return 2u;
+      },
+      [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(middle.latency_blocked_cycles == 4 &&
+              middle.ordinary_services.size() == 1 &&
+              middle.ordinary_services.front().first_used_cycle == 28 &&
+              middle.ordinary_services.front().last_used_cycle == 29 &&
+              middle.ordinary_services.front().release_cycle == 45,
+          "protection released in the middle of an interval incorrectly");
+
+  newcode::detail::Level56BufferedFifoState<float> b1_example;
+  b1_example.fifo.push_back(make_buffered_test_batch(0, false));
+  const auto example = newcode::detail::service_level56_buffered_fifo_time(
+      &b1_example, false, 8, 16, [](auto*) {},
+      [](auto*, std::size_t, std::size_t) { return 6u; },
+      [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(example.ordinary_services.size() == 1 &&
+              example.ordinary_services.front().last_used_cycle == 5 &&
+              example.ordinary_services.front().release_cycle == 21,
+          "B1 slots 0..5 must produce release_cycle 5+16=21");
+
+  newcode::detail::Level56BufferedFifoState<float> eight_batches;
+  for (std::size_t id = 0; id < 9; ++id) {
+    eight_batches.fifo.push_back(make_buffered_test_batch(id, false));
+  }
+  const auto no_latency =
+      newcode::detail::service_level56_buffered_fifo_time(
+          &eight_batches, false, 8, 0, [](auto*) {},
+          [](auto* batch, std::size_t, std::size_t) {
+            mark_buffered_test_batch_complete(batch);
+            return 1u;
+          },
+          [](auto* batch) { mark_buffered_test_batch_complete(batch); });
+  require(no_latency.ordinary_services.size() == 8 &&
+              no_latency.ordinary_entries_used == 8 &&
+              eight_batches.fifo.size() == 1 &&
+              eight_batches.fifo.front().batch_id == 8,
+          "zero latency did not allow eight natural one-clock services");
+
+  std::vector<newcode::detail::Level56BufferedLatencyProtection>
+      protections = {
+          {.source_batch_id = 0, .last_used_cycle = 4, .release_cycle = 20},
+          {.source_batch_id = 1, .last_used_cycle = 7, .release_cycle = 23},
+          {.source_batch_id = 2, .last_used_cycle = 9, .release_cycle = 25},
+      };
+  std::vector<std::size_t> sources;
+  require(newcode::detail::level56_buffered_effective_release_cycle(
+              protections, 4, &sources) == 23 &&
+              sources == std::vector<std::size_t>({0, 1}),
+          "B4 did not take the maximum applicable release cycle");
 }
 
 void check_buffered_service_forced_eviction_boundary() {
@@ -1480,7 +1611,8 @@ void check_buffered_service_forced_eviction_boundary() {
   state.fifo.push_back(make_buffered_test_batch(0, false));
   state.fifo.push_back(make_buffered_test_batch(1, true));
   const auto outcome = newcode::detail::service_level56_buffered_fifo_time(
-      &state, true, [](auto*) {}, [](auto*) {},
+      &state, true, 8, 0, [](auto*) {},
+      [](auto*, std::size_t, std::size_t) { return 0u; },
       [](auto* batch) { mark_buffered_test_batch_complete(batch); });
   require(outcome.completed_batches == 0 &&
               outcome.forced_evicted_batches == 1 &&
@@ -1497,7 +1629,8 @@ void check_buffered_service_forced_eviction_boundary() {
   exposed_head.fifo.push_back(make_buffered_test_batch(1, false));
   const auto exposed_outcome =
       newcode::detail::service_level56_buffered_fifo_time(
-          &exposed_head, true, [](auto*) {}, [](auto*) {},
+          &exposed_head, true, 8, 0, [](auto*) {},
+          [](auto*, std::size_t, std::size_t) { return 0u; },
           [](auto* batch) { mark_buffered_test_batch_complete(batch); });
   require(exposed_outcome.completed_batches == 1 &&
               exposed_outcome.forced_evicted_batches == 0 &&
@@ -1901,6 +2034,7 @@ int main() {
     check_buffered_retirement_markers();
     check_buffered_service_fast_path_and_fifo_order();
     check_buffered_service_ordinary_budget_boundary();
+    check_buffered_multi_batch_latency_cycles();
     check_buffered_service_forced_eviction_boundary();
     check_buffered_configuration_validation();
     check_buffered_end_to_end_full_early_stop();

@@ -94,6 +94,7 @@ static constexpr bool kLevel56TemporalLookaheadEnable = false;    // 旧 t=0/t=1
 static constexpr int kLevel56TemporalGroupLoadThreshold = 16;     // temporal 分支阈值，默认等价于 K1+K2 < 16-X
 static constexpr bool kLevel56BufferedFifoEnable = true;          // 新方案：完整 64-code batch FIFO 与跨时刻 pending
 static constexpr std::size_t kLevel56BufferRows = 32;             // R_buf，单位为 block row
+static constexpr std::size_t kLevel56SisoDecoderLatency = 16;      // 细时钟级软译码保护延迟
 static constexpr int kLevel56SharedHisoActive = 8;                 // 第五/六级共享 HISO 容量
 static constexpr int kLevel56SharedSisoActive = 8;                 // 第五/六级共享 SISO 容量
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
@@ -187,6 +188,7 @@ int main() {
   std::size_t level56_buffer_rows = kLevel56BufferRows;
   std::size_t num_info_bits = 0;
   bool level56_buffered_fifo_drain_at_frame_end = false;
+  std::size_t level56_siso_decoder_latency = kLevel56SisoDecoderLatency;
   unsigned level56_hiso_allowed_class_mask = 0x0fu;
   int bitgen_seed = kBitgenSeed;
   int channel_seed = kChannelSeed;
@@ -332,6 +334,20 @@ int main() {
       return 2;
     }
     run_suffix += level56_buffered_fifo_drain_at_frame_end ? "_drain1" : "_drain0";
+  }
+
+  if (const char* value = std::getenv("LEVEL56_SISO_DECODER_LATENCY")) {
+    const std::string text(value);
+    const auto parse_result = std::from_chars(
+        text.data(), text.data() + text.size(), level56_siso_decoder_latency);
+    if (text.empty() || parse_result.ec != std::errc{} ||
+        parse_result.ptr != text.data() + text.size()) {
+      std::cerr << "[ERROR] LEVEL56_SISO_DECODER_LATENCY must be a "
+                   "non-negative integer\n";
+      return 2;
+    }
+    run_suffix += "_sisolat" +
+                  std::to_string(level56_siso_decoder_latency);
   }
 
   if (const char* value = std::getenv("LEVEL56_HISO_CLASS_MASK")) {
@@ -546,6 +562,7 @@ int main() {
     .level56_buffer_rows = level56_buffer_rows,
     .level56_buffered_fifo_drain_at_frame_end =
         level56_buffered_fifo_drain_at_frame_end,
+    .level56_siso_decoder_latency = level56_siso_decoder_latency,
     .level56_hiso_allowed_class_mask = level56_hiso_allowed_class_mask,
     .level56_shared_hiso_active = level56_shared_hiso_active,
     .level56_shared_siso_active = level56_shared_siso_active,
