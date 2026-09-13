@@ -124,7 +124,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   }
   std::size_t level56_shared_invocation = 0;
   Level56TemporalState<LLR> level56_temporal_state;
-  Level56BufferedFifoState<LLR> level56_buffered_state;
+  Level56SplitBufferedFifoState<LLR> level56_split_buffered_state;
 
   while (win_start <= last_ws) {
     const size_t win_end = win_start + WIN_HEIGHT_ROWS - 1;
@@ -141,8 +141,9 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
                              p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE
                                  ? &level56_temporal_state
                                  : nullptr,
+                             nullptr,
                              p.LEVEL56_BUFFERED_FIFO_ENABLE
-                                 ? &level56_buffered_state
+                                 ? &level56_split_buffered_state
                                  : nullptr);
 
     win_start += POP_PUSH_ROWS;
@@ -150,10 +151,10 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
 
   if (p.LEVEL56_BUFFERED_FIFO_ENABLE &&
       p.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END) {
-    drain_level56_buffered_fifo_at_frame_end(
+    drain_level56_split_buffered_fifo_at_frame_end(
         work_llr, channel_llr, p, stats_ptr, normalize_extrinsic, tx_llr_ref,
         core_fn, &last_tile_history_llr, &level56_shared_invocation,
-        &level56_buffered_state);
+        &level56_split_buffered_state);
   }
 
   if (tile_stats) {

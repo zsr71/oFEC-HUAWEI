@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 #include "newcode/common/matrix/matrix.hpp"
@@ -109,6 +110,7 @@ struct Level56ScheduleCodeSample {
 struct Level56BufferedRetirementSample {
   std::size_t batch_id = 0;
   std::size_t arrival_time = 0;
+  std::size_t ordinary_service_count = 0;
   Level56BufferedBatchRetirement reason =
       Level56BufferedBatchRetirement::Normal;
 };
@@ -144,6 +146,50 @@ struct Level56BufferedTimeSample {
   std::vector<Level56BufferedOrdinaryServiceSample> ordinary_services;
   std::vector<Level56BufferedRetirementSample> retirements;
   std::vector<std::size_t> forced_evicted_global_rows;
+};
+
+struct Level56SplitBufferedLevelTimeSample {
+  std::size_t source_level = 0;
+  std::size_t arrived_batch_id = std::numeric_limits<std::size_t>::max();
+  bool arrived = false;
+  std::size_t fifo_depth_before = 0;
+  std::size_t fifo_depth_after = 0;
+  bool had_head_before = false;
+  std::size_t head_batch_id_before = 0;
+  std::size_t pending_before = 0;
+  std::size_t pending_after = 0;
+  std::size_t completed_batches = 0;
+  std::size_t full_early_stop_batches = 0;
+  std::size_t forced_evicted_batches = 0;
+  std::size_t window_start_before = 0;
+  std::size_t window_start_after = 0;
+  std::vector<Level56BufferedRetirementSample> retirements;
+  std::vector<std::size_t> forced_evicted_global_rows;
+};
+
+struct Level56SplitBufferedRoundSample {
+  std::size_t round_index = 0;
+  std::size_t schedule_invocation = 0;
+  std::size_t entry_budget = 0;
+  std::size_t entry_slot_offset = 0;
+  std::size_t entries_used = 0;
+  bool served_level5 = false;
+  bool served_level6 = false;
+  std::size_t batch_id5 = std::numeric_limits<std::size_t>::max();
+  std::size_t batch_id6 = std::numeric_limits<std::size_t>::max();
+  bool completed_level5 = false;
+  bool completed_level6 = false;
+  std::size_t entries_used_level5 = 0;
+  std::size_t entries_used_level6 = 0;
+};
+
+struct Level56SplitBufferedTimeSample {
+  std::size_t service_time = 0;
+  bool drain = false;
+  Level56SplitBufferedLevelTimeSample level5;
+  Level56SplitBufferedLevelTimeSample level6;
+  std::size_t ordinary_entries_used = 0;
+  std::vector<Level56SplitBufferedRoundSample> ordinary_rounds;
 };
 
 struct Level56ScheduleSample {
@@ -242,6 +288,8 @@ struct TileEarlyStopCounter {
   std::vector<HybridClassCount> hybrid_class_counts;
   std::vector<Level56ScheduleSample> level56_schedule_samples;
   std::vector<Level56BufferedTimeSample> level56_buffered_time_samples;
+  std::vector<Level56SplitBufferedTimeSample>
+      level56_split_buffered_time_samples;
 };
 
 template <typename LLR>

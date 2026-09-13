@@ -27,7 +27,9 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                          matrix::Matrix<float>* last_tile_history_accum,
                          std::size_t* level56_shared_invocation,
                          Level56TemporalState<LLR>* level56_temporal_state = nullptr,
-                         Level56BufferedFifoState<LLR>* level56_buffered_state = nullptr)
+                         Level56BufferedFifoState<LLR>* level56_buffered_state = nullptr,
+                         Level56SplitBufferedFifoState<LLR>*
+                             level56_split_buffered_state = nullptr)
 {
   // 输入:
   // - work_llr: 当前全局工作矩阵，保存已经累积的外信息/历史信息，会被原地更新。
@@ -270,6 +272,273 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
           }
           auto params5 = make_tile_params(kLevel5TileIndex);
           auto params6 = make_tile_params(kLevel6TileIndex);
+          if (level56_split_buffered_state &&
+              p.LEVEL56_BUFFERED_FIFO_ENABLE) {
+            auto* split_state = level56_split_buffered_state;
+            initialize_level56_split_buffered_fifo_state(split_state, p);
+            const std::size_t buffer_rows5 =
+                p.level5_buffer_rows() +
+                kLevel56SplitFixedDelaySubblockRows;
+            const std::size_t buffer_rows6 = p.level6_buffer_rows();
+            const std::size_t level6_offset_rows =
+                (p.TILE_HEIGHT_BR + kLevel56SplitFixedDelaySubblockRows +
+                 p.level5_buffer_rows()) *
+                newcode::Params::BITS_PER_SUBBLOCK_DIM;
+            const bool level5_arrives = top5 + tile_height_rows <= work_llr.rows();
+            const bool level6_arrives = top5 >= level6_offset_rows;
+            const std::size_t split_top6 =
+                level6_arrives ? top5 - level6_offset_rows : 0u;
+
+            Level56SplitBufferedTimeSample time_sample;
+            time_sample.service_time = split_state->service_time;
+            time_sample.level5.source_level = 5u;
+            time_sample.level6.source_level = 6u;
+            time_sample.level5.window_start_before = split_state->window_start5;
+            time_sample.level6.window_start_before = split_state->window_start6;
+
+            if (level5_arrives) {
+              Level56SplitBufferedBatch<LLR> arrived;
+              arrived.batch_id = split_state->next_batch_id5++;
+              arrived.arrival_time = split_state->service_time;
+              arrived.source_level = 5u;
+              arrived.tile_top = top5;
+              arrived.window_start_at_arrival = split_state->window_start5;
+              arrived.params = params5;
+              time_sample.level5.arrived = true;
+              time_sample.level5.arrived_batch_id = arrived.batch_id;
+              split_state->fifo5.push_back(std::move(arrived));
+            }
+            if (level6_arrives) {
+              Level56SplitBufferedBatch<LLR> arrived;
+              arrived.batch_id = split_state->next_batch_id6++;
+              arrived.arrival_time = split_state->service_time;
+              arrived.source_level = 6u;
+              arrived.tile_top = split_top6;
+              arrived.window_start_at_arrival = split_state->window_start6;
+              arrived.params = params6;
+              time_sample.level6.arrived = true;
+              time_sample.level6.arrived_batch_id = arrived.batch_id;
+              split_state->fifo6.push_back(std::move(arrived));
+            }
+            time_sample.level5.fifo_depth_before = split_state->fifo5.size();
+            time_sample.level6.fifo_depth_before = split_state->fifo6.size();
+
+            const std::size_t max_group_entries =
+                p.LEVEL56_SCHEDULE_MODE ==
+                        newcode::Level56ScheduleMode::Group4LoadSortedMultiround
+                    ? p.LEVEL56_GROUP4_MAX_ENTRIES
+                    : kLevel56GroupedCodeCount;
+            const auto next_invocation = [&]() {
+              return level56_shared_invocation
+                         ? (*level56_shared_invocation)++ : 0u;
+            };
+            const auto read_tile = [&](std::size_t tile_top,
+                                       const matrix::Matrix<LLR>& source) {
+              matrix::Matrix<LLR> tile(tile_height_rows, N);
+              for (std::size_t row = 0; row < tile_height_rows; ++row) {
+                for (std::size_t col = 0; col < N; ++col) {
+                  tile[row][col] = source[tile_top + row][col];
+                }
+              }
+              return tile;
+            };
+            bool captured_pending_before5 = false;
+            bool captured_pending_before6 = false;
+            const auto classify_head = [&](auto* head) {
+              auto input = read_tile(head->tile_top, work_llr);
+              auto channel = read_tile(head->tile_top, channel_llr);
+              classify_level56_split_buffered_batch(
+                  head, input, channel, rows_to_decode, tx_llr_ref);
+              bool* captured = head->source_level == 5u
+                                   ? &captured_pending_before5
+                                   : &captured_pending_before6;
+              auto* level_sample = head->source_level == 5u
+                                       ? &time_sample.level5
+                                       : &time_sample.level6;
+              if (!*captured) {
+                level_sample->pending_before =
+                    level56_buffered_pending_count(head->entries);
+                *captured = true;
+              }
+            };
+            const auto count_level_entries = [](const auto& dispatch,
+                                                std::size_t level) {
+              std::array<bool, kLevel56MaxReferenceGroupEntries> slots{};
+              std::size_t count = 0;
+              for (const auto& entry : dispatch) {
+                if (entry.source_level != level ||
+                    entry.assigned_entry_slot < 0) {
+                  continue;
+                }
+                const auto slot =
+                    static_cast<std::size_t>(entry.assigned_entry_slot);
+                if (slot < slots.size() && !slots[slot]) {
+                  slots[slot] = true;
+                  ++count;
+                }
+              }
+              return count;
+            };
+            using SplitBatch = Level56SplitBufferedBatch<LLR>;
+            const auto run_round = [&](SplitBatch* head5, SplitBatch* head6,
+                                       std::size_t entry_budget,
+                                       std::size_t slot_offset,
+                                       bool ordinary) {
+              if (!head5 && !head6) {
+                throw std::logic_error(
+                    "LEVEL56 split scheduler received two empty heads");
+              }
+              const auto* fallback = head5 ? head5 : head6;
+              const std::size_t top_for5 = head5 ? head5->tile_top
+                                                  : fallback->tile_top;
+              const std::size_t top_for6 = head6 ? head6->tile_top
+                                                  : fallback->tile_top;
+              auto input5 = read_tile(top_for5, work_llr);
+              auto input6 = read_tile(top_for6, work_llr);
+              auto channel5 = read_tile(top_for5, channel_llr);
+              auto channel6 = read_tile(top_for6, channel_llr);
+              const auto& run_params5 = head5 ? head5->params
+                                               : fallback->params;
+              const auto& run_params6 = head6 ? head6->params
+                                               : fallback->params;
+              Level56EarlyStopEvaluation empty_early;
+              const auto& early5 = head5 ? head5->early : empty_early;
+              const auto& early6 = head6 ? head6->early : empty_early;
+              auto dispatch = make_level56_split_dispatch(
+                  head5 ? &head5->entries : nullptr,
+                  head6 ? &head6->entries : nullptr);
+              const std::size_t invocation = next_invocation();
+              auto output5 = input5;
+              auto output6 = input6;
+              auto result = process_level56_shared(
+                  input5, channel5, input6, channel6,
+                  run_params5, run_params6, top_for5, top_for6, invocation,
+                  normalize_extrinsic, tx_llr_ref, core_fn,
+                  last_tile_history_accum, &dispatch, entry_budget,
+                  slot_offset, true, &early5, &early6, &output5, &output6,
+                  true,
+                  head5 ? head5->batch_id : head6->batch_id,
+                  split_state->service_time);
+              split_level56_dispatch(result.dispatch,
+                                     head5 ? &head5->entries : nullptr,
+                                     head6 ? &head6->entries : nullptr);
+              if (head5) {
+                update_tile_stats(kLevel5TileIndex, result.level5);
+                write_tile_to_work(kLevel5TileIndex, head5->tile_top,
+                                   result.level5.tile_out);
+              }
+              if (head6) {
+                update_tile_stats(kLevel6TileIndex, result.level6);
+                write_tile_to_work(kLevel6TileIndex, head6->tile_top,
+                                   result.level6.tile_out);
+              }
+              if (tile_stats && result.has_schedule_sample) {
+                result.schedule_sample.buffered_fifo_enabled = true;
+                result.schedule_sample.buffered_service_time =
+                    split_state->service_time;
+                result.schedule_sample.buffered_batch_id =
+                    head5 ? head5->batch_id : head6->batch_id;
+                (*tile_stats)[kLevel5TileIndex]
+                    .level56_schedule_samples.push_back(
+                        std::move(result.schedule_sample));
+              }
+              if (ordinary) {
+                time_sample.ordinary_rounds.push_back(
+                    Level56SplitBufferedRoundSample{
+                        .round_index = time_sample.ordinary_rounds.size(),
+                        .schedule_invocation = invocation,
+                        .entry_budget = entry_budget,
+                        .entry_slot_offset = slot_offset,
+                        .entries_used = result.group_entries_used,
+                        .served_level5 = head5 != nullptr,
+                        .served_level6 = head6 != nullptr,
+                        .batch_id5 = head5 ? head5->batch_id
+                            : std::numeric_limits<std::size_t>::max(),
+                        .batch_id6 = head6 ? head6->batch_id
+                            : std::numeric_limits<std::size_t>::max(),
+                        .completed_level5 = head5 &&
+                            level56_split_buffered_batch_complete(
+                                head5->entries),
+                        .completed_level6 = head6 &&
+                            level56_split_buffered_batch_complete(
+                                head6->entries),
+                        .entries_used_level5 =
+                            count_level_entries(result.dispatch, 5u),
+                        .entries_used_level6 =
+                            count_level_entries(result.dispatch, 6u),
+                    });
+              }
+              return result.group_entries_used;
+            };
+            const auto ordinary_service = [&](auto* head5, auto* head6,
+                                               std::size_t budget,
+                                               std::size_t offset) {
+              return run_round(head5, head6, budget, offset, true);
+            };
+            const auto full_early_stop = [&](auto* head) {
+              if (head->source_level == 5u) {
+                (void)run_round(head, nullptr, max_group_entries, 0u, false);
+              } else {
+                (void)run_round(nullptr, head, max_group_entries, 0u, false);
+              }
+            };
+
+            const auto service_outcome =
+                service_level56_split_buffered_fifo_time(
+                    split_state, split_state->window_start5 == 0u,
+                    split_state->window_start6 == 0u, max_group_entries,
+                    classify_head, ordinary_service, full_early_stop);
+            time_sample.ordinary_entries_used =
+                service_outcome.ordinary_entries_used;
+            const auto copy_level_outcome = [](const auto& source,
+                                               auto* target) {
+              target->had_head_before = source.had_head_before;
+              target->head_batch_id_before = source.head_batch_id_before;
+              target->completed_batches = source.completed_batches;
+              target->full_early_stop_batches =
+                  source.full_early_stop_batches;
+              target->forced_evicted_batches =
+                  source.forced_evicted_batches;
+              target->retirements = source.retirements;
+              target->forced_evicted_global_rows =
+                  source.forced_evicted_global_rows;
+            };
+            copy_level_outcome(service_outcome.level5, &time_sample.level5);
+            copy_level_outcome(service_outcome.level6, &time_sample.level6);
+
+            split_state->window_start5 = level56_buffered_next_window_start(
+                split_state->window_start5,
+                service_outcome.level5.completed_batches, buffer_rows5);
+            split_state->window_start6 = level56_buffered_next_window_start(
+                split_state->window_start6,
+                service_outcome.level6.completed_batches, buffer_rows6);
+            time_sample.level5.window_start_after =
+                split_state->window_start5;
+            time_sample.level6.window_start_after =
+                split_state->window_start6;
+            time_sample.level5.fifo_depth_after = split_state->fifo5.size();
+            time_sample.level6.fifo_depth_after = split_state->fifo6.size();
+            if (!split_state->fifo5.empty() &&
+                split_state->fifo5.front().classified) {
+              time_sample.level5.pending_after =
+                  level56_buffered_pending_count(
+                      split_state->fifo5.front().entries);
+            }
+            if (!split_state->fifo6.empty() &&
+                split_state->fifo6.front().classified) {
+              time_sample.level6.pending_after =
+                  level56_buffered_pending_count(
+                      split_state->fifo6.front().entries);
+            }
+            if (tile_stats) {
+              (*tile_stats)[kLevel5TileIndex]
+                  .level56_split_buffered_time_samples.push_back(
+                      std::move(time_sample));
+            }
+            ++split_state->service_time;
+            ++t;
+            continue;
+          }
           if (level56_buffered_state && p.LEVEL56_BUFFERED_FIFO_ENABLE) {
             initialize_level56_buffered_fifo_state(level56_buffered_state, p);
 
@@ -972,6 +1241,271 @@ void drain_level56_buffered_fifo_at_frame_end(
     if (tile_stats) {
       (*tile_stats)[kLevel5TileIndex].level56_buffered_time_samples.push_back(
           std::move(time_sample));
+    }
+    ++state->service_time;
+  }
+}
+
+// Split-buffer drain keeps the legacy drain semantics: no new SRAM advance,
+// no new Level 5/6 arrival, and no Level 1--4 work.  Only the two FIFO states
+// that already exist at frame end continue sharing the eight Group4 entries.
+template <typename LLR>
+void drain_level56_split_buffered_fifo_at_frame_end(
+    matrix::Matrix<LLR>& work_llr,
+    const matrix::Matrix<LLR>& channel_llr,
+    const newcode::Params& p,
+    std::vector<TileEarlyStopCounter>* tile_stats,
+    bool normalize_extrinsic,
+    const matrix::Matrix<float>* tx_llr_ref,
+    CoreFn<typename LinMatrixAdapter<LLR>::core_type> core_fn,
+    matrix::Matrix<float>* last_tile_history_accum,
+    std::size_t* level56_shared_invocation,
+    Level56SplitBufferedFifoState<LLR>* state) {
+  if (!state || (state->fifo5.empty() && state->fifo6.empty())) return;
+  if (!p.LEVEL56_BUFFERED_FIFO_ENABLE) {
+    throw std::logic_error(
+        "LEVEL56 split frame-end drain requires buffered FIFO");
+  }
+  const std::size_t tile_height_rows = p.tile_height_rows();
+  const std::size_t rows_to_decode =
+      static_cast<std::size_t>(p.CHASE_SBR) *
+      newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  const std::size_t cols = newcode::Params::NUM_SUBBLOCK_COLS *
+                           newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  const std::size_t max_group_entries =
+      p.LEVEL56_SCHEDULE_MODE ==
+              newcode::Level56ScheduleMode::Group4LoadSortedMultiround
+          ? p.LEVEL56_GROUP4_MAX_ENTRIES
+          : kLevel56GroupedCodeCount;
+  const std::size_t buffer_rows5 =
+      p.level5_buffer_rows() + kLevel56SplitFixedDelaySubblockRows;
+  const std::size_t buffer_rows6 = p.level6_buffer_rows();
+
+  const auto read_tile = [&](std::size_t tile_top,
+                             const matrix::Matrix<LLR>& source) {
+    matrix::Matrix<LLR> tile(tile_height_rows, cols);
+    for (std::size_t row = 0; row < tile_height_rows; ++row) {
+      for (std::size_t col = 0; col < cols; ++col) {
+        tile[row][col] = source[tile_top + row][col];
+      }
+    }
+    return tile;
+  };
+  const auto write_tile = [&](std::size_t tile_top,
+                              const matrix::Matrix<LLR>& tile) {
+    for (std::size_t row = 0; row < tile.rows(); ++row) {
+      for (std::size_t col = 0; col < tile.cols(); ++col) {
+        work_llr[tile_top + row][col] = tile[row][col];
+      }
+    }
+  };
+  const auto update_stats = [&](std::size_t tile_index,
+                                const TileProcessResult<LLR>& result) {
+    if (!tile_stats || tile_index >= tile_stats->size()) return;
+    auto& counter = (*tile_stats)[tile_index];
+    ++counter.total;
+    if (result.early_stop_triggered) ++counter.triggered;
+    counter.row_total += result.rows_total;
+    counter.row_triggered += result.rows_early_stop;
+    counter.row_hard_finish += result.rows_hard_finish;
+    counter.row_need_siso_before_mux += result.rows_need_siso_before_mux;
+    counter.row_unscheduled += result.rows_unscheduled;
+    counter.samples.push_back(TileEarlyStopSample{
+        .invocation = counter.total,
+        .tile_index = tile_index,
+        .rows_total = result.rows_total,
+        .rows_passed = result.rows_early_stop,
+        .rows_hard_finish = result.rows_hard_finish,
+        .rows_need_siso_before_mux = result.rows_need_siso_before_mux,
+        .rows_unscheduled = result.rows_unscheduled,
+    });
+    counter.hybrid_class_counts.push_back(result.hybrid_class_count);
+  };
+
+  while (!state->fifo5.empty() || !state->fifo6.empty()) {
+    Level56SplitBufferedTimeSample time_sample;
+    time_sample.service_time = state->service_time;
+    time_sample.drain = true;
+    time_sample.level5.source_level = 5u;
+    time_sample.level6.source_level = 6u;
+    time_sample.level5.window_start_before = state->window_start5;
+    time_sample.level6.window_start_before = state->window_start6;
+    time_sample.level5.fifo_depth_before = state->fifo5.size();
+    time_sample.level6.fifo_depth_before = state->fifo6.size();
+    if (!state->fifo5.empty() && state->fifo5.front().classified) {
+      time_sample.level5.pending_before = level56_buffered_pending_count(
+          state->fifo5.front().entries);
+    }
+    if (!state->fifo6.empty() && state->fifo6.front().classified) {
+      time_sample.level6.pending_before = level56_buffered_pending_count(
+          state->fifo6.front().entries);
+    }
+
+    bool captured_pending_before5 = false;
+    bool captured_pending_before6 = false;
+    const auto classify_head = [&](auto* head) {
+      auto input = read_tile(head->tile_top, work_llr);
+      auto channel = read_tile(head->tile_top, channel_llr);
+      classify_level56_split_buffered_batch(
+          head, input, channel, rows_to_decode, tx_llr_ref);
+      bool* captured = head->source_level == 5u
+                           ? &captured_pending_before5
+                           : &captured_pending_before6;
+      auto* level_sample = head->source_level == 5u
+                               ? &time_sample.level5
+                               : &time_sample.level6;
+      if (!*captured) {
+        level_sample->pending_before =
+            level56_buffered_pending_count(head->entries);
+        *captured = true;
+      }
+    };
+    const auto count_level_entries = [](const auto& dispatch,
+                                        std::size_t level) {
+      std::array<bool, kLevel56MaxReferenceGroupEntries> slots{};
+      std::size_t count = 0;
+      for (const auto& entry : dispatch) {
+        if (entry.source_level != level || entry.assigned_entry_slot < 0) {
+          continue;
+        }
+        const auto slot = static_cast<std::size_t>(entry.assigned_entry_slot);
+        if (slot < slots.size() && !slots[slot]) {
+          slots[slot] = true;
+          ++count;
+        }
+      }
+      return count;
+    };
+    using SplitBatch = Level56SplitBufferedBatch<LLR>;
+    const auto run_round = [&](SplitBatch* head5, SplitBatch* head6,
+                               std::size_t entry_budget,
+                               std::size_t slot_offset, bool ordinary) {
+      if (!head5 && !head6) {
+        throw std::logic_error(
+            "LEVEL56 split drain received two empty heads");
+      }
+      const auto* fallback = head5 ? head5 : head6;
+      const std::size_t top5 = head5 ? head5->tile_top : fallback->tile_top;
+      const std::size_t top6 = head6 ? head6->tile_top : fallback->tile_top;
+      auto input5 = read_tile(top5, work_llr);
+      auto input6 = read_tile(top6, work_llr);
+      auto channel5 = read_tile(top5, channel_llr);
+      auto channel6 = read_tile(top6, channel_llr);
+      const auto& params5 = head5 ? head5->params : fallback->params;
+      const auto& params6 = head6 ? head6->params : fallback->params;
+      Level56EarlyStopEvaluation empty_early;
+      const auto& early5 = head5 ? head5->early : empty_early;
+      const auto& early6 = head6 ? head6->early : empty_early;
+      auto dispatch = make_level56_split_dispatch(
+          head5 ? &head5->entries : nullptr,
+          head6 ? &head6->entries : nullptr);
+      const std::size_t invocation = level56_shared_invocation
+          ? (*level56_shared_invocation)++ : 0u;
+      auto output5 = input5;
+      auto output6 = input6;
+      auto result = process_level56_shared(
+          input5, channel5, input6, channel6, params5, params6,
+          top5, top6, invocation, normalize_extrinsic, tx_llr_ref, core_fn,
+          last_tile_history_accum, &dispatch, entry_budget, slot_offset, true,
+          &early5, &early6, &output5, &output6, true,
+          head5 ? head5->batch_id : head6->batch_id, state->service_time);
+      split_level56_dispatch(result.dispatch,
+                             head5 ? &head5->entries : nullptr,
+                             head6 ? &head6->entries : nullptr);
+      if (head5) {
+        update_stats(kLevel5TileIndex, result.level5);
+        write_tile(head5->tile_top, result.level5.tile_out);
+      }
+      if (head6) {
+        update_stats(kLevel6TileIndex, result.level6);
+        write_tile(head6->tile_top, result.level6.tile_out);
+      }
+      if (tile_stats && result.has_schedule_sample) {
+        result.schedule_sample.buffered_fifo_enabled = true;
+        result.schedule_sample.buffered_service_time = state->service_time;
+        result.schedule_sample.buffered_batch_id =
+            head5 ? head5->batch_id : head6->batch_id;
+        (*tile_stats)[kLevel5TileIndex].level56_schedule_samples.push_back(
+            std::move(result.schedule_sample));
+      }
+      if (ordinary) {
+        time_sample.ordinary_rounds.push_back(
+            Level56SplitBufferedRoundSample{
+                .round_index = time_sample.ordinary_rounds.size(),
+                .schedule_invocation = invocation,
+                .entry_budget = entry_budget,
+                .entry_slot_offset = slot_offset,
+                .entries_used = result.group_entries_used,
+                .served_level5 = head5 != nullptr,
+                .served_level6 = head6 != nullptr,
+                .batch_id5 = head5 ? head5->batch_id
+                    : std::numeric_limits<std::size_t>::max(),
+                .batch_id6 = head6 ? head6->batch_id
+                    : std::numeric_limits<std::size_t>::max(),
+                .completed_level5 = head5 &&
+                    level56_split_buffered_batch_complete(head5->entries),
+                .completed_level6 = head6 &&
+                    level56_split_buffered_batch_complete(head6->entries),
+                .entries_used_level5 = count_level_entries(result.dispatch, 5u),
+                .entries_used_level6 = count_level_entries(result.dispatch, 6u),
+            });
+      }
+      return result.group_entries_used;
+    };
+    const auto ordinary_service = [&](auto* head5, auto* head6,
+                                      std::size_t budget,
+                                      std::size_t offset) {
+      return run_round(head5, head6, budget, offset, true);
+    };
+    const auto full_early_stop = [&](auto* head) {
+      if (head->source_level == 5u) {
+        (void)run_round(head, nullptr, max_group_entries, 0u, false);
+      } else {
+        (void)run_round(nullptr, head, max_group_entries, 0u, false);
+      }
+    };
+    const auto outcome = service_level56_split_buffered_fifo_time(
+        state, false, false, max_group_entries, classify_head,
+        ordinary_service, full_early_stop);
+    if (outcome.ordinary_rounds.empty() &&
+        outcome.level5.completed_batches == 0u &&
+        outcome.level6.completed_batches == 0u) {
+      throw std::logic_error(
+          "LEVEL56 split frame-end drain made no FIFO progress");
+    }
+    time_sample.ordinary_entries_used = outcome.ordinary_entries_used;
+    const auto copy_outcome = [](const auto& source, auto* target) {
+      target->had_head_before = source.had_head_before;
+      target->head_batch_id_before = source.head_batch_id_before;
+      target->completed_batches = source.completed_batches;
+      target->full_early_stop_batches = source.full_early_stop_batches;
+      target->forced_evicted_batches = source.forced_evicted_batches;
+      target->retirements = source.retirements;
+      target->forced_evicted_global_rows =
+          source.forced_evicted_global_rows;
+    };
+    copy_outcome(outcome.level5, &time_sample.level5);
+    copy_outcome(outcome.level6, &time_sample.level6);
+    state->window_start5 = level56_buffered_next_window_start(
+        state->window_start5, outcome.level5.completed_batches, buffer_rows5);
+    state->window_start6 = level56_buffered_next_window_start(
+        state->window_start6, outcome.level6.completed_batches, buffer_rows6);
+    time_sample.level5.window_start_after = state->window_start5;
+    time_sample.level6.window_start_after = state->window_start6;
+    time_sample.level5.fifo_depth_after = state->fifo5.size();
+    time_sample.level6.fifo_depth_after = state->fifo6.size();
+    if (!state->fifo5.empty() && state->fifo5.front().classified) {
+      time_sample.level5.pending_after = level56_buffered_pending_count(
+          state->fifo5.front().entries);
+    }
+    if (!state->fifo6.empty() && state->fifo6.front().classified) {
+      time_sample.level6.pending_after = level56_buffered_pending_count(
+          state->fifo6.front().entries);
+    }
+    if (tile_stats) {
+      (*tile_stats)[kLevel5TileIndex]
+          .level56_split_buffered_time_samples.push_back(
+              std::move(time_sample));
     }
     ++state->service_time;
   }

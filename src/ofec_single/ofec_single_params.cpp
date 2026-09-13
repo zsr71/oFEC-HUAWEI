@@ -234,6 +234,8 @@ std::optional<newcode::Params> build_params(const Config& cfg,
   params.LEVEL56_BUFFERED_FIFO_ENABLE =
       cfg.level56_buffered_fifo_enable;
   params.LEVEL56_BUFFER_ROWS = cfg.level56_buffer_rows;
+  params.LEVEL5_BUFFER_ROWS = cfg.level5_buffer_rows;
+  params.LEVEL6_BUFFER_ROWS = cfg.level6_buffer_rows;
   params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END =
       cfg.level56_buffered_fifo_drain_at_frame_end;
   params.LEVEL56_HISO_ALLOWED_CLASS_MASK =

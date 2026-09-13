@@ -69,6 +69,8 @@ struct Config {
   int level56_temporal_group_load_threshold = 16;
   bool level56_buffered_fifo_enable = false;
   std::size_t level56_buffer_rows = 32;
+  std::size_t level5_buffer_rows = std::numeric_limits<std::size_t>::max();
+  std::size_t level6_buffer_rows = std::numeric_limits<std::size_t>::max();
   bool level56_buffered_fifo_drain_at_frame_end = false;
   unsigned level56_hiso_allowed_class_mask = 0x0fu;
   int level56_shared_hiso_active = 32;

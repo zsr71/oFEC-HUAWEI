@@ -494,6 +494,114 @@ void dump_level56_buffered_times_csv(
   }
 }
 
+void dump_level56_split_buffered_times_csv(
+    const std::vector<newcode::Level56SplitBufferedTimeSample>& samples,
+    const std::filesystem::path& output_path,
+    const std::string& run_id,
+    const std::string& label) {
+  const auto parent = output_path.parent_path();
+  if (!parent.empty()) std::filesystem::create_directories(parent);
+  std::ofstream out(output_path);
+  out << "run_id,label,t,drain,level,arrived_batch,fifo_depth_before,"
+         "head_batch_before,pending_before,C_t,full_early_stop,forced_evicted,"
+         "S_t,S_next,fifo_depth_after,pending_after,retirements,forced_rows,"
+         "ordinary_entries_used,ordinary_rounds\n";
+  for (const auto& sample : samples) {
+    const auto write_level = [&](const auto& level) {
+      std::ostringstream retirements;
+      std::ostringstream forced_rows;
+      std::ostringstream rounds;
+      for (std::size_t i = 0; i < level.retirements.size(); ++i) {
+        if (i) retirements << '|';
+        retirements << 'B' << level.retirements[i].batch_id << ':'
+                    << level56_buffered_retirement_name(
+                           level.retirements[i].reason)
+                    << ":services"
+                    << level.retirements[i].ordinary_service_count;
+      }
+      for (std::size_t i = 0; i < level.forced_evicted_global_rows.size();
+           ++i) {
+        if (i) forced_rows << '|';
+        forced_rows << level.forced_evicted_global_rows[i];
+      }
+      for (std::size_t i = 0; i < sample.ordinary_rounds.size(); ++i) {
+        if (i) rounds << '|';
+        const auto& round = sample.ordinary_rounds[i];
+        rounds << "R" << round.round_index
+               << ":I" << round.schedule_invocation
+               << ":budget" << round.entry_budget
+               << ":offset" << round.entry_slot_offset
+               << ":used" << round.entries_used
+               << ":L5=";
+        if (round.served_level5) rounds << 'B' << round.batch_id5;
+        else rounds << '-';
+        rounds << "/" << round.entries_used_level5
+               << "/" << round.completed_level5 << ":L6=";
+        if (round.served_level6) rounds << 'B' << round.batch_id6;
+        else rounds << '-';
+        rounds << "/" << round.entries_used_level6
+               << "/" << round.completed_level6;
+      }
+      out << run_id << ',' << label << ',' << sample.service_time << ','
+          << sample.drain << ',' << level.source_level << ',';
+      if (level.arrived) out << 'B' << level.arrived_batch_id;
+      out << ',' << level.fifo_depth_before << ',';
+      if (level.had_head_before) out << 'B' << level.head_batch_id_before;
+      out << ',' << level.pending_before << ',' << level.completed_batches
+          << ',' << level.full_early_stop_batches << ','
+          << level.forced_evicted_batches << ',' << level.window_start_before
+          << ',' << level.window_start_after << ',' << level.fifo_depth_after
+          << ',' << level.pending_after << ',' << retirements.str() << ','
+          << forced_rows.str() << ',' << sample.ordinary_entries_used << ','
+          << rounds.str() << '\n';
+    };
+    write_level(sample.level5);
+    write_level(sample.level6);
+  }
+}
+
+void log_level56_split_buffered_summary(
+    const std::vector<newcode::Level56SplitBufferedTimeSample>& samples,
+    io::DualWriter& log) {
+  if (samples.empty()) {
+    log << "[INFO] Level56 split buffered FIFO samples: 0\n";
+    return;
+  }
+  struct Summary {
+    std::size_t completed = 0;
+    std::size_t full_early_stop = 0;
+    std::size_t forced_evicted = 0;
+    std::size_t max_depth = 0;
+    std::size_t min_s = std::numeric_limits<std::size_t>::max();
+  } level5, level6;
+  const auto accumulate = [](const auto& value, auto* summary) {
+    summary->completed += value.completed_batches;
+    summary->full_early_stop += value.full_early_stop_batches;
+    summary->forced_evicted += value.forced_evicted_batches;
+    summary->max_depth = std::max(summary->max_depth,
+                                  value.fifo_depth_before);
+    summary->min_s = std::min(
+        summary->min_s,
+        std::min(value.window_start_before, value.window_start_after));
+  };
+  std::size_t drain_times = 0;
+  for (const auto& sample : samples) {
+    accumulate(sample.level5, &level5);
+    accumulate(sample.level6, &level6);
+    drain_times += sample.drain;
+  }
+  log << "[INFO] Level56 split buffered FIFO: t=" << samples.size()
+      << ", drain_t=" << drain_times
+      << ", L5(completed/full/forced/max_depth/min_S)="
+      << level5.completed << '/' << level5.full_early_stop << '/'
+      << level5.forced_evicted << '/' << level5.max_depth << '/'
+      << level5.min_s
+      << ", L6(completed/full/forced/max_depth/min_S)="
+      << level6.completed << '/' << level6.full_early_stop << '/'
+      << level6.forced_evicted << '/' << level6.max_depth << '/'
+      << level6.min_s << "\n";
+}
+
 void log_level56_buffered_summary(
     const std::vector<newcode::Level56BufferedTimeSample>& samples,
     io::DualWriter& log) {
@@ -760,14 +868,24 @@ int run_ofec_single(const Config& config) {
     dump_level56_buffered_times_csv(
         result.level56_buffered_time_samples, buffered_times_path,
         run_id, config.label);
+    const std::filesystem::path split_buffered_times_path =
+        std::filesystem::path("data/level56_schedule") /
+        (config.label + "_level56_split_buffered_times.csv");
+    dump_level56_split_buffered_times_csv(
+        result.level56_split_buffered_time_samples,
+        split_buffered_times_path, run_id, config.label);
     log_level56_schedule_summary(result.level56_schedule_samples, log);
     log_level56_buffered_summary(result.level56_buffered_time_samples, log);
+    log_level56_split_buffered_summary(
+        result.level56_split_buffered_time_samples, log);
     log << "[INFO] Level56 schedule rounds saved to "
         << rounds_path.string() << "\n";
     log << "[INFO] Level56 schedule codes saved to "
         << codes_path.string() << "\n";
     log << "[INFO] Level56 buffered times saved to "
         << buffered_times_path.string() << "\n";
+    log << "[INFO] Level56 split buffered times saved to "
+        << split_buffered_times_path.string() << "\n";
   }
   if (config.dump_level56_equivalence_observation) {
     std::filesystem::path output_path =

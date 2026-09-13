@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <set>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
@@ -1415,6 +1416,198 @@ void mark_buffered_test_batch_complete(
   }
 }
 
+newcode::detail::Level56SplitBufferedBatch<float>
+make_split_buffered_test_batch(std::size_t level, std::size_t batch_id,
+                               bool full_early_stop) {
+  newcode::detail::Level56SplitBufferedBatch<float> batch;
+  batch.batch_id = batch_id;
+  batch.arrival_time = batch_id;
+  batch.source_level = level;
+  batch.classified = true;
+  batch.entries.reserve(newcode::detail::kLevel56CodesPerLevel);
+  for (std::size_t row = 0;
+       row < newcode::detail::kLevel56CodesPerLevel; ++row) {
+    newcode::detail::Level56DispatchEntry entry;
+    entry.shared_row = level == 5u
+                           ? row
+                           : newcode::detail::kLevel56CodesPerLevel + row;
+    entry.source_level = level;
+    entry.source_local_row = row;
+    entry.source_global_row = batch_id * 1000u + level * 100u + row;
+    entry.early_stop_hit = full_early_stop;
+    entry.pending = !full_early_stop;
+    batch.entries.push_back(entry);
+  }
+  return batch;
+}
+
+void mark_split_buffered_test_batch_complete(
+    newcode::detail::Level56SplitBufferedBatch<float>* batch) {
+  for (auto& entry : batch->entries) {
+    entry.already_decoded = true;
+    entry.pending = false;
+    entry.produced = true;
+    entry.forced_evicted = false;
+    entry.writeback_complete = true;
+    entry.decode_status = newcode::Level56DecodeStatus::Produced;
+  }
+}
+
+void check_split_buffered_dispatch_layout_and_state_roundtrip() {
+  auto batch5 = make_split_buffered_test_batch(5u, 3u, false);
+  auto batch6 = make_split_buffered_test_batch(6u, 7u, false);
+  batch5.entries[4].already_decoded = true;
+  batch5.entries[4].writeback_complete = true;
+  batch6.entries[9].forced_evicted = true;
+  auto dispatch = newcode::detail::make_level56_split_dispatch(
+      &batch5.entries, &batch6.entries);
+  newcode::detail::validate_level56_grouped_entries(dispatch);
+  require(dispatch[4].already_decoded && dispatch[41].forced_evicted,
+          "split dispatch lost per-level cached code state");
+  dispatch[2].pending = false;
+  dispatch[2].already_decoded = true;
+  dispatch[2].writeback_complete = true;
+  dispatch[35].pending = false;
+  dispatch[35].already_decoded = true;
+  dispatch[35].writeback_complete = true;
+  newcode::detail::split_level56_dispatch(
+      dispatch, &batch5.entries, &batch6.entries);
+  require(batch5.entries[2].already_decoded &&
+              batch6.entries[3].already_decoded &&
+              batch5.entries.size() == 32u && batch6.entries.size() == 32u,
+          "split dispatch did not return state to the matching 32-code FIFO item");
+
+  auto one_sided = newcode::detail::make_level56_split_dispatch(
+      &batch5.entries, nullptr);
+  newcode::detail::validate_level56_grouped_entries(one_sided);
+  require(std::all_of(one_sided.begin() + 32, one_sided.end(),
+                      [](const auto& entry) {
+                        return entry.source_level == 6u &&
+                               entry.already_decoded &&
+                               entry.writeback_complete && !entry.pending;
+                      }),
+          "missing split-FIFO side is not an inert 32-code scheduler slice");
+}
+
+void check_split_buffered_independent_completion_and_second_round() {
+  newcode::detail::Level56SplitBufferedFifoState<float> state;
+  state.fifo5.push_back(make_split_buffered_test_batch(5u, 0u, false));
+  state.fifo5.push_back(make_split_buffered_test_batch(5u, 1u, false));
+  state.fifo6.push_back(make_split_buffered_test_batch(6u, 0u, false));
+  state.fifo6.push_back(make_split_buffered_test_batch(6u, 1u, false));
+  std::vector<std::tuple<std::size_t, std::size_t, std::size_t,
+                         std::size_t>> calls;
+  const auto outcome =
+      newcode::detail::service_level56_split_buffered_fifo_time(
+          &state, false, false, 8u, [](auto*) {},
+          [&](auto* head5, auto* head6, std::size_t budget,
+              std::size_t offset) {
+            calls.emplace_back(head5->batch_id, head6->batch_id,
+                               budget, offset);
+            if (calls.size() == 1u) {
+              mark_split_buffered_test_batch_complete(head5);
+              return 3u;
+            }
+            require(head5->batch_id == 1u && head6->batch_id == 0u,
+                    "second split round did not replace only the completed side");
+            mark_split_buffered_test_batch_complete(head5);
+            mark_split_buffered_test_batch_complete(head6);
+            return 5u;
+          },
+          [](auto* head) { mark_split_buffered_test_batch_complete(head); });
+  require(calls ==
+              std::vector<std::tuple<std::size_t, std::size_t,
+                                     std::size_t, std::size_t>>(
+                  {{0u, 0u, 8u, 0u}, {1u, 0u, 5u, 3u}}) &&
+              outcome.ordinary_entries_used == 8u &&
+              outcome.ordinary_rounds.size() == 2u &&
+              outcome.level5.completed_batches == 2u &&
+              outcome.level6.completed_batches == 1u &&
+              outcome.level5.retirements.size() == 2u &&
+              outcome.level5.retirements[0].ordinary_service_count == 1u &&
+              outcome.level5.retirements[1].ordinary_service_count == 1u &&
+              outcome.level6.retirements.size() == 1u &&
+              outcome.level6.retirements[0].ordinary_service_count == 2u &&
+              state.fifo5.empty() && state.fifo6.size() == 1u &&
+              state.fifo6.front().batch_id == 1u,
+          "split two-round service did not advance Level 5 and Level 6 independently");
+}
+
+void check_split_buffered_independent_full_early_stop_and_boundary() {
+  newcode::detail::Level56SplitBufferedFifoState<float> state;
+  state.fifo5.push_back(make_split_buffered_test_batch(5u, 0u, true));
+  state.fifo5.push_back(make_split_buffered_test_batch(5u, 1u, true));
+  state.fifo6.push_back(make_split_buffered_test_batch(6u, 0u, false));
+  std::vector<std::size_t> fast_levels;
+  const auto outcome =
+      newcode::detail::service_level56_split_buffered_fifo_time(
+          &state, false, true, 8u, [](auto*) {},
+          [](auto*, auto*, std::size_t, std::size_t) { return 8u; },
+          [&](auto* head) {
+            fast_levels.push_back(head->source_level);
+            mark_split_buffered_test_batch_complete(head);
+          });
+  require(fast_levels == std::vector<std::size_t>({5u, 5u}) &&
+              outcome.level5.completed_batches == 2u &&
+              outcome.level5.full_early_stop_batches == 2u &&
+              outcome.level6.completed_batches == 0u &&
+              outcome.level6.forced_evicted_batches == 1u &&
+              outcome.level6.forced_evicted_global_rows.size() == 32u &&
+              state.fifo5.empty() && state.fifo6.empty(),
+          "split FullEarlyStop or boundary eviction was coupled across levels");
+}
+
+void check_split_buffered_window_initialization() {
+  newcode::Params p;
+  p.LEVEL56_BUFFER_ROWS = 32u;
+  p.LEVEL5_BUFFER_ROWS = 12u;
+  p.LEVEL6_BUFFER_ROWS = 20u;
+  newcode::detail::Level56SplitBufferedFifoState<float> state;
+  newcode::detail::initialize_level56_split_buffered_fifo_state(&state, p);
+  require(state.window_start5 == 14u && state.window_start6 == 20u,
+          "split FIFO did not give Level 5 r1+D and Level 6 r2 capacity");
+}
+
+void check_split_buffered_level5_write_level6_read_coordinates_do_not_overlap() {
+  newcode::Params p;
+  p.LEVEL56_BUFFER_ROWS = 32u;
+  const std::size_t level6_top = 0u;
+  const std::size_t level5_top =
+      (p.TILE_HEIGHT_BR +
+       newcode::detail::kLevel56SplitFixedDelaySubblockRows +
+       p.level5_buffer_rows()) *
+      newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  const std::size_t tile_height = p.tile_height_rows();
+  const std::size_t first_level5_code_row =
+      level5_top + tile_height -
+      static_cast<std::size_t>(p.CHASE_SBR) *
+          newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  std::set<std::pair<long, long>> level6_read_coordinates;
+  for (std::size_t row = level6_top; row < level6_top + tile_height; ++row) {
+    for (std::size_t col = 0;
+         col < newcode::Params::NUM_SUBBLOCK_COLS *
+                   newcode::Params::BITS_PER_SUBBLOCK_DIM;
+         ++col) {
+      level6_read_coordinates.emplace(static_cast<long>(row),
+                                      static_cast<long>(col));
+    }
+  }
+  std::size_t checked_coordinates = 0;
+  for (std::size_t source_row = first_level5_code_row;
+       source_row < first_level5_code_row + 32u; ++source_row) {
+    for (int bit = 0; bit < static_cast<int>(newcode::Params::BCH_N); ++bit) {
+      const auto coordinate =
+          newcode::detail::level56_codeword_bit_global_coordinate(
+              bit, source_row, p);
+      require(level6_read_coordinates.count(coordinate) == 0u,
+              "a Level 5 write coordinate overlaps the same-round Level 6 read window");
+      ++checked_coordinates;
+    }
+  }
+  require(checked_coordinates == 32u * newcode::Params::BCH_N,
+          "split coordinate regression did not inspect every Level 5 code bit");
+}
+
 void check_buffered_service_fast_path_and_fifo_order() {
   newcode::detail::Level56BufferedFifoState<float> state;
   state.fifo.push_back(make_buffered_test_batch(0, true));
@@ -1755,7 +1948,7 @@ newcode::Params make_buffered_pipeline_params() {
   return p;
 }
 
-void check_buffered_end_to_end_full_early_stop() {
+[[maybe_unused]] void check_buffered_end_to_end_full_early_stop() {
   auto p = make_buffered_pipeline_params();
   constexpr std::size_t kServiceTimes = 3;
   const std::size_t rows = p.win_height_rows() +
@@ -1810,7 +2003,7 @@ void check_buffered_end_to_end_full_early_stop() {
   }
 }
 
-void check_buffered_end_to_end_multiple_windows() {
+[[maybe_unused]] void check_buffered_end_to_end_multiple_windows() {
   auto p = make_buffered_pipeline_params();
 
   constexpr std::size_t kServiceTimes = 5;
@@ -2048,6 +2241,179 @@ void check_full_frame_ber_keeps_all_evaluation_bits() {
           "tile post-FEC BER must not exclude forced-evicted positions");
 }
 
+void check_split_buffered_end_to_end_startup_and_fast_path() {
+  auto p = make_buffered_pipeline_params();
+  constexpr std::size_t kServiceTimes = 4u;
+  const std::size_t rows = p.win_height_rows() +
+                           (kServiceTimes - 1u) * p.pop_push_rows();
+  matrix::Matrix<float> llr(
+      rows, newcode::Params::NUM_SUBBLOCK_COLS *
+                newcode::Params::BITS_PER_SUBBLOCK_DIM);
+  for (std::size_t row = 0; row < llr.rows(); ++row) {
+    for (std::size_t col = 0; col < llr.cols(); ++col) llr[row][col] = 8.0f;
+  }
+  std::vector<newcode::TileEarlyStopCounter> stats;
+  (void)newcode::ofec_decode_llr_plain(llr, p, &stats, true, nullptr);
+  require(stats.size() == p.TILES_PER_WIN &&
+              stats[4].level56_split_buffered_time_samples.size() ==
+                  kServiceTimes &&
+              stats[4].level56_buffered_time_samples.empty(),
+          "split FIFO integration did not replace the old common-FIFO samples");
+  const auto& samples = stats[4].level56_split_buffered_time_samples;
+  for (std::size_t t = 0; t < samples.size(); ++t) {
+    const auto& sample = samples[t];
+    require(sample.service_time == t && sample.level5.arrived &&
+                sample.level5.arrived_batch_id == t &&
+                sample.level5.completed_batches == 1u &&
+                sample.level5.full_early_stop_batches == 1u &&
+                sample.level5.forced_evicted_batches == 0u &&
+                sample.level5.fifo_depth_after == 0u &&
+                !sample.level6.arrived &&
+                sample.level6.completed_batches == 0u &&
+                sample.ordinary_entries_used == 0u &&
+                sample.ordinary_rounds.empty(),
+            "split startup fast path did not let Level 5 run independently");
+    require(sample.level5.window_start_before ==
+                    p.level5_buffer_rows() +
+                        newcode::detail::kLevel56SplitFixedDelaySubblockRows &&
+                sample.level5.window_start_after ==
+                    sample.level5.window_start_before &&
+                sample.level6.window_start_after ==
+                    newcode::detail::level56_buffered_next_window_start(
+                        sample.level6.window_start_before, 0u,
+                    p.level6_buffer_rows()),
+            "split startup changed an independent window state incorrectly");
+    if (t != 0u) {
+      require(sample.level6.window_start_before ==
+                  samples[t - 1u].level6.window_start_after,
+              "Level 6 startup physical advance did not carry into next t");
+    }
+  }
+  require(stats[4].level56_schedule_samples.size() == kServiceTimes,
+          "split FullEarlyStop did not record its zero-entry action pass");
+  for (const auto& schedule : stats[4].level56_schedule_samples) {
+    require(schedule.branch == newcode::Level56ScheduleBranch::K0 &&
+                schedule.group_entries_used == 0u &&
+                schedule.codes.size() == 64u &&
+                std::all_of(schedule.codes.begin(),
+                            schedule.codes.begin() + 32,
+                            [](const auto& code) {
+                              return code.source_level == 5u &&
+                                     code.early_stop_hit && code.produced &&
+                                     code.already_decoded &&
+                                     code.writeback_complete;
+                            }),
+            "split one-sided FullEarlyStop consumed resources or skipped writeback");
+  }
+}
+
+void check_split_buffered_end_to_end_independent_window_accounting() {
+  auto p = make_buffered_pipeline_params();
+  constexpr std::size_t kServiceTimes = 5u;
+  const std::size_t rows = p.win_height_rows() +
+                           (kServiceTimes - 1u) * p.pop_push_rows();
+  matrix::Matrix<float> llr(
+      rows, newcode::Params::NUM_SUBBLOCK_COLS *
+                newcode::Params::BITS_PER_SUBBLOCK_DIM);
+  for (std::size_t row = 0; row < llr.rows(); ++row) {
+    for (std::size_t col = 0; col < llr.cols(); ++col) {
+      const int code = static_cast<int>((row * 19u + col * 11u) % 29u) - 14;
+      llr[row][col] = static_cast<float>(code) * 0.3f +
+                      ((row + col) & 1u ? 0.05f : -0.05f);
+    }
+  }
+  std::vector<newcode::TileEarlyStopCounter> stats;
+  const auto decoded = newcode::ofec_decode_llr_plain(
+      llr, p, &stats, true, nullptr);
+  require(stats.size() == p.TILES_PER_WIN &&
+              stats[4].level56_split_buffered_time_samples.size() ==
+                  kServiceTimes,
+          "split ordinary integration did not emit one sample per t");
+  const auto& samples = stats[4].level56_split_buffered_time_samples;
+  for (std::size_t t = 0; t < samples.size(); ++t) {
+    const auto& sample = samples[t];
+    require(sample.service_time == t && sample.level5.arrived &&
+                !sample.level6.arrived && sample.ordinary_entries_used <= 8u &&
+                sample.ordinary_rounds.size() <= 2u,
+            "split startup ordinary service violated arrival or entry limits");
+    require(sample.level5.window_start_after ==
+                newcode::detail::level56_buffered_next_window_start(
+                    sample.level5.window_start_before,
+                    sample.level5.completed_batches,
+                    p.level5_buffer_rows() +
+                        newcode::detail::kLevel56SplitFixedDelaySubblockRows),
+            "Level 5 independent S5 transition violates the old formula");
+    require(sample.level6.window_start_after ==
+                newcode::detail::level56_buffered_next_window_start(
+                    sample.level6.window_start_before,
+                    sample.level6.completed_batches,
+                    p.level6_buffer_rows()),
+            "Level 6 independent S6 transition violates the old formula");
+    if (t != 0u) {
+      require(sample.level5.window_start_before ==
+                      samples[t - 1u].level5.window_start_after &&
+                  sample.level6.window_start_before ==
+                      samples[t - 1u].level6.window_start_after,
+              "split window state was not carried independently to the next t");
+    }
+  }
+  for (const auto& schedule : stats[4].level56_schedule_samples) {
+    require(schedule.codes.size() == 64u &&
+                schedule.entry_slot_offset + schedule.group_entries_used <= 8u,
+            "split ordinary schedule exceeded the shared eight-entry budget");
+  }
+  for (std::size_t row = 0; row < decoded.rows(); ++row) {
+    for (std::size_t col = 0; col < decoded.cols(); ++col) {
+      require(std::isfinite(decoded[row][col]),
+              "split ordinary integration produced a non-finite LLR");
+    }
+  }
+}
+
+void check_split_buffered_level6_delayed_start_coordinate() {
+  auto p = make_buffered_pipeline_params();
+  constexpr std::size_t kServiceTimes = 20u;
+  const std::size_t rows = p.win_height_rows() +
+                           (kServiceTimes - 1u) * p.pop_push_rows();
+  matrix::Matrix<float> llr(
+      rows, newcode::Params::NUM_SUBBLOCK_COLS *
+                newcode::Params::BITS_PER_SUBBLOCK_DIM);
+  for (std::size_t row = 0; row < llr.rows(); ++row) {
+    for (std::size_t col = 0; col < llr.cols(); ++col) llr[row][col] = 8.0f;
+  }
+  std::vector<newcode::TileEarlyStopCounter> stats;
+  (void)newcode::ofec_decode_llr_plain(llr, p, &stats, true, nullptr);
+  const auto& samples = stats[4].level56_split_buffered_time_samples;
+  require(samples.size() == kServiceTimes,
+          "split delayed-start test lost service times");
+  const std::size_t level6_offset_rows =
+      (p.TILE_HEIGHT_BR +
+       newcode::detail::kLevel56SplitFixedDelaySubblockRows +
+       p.level5_buffer_rows()) *
+      newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  const std::size_t first_top5 =
+      p.win_height_rows() -
+      (newcode::detail::kLevel5TileIndex + 1u) * p.tile_stride_rows();
+  const std::size_t expected_first_level6_time =
+      (level6_offset_rows - first_top5 + p.pop_push_rows() - 1u) /
+      p.pop_push_rows();
+  require(expected_first_level6_time < samples.size(),
+          "split delayed-start test frame is too short");
+  for (std::size_t t = 0; t < samples.size(); ++t) {
+    require(samples[t].level6.arrived == (t >= expected_first_level6_time),
+            "Level 6 arrival did not follow the H+D+r1 coordinate offset");
+    if (t >= expected_first_level6_time) {
+      require(samples[t].level6.arrived_batch_id ==
+                      t - expected_first_level6_time &&
+                  samples[t].level6.completed_batches == 1u &&
+                  samples[t].level6.full_early_stop_batches == 1u,
+              "Level 6 delayed FIFO numbering or independent fast path is invalid");
+    }
+  }
+  require(samples[expected_first_level6_time].level6.window_start_before == 0u,
+          "Level 6 delayed start did not include physical SRAM advance during prefill");
+}
+
 }  // namespace
 
 int main() {
@@ -2089,8 +2455,14 @@ int main() {
     check_buffered_service_ordinary_budget_boundary();
     check_buffered_service_forced_eviction_boundary();
     check_buffered_configuration_validation();
-    check_buffered_end_to_end_full_early_stop();
-    check_buffered_end_to_end_multiple_windows();
+    check_split_buffered_dispatch_layout_and_state_roundtrip();
+    check_split_buffered_independent_completion_and_second_round();
+    check_split_buffered_independent_full_early_stop_and_boundary();
+    check_split_buffered_window_initialization();
+    check_split_buffered_level5_write_level6_read_coordinates_do_not_overlap();
+    check_split_buffered_end_to_end_startup_and_fast_path();
+    check_split_buffered_end_to_end_independent_window_accounting();
+    check_split_buffered_level6_delayed_start_coordinate();
     check_full_frame_ber_keeps_all_evaluation_bits();
     std::cout << "LEVEL56 shared scheduler regression checks passed\n";
     return 0;

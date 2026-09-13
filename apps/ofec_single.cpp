@@ -185,6 +185,10 @@ static constexpr const char* kDecoderTraceCsvDir      = "data/chase_csv"; // Cha
 int main() {
   bool level56_buffered_fifo_enable = kLevel56BufferedFifoEnable;
   std::size_t level56_buffer_rows = kLevel56BufferRows;
+  std::size_t level5_buffer_rows =
+      std::numeric_limits<std::size_t>::max();
+  std::size_t level6_buffer_rows =
+      std::numeric_limits<std::size_t>::max();
   std::size_t num_info_bits = 0;
   bool level56_buffered_fifo_drain_at_frame_end = false;
   unsigned level56_hiso_allowed_class_mask = 0x0fu;
@@ -319,6 +323,30 @@ int main() {
     }
 
     run_suffix += "_rbuf" + std::to_string(level56_buffer_rows);
+  }
+
+  const auto parse_split_buffer_rows = [&](const char* name,
+                                           std::size_t* target,
+                                           const char* suffix) {
+    const char* value = std::getenv(name);
+    if (!value) return true;
+    const std::string text(value);
+    const auto parse_result = std::from_chars(
+        text.data(), text.data() + text.size(), *target);
+    if (text.empty() || parse_result.ec != std::errc{} ||
+        parse_result.ptr != text.data() + text.size()) {
+      std::cerr << "[ERROR] " << name
+                << " must be a non-negative integer\n";
+      return false;
+    }
+    run_suffix += std::string(suffix) + std::to_string(*target);
+    return true;
+  };
+  if (!parse_split_buffer_rows("LEVEL5_BUFFER_ROWS", &level5_buffer_rows,
+                               "_rbuf5_") ||
+      !parse_split_buffer_rows("LEVEL6_BUFFER_ROWS", &level6_buffer_rows,
+                               "_rbuf6_")) {
+    return 2;
   }
 
   if (const char* value = std::getenv("LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END")) {
@@ -544,6 +572,8 @@ int main() {
     .level56_temporal_group_load_threshold = kLevel56TemporalGroupLoadThreshold,
     .level56_buffered_fifo_enable = level56_buffered_fifo_enable,
     .level56_buffer_rows = level56_buffer_rows,
+    .level5_buffer_rows = level5_buffer_rows,
+    .level6_buffer_rows = level6_buffer_rows,
     .level56_buffered_fifo_drain_at_frame_end =
         level56_buffered_fifo_drain_at_frame_end,
     .level56_hiso_allowed_class_mask = level56_hiso_allowed_class_mask,

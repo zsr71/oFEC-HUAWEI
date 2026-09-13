@@ -147,6 +147,10 @@ struct Params {
   bool LEVEL56_BUFFERED_FIFO_ENABLE = false;
   // 连续 SRAM 中位于 44-row Level 5/6 解码区之前的可调 buffer 行数。
   size_t LEVEL56_BUFFER_ROWS = 32;
+  // 独立缓冲实验的 r1/r2。未显式设置时回退到上面的兼容参数，因而旧
+  // 命令、旧 sweep 和旧配置文件仍会同时设置两级为相同容量。
+  size_t LEVEL5_BUFFER_ROWS = std::numeric_limits<size_t>::max();
+  size_t LEVEL6_BUFFER_ROWS = std::numeric_limits<size_t>::max();
   // 仿真验证选项：帧内最后一次正常到达后，继续服务已进入 Level 5/6
   // FIFO 的 batch，直到队列清空。默认关闭，以保持固定吞吐的在线路径；
   // 开启后不再引入新 batch，也不执行 Level 1--4，只用于获得“全帧已完成”
@@ -258,6 +262,14 @@ struct Params {
   // 初始 window 起始行（比特行）：跳过 warmup 的 B 行 + 2G 行保护区
   constexpr size_t initial_win_start_rows() const {
     return 0;
+  }
+  constexpr size_t level5_buffer_rows() const {
+    return LEVEL5_BUFFER_ROWS == std::numeric_limits<size_t>::max()
+               ? LEVEL56_BUFFER_ROWS : LEVEL5_BUFFER_ROWS;
+  }
+  constexpr size_t level6_buffer_rows() const {
+    return LEVEL6_BUFFER_ROWS == std::numeric_limits<size_t>::max()
+               ? LEVEL56_BUFFER_ROWS : LEVEL6_BUFFER_ROWS;
   }
 
   // 基本有效性检查

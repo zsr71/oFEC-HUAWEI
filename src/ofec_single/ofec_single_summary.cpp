@@ -197,6 +197,8 @@ void log_run_overview(const Config& cfg,
       << ", buffered_fifo = "
       << (params.LEVEL56_BUFFERED_FIFO_ENABLE ? "ON" : "OFF")
       << ", buffer_rows = " << params.LEVEL56_BUFFER_ROWS
+      << ", level5_buffer_rows = " << params.level5_buffer_rows()
+      << ", level6_buffer_rows = " << params.level6_buffer_rows()
       << ", drain_at_frame_end = "
       << (params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END ? "ON" : "OFF")
       << ", hiso_class_mask = 0x" << std::hex
