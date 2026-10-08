@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Level 5/6 共享 SRAM 双窗口浮动调度演示</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="title-block">
+        <h1>Level 5/6 共享 SRAM 双窗口浮动调度</h1>
+        <p>唯一连续 SRAM · 两个独立 22 行窗口 · 每个 t 共享 8 个 group-entry</p>
+      </div>
+      <div class="controls" aria-label="演示控制">
+        <label class="field">案例
+          <select id="scenarioSelect"></select>
+        </label>
+        <label class="field compact">R_buf
+          <input id="rbufInput" type="number" min="0" max="128" step="2" value="32">
+        </label>
+        <button id="resetButton" type="button" title="重置当前案例">重置</button>
+        <button id="previousButton" type="button" title="上一个微步骤">上一步</button>
+        <button id="nextButton" type="button" title="下一个微步骤">下一步</button>
+        <button id="nextTimeButton" type="button" title="跳到下一个时刻边界">下一时刻</button>
+        <button id="playButton" class="primary" type="button" title="自动播放">播放</button>
+        <label class="speed">速度
+          <input id="speedInput" type="range" min="250" max="1800" step="50" value="850">
+          <span id="speedValue">0.85 s</span>
+        </label>
+      </div>
+    </header>
+
+    <section class="summary-strip" aria-label="当前状态摘要">
+      <div><span>当前时刻</span><strong id="metricTime">t=0</strong></div>
+      <div><span>当前事件</span><strong id="metricEvent">时刻开始</strong></div>
+      <div><span>Level 5</span><strong id="metricL5">B0 · [54,76)</strong></div>
+      <div><span>Level 6</span><strong id="metricL6">B−11 · [32,54)</strong></div>
+      <div><span>普通预算</span><strong id="metricEntries">0 / 8</strong></div>
+      <div><span>完成量</span><strong id="metricCompletion">C5=0 · C6=0</strong></div>
+    </section>
+
+    <section class="position-strip" aria-label="双窗口三种位置口径">
+      <div class="position-label">
+        <strong>窗口位置口径</strong>
+        <span>同一微步骤同时对照</span>
+      </div>
+      <div class="position-item time-start">
+        <span><i>1</i><b id="positionStartLabel">t 开始位置</b></span>
+        <strong id="positionStartL6">L6 S6=32 · W6 [32,54)</strong>
+        <strong id="positionStartL5">L5 S5=54 · W5 [54,76)</strong>
+      </div>
+      <div class="position-arrow" aria-hidden="true">→</div>
+      <div class="position-item round-current">
+        <span><i>2</i><b>当前轮次位置</b></span>
+        <strong id="positionRoundL6">L6 S6^(r)=32 · W6 [32,54)</strong>
+        <strong id="positionRoundL5">L5 S5^(r)=54 · W5 [54,76)</strong>
+      </div>
+      <div class="position-arrow" aria-hidden="true">→</div>
+      <div class="position-item next-commit" id="positionCommitBox">
+        <span><i>3</i><b id="positionCommitLabel">下一时刻提交位置</b></span>
+        <strong id="positionCommitL6">L6 待边界裁决</strong>
+        <strong id="positionCommitL5">L5 待边界裁决</strong>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <section class="memory-panel" aria-labelledby="memoryHeading">
+        <div class="panel-heading">
+          <div>
+            <h2 id="memoryHeading">连续物理 SRAM</h2>
+            <span id="memorySize">76 rows × 8 blocks</span>
+          </div>
+          <div class="window-readout">
+            <span class="level6" id="windowL6">当前轮次 W6 [32,54)</span>
+            <span class="level5" id="windowL5">当前轮次 W5 [54,76)</span>
+          </div>
+        </div>
+        <div class="legend" aria-label="颜色图例">
+          <span><i class="swatch l6"></i>Level 6 窗口</span>
+          <span><i class="swatch d6"></i>D6 实际对象</span>
+          <span><i class="swatch l5"></i>Level 5 窗口</span>
+          <span><i class="swatch d5"></i>D5 实际对象</span>
+          <span><i class="swatch input"></i>本 t 新输入</span>
+          <span><i class="swatch output"></i>本 t 顶部输出</span>
+        </div>
+        <div class="axis-note">
+          <span>纵轴：物理 block row，row 0 在顶部</span>
+          <span>横轴：8 个 SRAM block</span>
+        </div>
+        <div id="memoryGrid" class="memory-grid" role="grid" aria-label="共享 SRAM 物理网格"></div>
+      </section>
+
+      <section class="right-column">
+        <section class="timeline-panel" aria-labelledby="timelineHeading">
+          <div class="panel-heading compact-heading">
+            <div>
+              <h2 id="timelineHeading">时刻轴</h2>
+              <span id="scenarioDescription"></span>
+            </div>
+            <span id="frameCounter" class="counter">1 / 1</span>
+          </div>
+          <div id="timeTimeline" class="time-timeline"></div>
+          <div id="eventTimeline" class="event-timeline" aria-label="当前时刻微步骤"></div>
+        </section>
+
+        <section class="schedule-panel" aria-labelledby="scheduleHeading">
+          <div class="panel-heading compact-heading">
+            <div>
+              <h2 id="scheduleHeading">共享 8-entry 调度</h2>
+              <span id="roundSummary">尚未执行普通轮次</span>
+            </div>
+            <span id="budgetCounter" class="counter">剩余 8</span>
+          </div>
+          <div class="entry-table-wrap">
+            <table class="entry-table">
+              <thead>
+                <tr><th>Entry</th><th>Round</th><th>Level / B</th><th>Group</th><th>HISO</th><th>SISO</th></tr>
+              </thead>
+              <tbody id="entryTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="detail-grid">
+          <section class="event-panel" aria-labelledby="eventHeading">
+            <div class="panel-heading compact-heading">
+              <div>
+                <h2 id="eventHeading">当前事件</h2>
+                <span id="eventPhase">START</span>
+              </div>
+            </div>
+            <div class="event-detail">
+              <h3 id="eventTitle">时刻开始</h3>
+              <p id="eventDescription"></p>
+              <dl class="state-list">
+                <div><dt>轮次级位置</dt><dd id="positionState"></dd></div>
+                <div><dt>当前阶段对象</dt><dd id="headState"></dd></div>
+                <div><dt>推进欠账</dt><dd id="recoveryState"></dd></div>
+                <div><dt>边界退出</dt><dd id="forcedState"></dd></div>
+              </dl>
+            </div>
+          </section>
+
+          <section class="assertion-panel" aria-labelledby="assertionHeading">
+            <div class="panel-heading compact-heading">
+              <div>
+                <h2 id="assertionHeading">状态机检查</h2>
+                <span id="assertionSummary">全部通过</span>
+              </div>
+              <span id="selfTestBadge" class="test-badge">自检中</span>
+            </div>
+            <div id="assertionList" class="assertion-list"></div>
+          </section>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
