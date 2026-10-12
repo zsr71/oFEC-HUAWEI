@@ -125,6 +125,7 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
   std::size_t level56_shared_invocation = 0;
   Level56TemporalState<LLR> level56_temporal_state;
   Level56BufferedFifoState<LLR> level56_buffered_state;
+  Level56DualWindowState level56_dual_window_state;
 
   while (win_start <= last_ws) {
     const size_t win_end = win_start + WIN_HEIGHT_ROWS - 1;
@@ -143,6 +144,9 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
                                  : nullptr,
                              p.LEVEL56_BUFFERED_FIFO_ENABLE
                                  ? &level56_buffered_state
+                                 : nullptr,
+                             p.LEVEL56_DUAL_WINDOW_ENABLE
+                                 ? &level56_dual_window_state
                                  : nullptr);
 
     win_start += POP_PUSH_ROWS;
@@ -154,6 +158,13 @@ matrix::Matrix<LLR> ofec_decode_llr_impl(const matrix::Matrix<LLR>& llr_mat, con
         work_llr, channel_llr, p, stats_ptr, normalize_extrinsic, tx_llr_ref,
         core_fn, &last_tile_history_llr, &level56_shared_invocation,
         &level56_buffered_state);
+  }
+  if (p.LEVEL56_DUAL_WINDOW_ENABLE &&
+      p.LEVEL56_DUAL_WINDOW_DRAIN_AT_FRAME_END) {
+    drain_level56_dual_window_at_frame_end(
+        work_llr, channel_llr, p, stats_ptr, normalize_extrinsic, tx_llr_ref,
+        core_fn, &last_tile_history_llr, &level56_shared_invocation,
+        &level56_dual_window_state);
   }
 
   if (tile_stats) {

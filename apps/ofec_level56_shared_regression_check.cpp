@@ -1,6 +1,7 @@
 #include "ofec/detail/ofec_tile_impl.ipp"
 #include "ofec/detail/ofec_level56_shared.ipp"
 #include "ofec/detail/ofec_level56_buffered_fifo.ipp"
+#include "ofec/detail/ofec_level56_dual_window.ipp"
 #include "newcode/rx/ber/ber.hpp"
 
 #include <algorithm>
@@ -397,6 +398,44 @@ void check_common_parameter_validation() {
     rejected = true;
   }
   require(rejected, "grouped mode must reject capacity other than 8/8");
+
+  auto dual = grouped;
+  dual.LEVEL56_DUAL_WINDOW_ENABLE = true;
+  dual.LEVEL56_BUFFER_ROWS = 32;
+  dual.LEVEL56_GROUP4_MAX_ENTRIES = 8;
+  dual.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE =
+      newcode::Level56EarlyStopGroupUpdateMode::AllGroups;
+  newcode::detail::validate_level56_shared_config(dual);
+
+  auto dual_fifo_conflict = dual;
+  dual_fifo_conflict.LEVEL56_BUFFERED_FIFO_ENABLE = true;
+  rejected = false;
+  try {
+    newcode::detail::validate_level56_shared_config(dual_fifo_conflict);
+  } catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "dual-window and buffered FIFO must be mutually exclusive");
+
+  auto odd_dual_buffer = dual;
+  odd_dual_buffer.LEVEL56_BUFFER_ROWS = 7;
+  rejected = false;
+  try {
+    newcode::detail::validate_level56_shared_config(odd_dual_buffer);
+  } catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "dual-window mode must reject an odd buffer length");
+
+  auto wrong_dual_budget = dual;
+  wrong_dual_budget.LEVEL56_GROUP4_MAX_ENTRIES = 9;
+  rejected = false;
+  try {
+    newcode::detail::validate_level56_shared_config(wrong_dual_budget);
+  } catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  require(rejected, "dual-window mode must keep the shared budget at 8 entries");
 
   p.EARLY_STOP_ACTION_MODE_LIST = {1, 1, 1, 1, 1, 2};
   rejected = false;
@@ -1863,10 +1902,402 @@ void check_full_frame_ber_keeps_all_evaluation_bits() {
           "tile post-FEC BER must not exclude forced-evicted positions");
 }
 
+newcode::detail::Level56DualWindowSlot make_dual_test_batch(
+    newcode::detail::Level56DualWindowState* state,
+    const newcode::Params& p,
+    std::size_t global_tile_top = 0) {
+  return newcode::detail::level56_dual_make_arrival(
+      state, global_tile_top, p, p);
+}
+
+void check_dual_window_end_to_end_full_early_stop_drain() {
+  auto p = make_buffered_pipeline_params();
+  p.LEVEL56_BUFFERED_FIFO_ENABLE = false;
+  p.LEVEL56_DUAL_WINDOW_ENABLE = true;
+  p.LEVEL56_DUAL_WINDOW_DRAIN_AT_FRAME_END = true;
+  p.LEVEL56_BUFFER_ROWS = 0;
+
+  matrix::Matrix<float> llr(
+      p.win_height_rows(),
+      newcode::Params::NUM_SUBBLOCK_COLS *
+          newcode::Params::BITS_PER_SUBBLOCK_DIM);
+  for (std::size_t row = 0; row < llr.rows(); ++row) {
+    std::fill(llr[row].begin(), llr[row].end(), 8.0f);
+  }
+
+  std::vector<newcode::TileEarlyStopCounter> stats;
+  (void)newcode::ofec_decode_llr_plain(llr, p, &stats, true, nullptr);
+  require(stats.size() == p.TILES_PER_WIN,
+          "dual-window drain integration did not return tile statistics");
+  const auto& times = stats[4].level56_dual_window_time_samples;
+  const auto& steps = stats[4].level56_dual_window_step_samples;
+  require(times.size() == 23,
+          "one dual-window input with Rbuf=0 must use 22 drain advances");
+
+  std::size_t inputs = 0;
+  std::size_t outputs = 0;
+  std::size_t drains = 0;
+  std::size_t c5 = 0;
+  std::size_t c6 = 0;
+  std::size_t full5 = 0;
+  std::size_t full6 = 0;
+  std::size_t forced5 = 0;
+  std::size_t forced6 = 0;
+  for (const auto& sample : times) {
+    inputs += sample.input_valid;
+    outputs += sample.output_valid;
+    drains += sample.drain;
+    c5 += sample.c5;
+    c6 += sample.c6;
+    full5 += sample.full_early_stop5;
+    full6 += sample.full_early_stop6;
+    forced5 += sample.forced_evicted5;
+    forced6 += sample.forced_evicted6;
+    require(sample.ordinary_entries_used == 0,
+            "full-EarlyStop dual-window drain consumed ordinary entries");
+    require((sample.s5_after % 2u) == 0u &&
+                (sample.s6_after % 2u) == 0u &&
+                sample.s6_after + 22u <= sample.s5_after &&
+                sample.s5_after + 22u <= 44u,
+            "dual-window drain emitted an illegal window pair");
+  }
+  require(inputs == 1 && outputs == 1 && drains == 22 &&
+              c5 == 1 && c6 == 1 && full5 == 1 && full6 == 1 &&
+              forced5 == 0 && forced6 == 0 &&
+              times.back().output_batch_id == 0,
+          "dual-window full-EarlyStop drain did not close B0 exactly once");
+  require(std::count_if(
+              steps.begin(), steps.end(), [](const auto& step) {
+                return step.type ==
+                       newcode::Level56DualWindowStepType::FullEarlyStop;
+              }) == 2,
+          "dual-window full-EarlyStop drain did not service both stages");
+}
+
+void check_dual_window_cold_start_and_level6_latency() {
+  newcode::Params p;
+  p.LEVEL56_BUFFER_ROWS = 32;
+  newcode::detail::Level56DualWindowState state;
+  newcode::detail::initialize_level56_dual_window_state(&state, p);
+  require(state.slots.size() == 38 && state.s5 == 54 && state.s6 == 32,
+          "dual-window initialization did not create Rbuf+44 SRAM rows");
+
+  for (std::size_t t = 0; t <= 11; ++t) {
+    newcode::Level56DualWindowTimeSample sample;
+    std::vector<newcode::Level56DualWindowStepSample> steps;
+    std::size_t step = 0;
+    const auto incoming = make_dual_test_batch(&state, p, t * 32u);
+    newcode::detail::level56_dual_advance_boundary(
+        &state, incoming, &sample, &step, &steps);
+    const auto h5 = newcode::detail::level56_dual_visible_batch_id(state, 5u);
+    require(h5 && *h5 == t,
+            "cold-start Level 5 did not expose the newly arrived batch");
+    auto* batch = newcode::detail::level56_dual_batch(&state, *h5);
+    batch->level5.terminal = true;
+    batch->level5.reason =
+        newcode::Level56DualWindowCompletionReason::Normal;
+    if (t < 11) {
+      require(!newcode::detail::level56_dual_visible_batch_id(state, 6u),
+              "Level 6 exposed B0 before eleven two-row advances");
+    }
+    ++state.service_time;
+  }
+  const auto h6 = newcode::detail::level56_dual_visible_batch_id(state, 6u);
+  require(h6 && *h6 == 0,
+          "B0 did not reach Level 6 after eleven two-row advances");
+}
+
+void check_dual_window_adjacent_pending_following() {
+  newcode::Params p;
+  p.LEVEL56_BUFFER_ROWS = 4;
+  newcode::detail::Level56DualWindowState state;
+  newcode::detail::initialize_level56_dual_window_state(&state, p);
+  const auto l6 = make_dual_test_batch(&state, p);
+  const auto l5 = make_dual_test_batch(&state, p, 32u);
+  state.slots[newcode::detail::level56_dual_decode_slot(state.s6)] = l6;
+  state.slots[newcode::detail::level56_dual_decode_slot(state.s5)] = l5;
+  auto* batch6 = newcode::detail::level56_dual_batch(&state, l6.batch_id);
+  batch6->level5.terminal = true;
+  batch6->level6.classified = true;
+  auto* batch5 = newcode::detail::level56_dual_batch(&state, l5.batch_id);
+  batch5->level5.classified = true;
+  state.service_time = 1;
+  newcode::Level56DualWindowTimeSample sample;
+  std::vector<newcode::Level56DualWindowStepSample> steps;
+  std::size_t step = 0;
+  newcode::detail::level56_dual_advance_boundary(
+      &state, {}, &sample, &step, &steps);
+  require(state.s5 == 24 && state.s6 == 2 &&
+              newcode::detail::level56_dual_windows_legal(
+                  state, state.s5, state.s6) &&
+              newcode::detail::level56_dual_visible_batch_id(state, 5u) ==
+                  std::optional<std::size_t>(l5.batch_id) &&
+              newcode::detail::level56_dual_visible_batch_id(state, 6u) ==
+                  std::optional<std::size_t>(l6.batch_id),
+          "adjacent pending windows did not follow upward synchronously");
+}
+
+void check_dual_window_forced_eviction_boundaries() {
+  newcode::Params p;
+  p.LEVEL56_BUFFER_ROWS = 0;
+
+  {
+    newcode::detail::Level56DualWindowState state;
+    newcode::detail::initialize_level56_dual_window_state(&state, p);
+    const auto l6 = make_dual_test_batch(&state, p);
+    const auto l5 = make_dual_test_batch(&state, p, 32u);
+    state.slots[newcode::detail::level56_dual_decode_slot(state.s6)] = l6;
+    state.slots[newcode::detail::level56_dual_decode_slot(state.s5)] = l5;
+    auto* batch6 = newcode::detail::level56_dual_batch(&state, l6.batch_id);
+    batch6->level5.terminal = true;
+    batch6->level6.classified = true;
+    newcode::detail::level56_dual_batch(&state, l5.batch_id)
+        ->level5.terminal = true;
+    state.service_time = 1;
+    newcode::Level56DualWindowTimeSample sample;
+    std::vector<newcode::Level56DualWindowStepSample> steps;
+    std::size_t step = 0;
+    newcode::detail::level56_dual_advance_boundary(
+        &state, {}, &sample, &step, &steps);
+    require(batch6->level6.terminal &&
+                batch6->level6.reason ==
+                    newcode::Level56DualWindowCompletionReason::ForcedEvicted &&
+                sample.forced_evicted6 == 1,
+            "pending Level 6 at the top boundary was not forced-evicted");
+  }
+
+  {
+    newcode::detail::Level56DualWindowState state;
+    newcode::detail::initialize_level56_dual_window_state(&state, p);
+    const auto l6 = make_dual_test_batch(&state, p);
+    const auto l5 = make_dual_test_batch(&state, p, 32u);
+    state.slots[newcode::detail::level56_dual_decode_slot(state.s6)] = l6;
+    state.slots[newcode::detail::level56_dual_decode_slot(state.s5)] = l5;
+    auto* batch6 = newcode::detail::level56_dual_batch(&state, l6.batch_id);
+    batch6->level5.terminal = true;
+    batch6->level6.terminal = true;
+    auto* batch5 = newcode::detail::level56_dual_batch(&state, l5.batch_id);
+    batch5->level5.classified = true;
+    state.service_time = 1;
+    newcode::Level56DualWindowTimeSample sample;
+    std::vector<newcode::Level56DualWindowStepSample> steps;
+    std::size_t step = 0;
+    newcode::detail::level56_dual_advance_boundary(
+        &state, {}, &sample, &step, &steps);
+    require(batch5->level5.terminal &&
+                batch5->level5.reason ==
+                    newcode::Level56DualWindowCompletionReason::ForcedEvicted &&
+                sample.forced_evicted5 == 1,
+            "Level 5 conflict with a stationary Level 6 was not forced-evicted");
+  }
+}
+
+void check_dual_window_joint_recovery() {
+  newcode::Params p;
+  p.LEVEL56_BUFFER_ROWS = 4;
+  newcode::detail::Level56DualWindowState state;
+  newcode::detail::initialize_level56_dual_window_state(&state, p);
+  state.s6 = 2;
+  state.s5 = 24;
+  const auto l6 = make_dual_test_batch(&state, p);
+  const auto l5 = make_dual_test_batch(&state, p, 32u);
+  state.slots[newcode::detail::level56_dual_decode_slot(4u)] = l6;
+  state.slots[newcode::detail::level56_dual_decode_slot(26u)] = l5;
+  newcode::detail::level56_dual_batch(&state, l6.batch_id)
+      ->level5.terminal = true;
+  state.recovery_debt5 = 2;
+  state.recovery_debt6 = 2;
+  std::vector<newcode::Level56DualWindowStepSample> steps;
+  std::size_t step = 0;
+  require(newcode::detail::level56_dual_apply_recovery(
+              &state, &step, &steps) &&
+              state.s5 == 26 && state.s6 == 4 &&
+              state.recovery_debt5 == 0 && state.recovery_debt6 == 0 &&
+              newcode::detail::level56_dual_windows_legal(
+                  state, state.s5, state.s6),
+          "joint recovery did not move both windows atomically");
+}
+
+void check_dual_window_inactive_level_has_no_side_effects() {
+  auto p = make_grouped_params();
+  p.ENABLE_EARLY_STOP = true;
+  p.EARLY_STOP_CONDITION_MODE = 1;
+  p.EARLY_STOP_BIND_GROUP_SIZE = 1;
+  p.EARLY_STOP_ACTION_MODE = 7;
+  const std::size_t rows = p.tile_height_rows();
+  const std::size_t cols = newcode::Params::NUM_SUBBLOCK_COLS *
+                           newcode::Params::BITS_PER_SUBBLOCK_DIM;
+  matrix::Matrix<float> input5(rows, cols);
+  matrix::Matrix<float> input6(rows, cols);
+  matrix::Matrix<float> channel5(rows, cols);
+  matrix::Matrix<float> channel6(rows, cols);
+  matrix::Matrix<float> output5(rows, cols);
+  matrix::Matrix<float> output6(rows, cols);
+  for (std::size_t row = 0; row < rows; ++row) {
+    for (std::size_t col = 0; col < cols; ++col) {
+      input5[row][col] = 0.0f;
+      input6[row][col] = 4.0f;
+      channel5[row][col] = 20.0f;
+      channel6[row][col] = -20.0f;
+      output5[row][col] = input5[row][col];
+      output6[row][col] = input6[row][col];
+    }
+  }
+  matrix::Matrix<float> history(4096, cols);
+  for (std::size_t row = 0; row < history.rows(); ++row) {
+    std::fill(history[row].begin(), history[row].end(), 7.0f);
+  }
+
+  const auto result = newcode::detail::process_level56_shared(
+      input5, channel5, input6, channel6, p, p, 1024, 1024, 0, false,
+      nullptr, controlled_soft_core, &history, nullptr, 8, 0, false, nullptr,
+      nullptr, &output5, &output6, true, 0, 0, true, false);
+  require(result.dispatch.size() == 64,
+          "active-mask shared call did not preserve the 64-code interface");
+  for (std::size_t index = 32; index < result.dispatch.size(); ++index) {
+    const auto& entry = result.dispatch[index];
+    require(entry.source_level == 6 && entry.already_decoded &&
+                !entry.needs_execution && !entry.produced &&
+                entry.assigned_entry_slot == -1,
+            "inactive Level 6 entered scheduling or execution");
+  }
+  for (std::size_t row = 0; row < rows; ++row) {
+    for (std::size_t col = 0; col < cols; ++col) {
+      require(result.level6.tile_out[row][col] == input6[row][col],
+              "inactive Level 6 modified its tile output");
+    }
+  }
+  for (std::size_t row = 0; row < history.rows(); ++row) {
+    for (std::size_t col = 0; col < history.cols(); ++col) {
+      require(history[row][col] == 7.0f,
+              "inactive Level 6 modified last_tile_history");
+    }
+  }
+}
+
+// Exercise final retirement with both storage types used by the decoder.
+template <typename LLR>
+void check_forced_prior_storage() {
+  newcode::Params p;
+  p.ALPHA = 0.5f;  // Final fallback must not apply the decoder alpha.
+  matrix::Matrix<LLR> work(1408, 128);
+  matrix::Matrix<float> history(1408, 128);
+  for (std::size_t r = 0; r < work.rows(); ++r) {
+    std::fill(work[r].begin(), work[r].end(), qfloat::llr_from_float<LLR>(-4.0f));
+    std::fill(history[r].begin(), history[r].end(), 7.0f);
+  }
+  Level56DispatchEntry entry;
+  entry.source_level = 6;
+  entry.source_global_row = 1024;
+  entry.pending = true;
+  const auto apply = [&] {
+    newcode::detail::finalize_level56_forced_prior(work, &history, entry, p);
+  };
+  apply();
+  require(history[720][0] == 7.0f, "pending row prematurely committed history");
+  entry.forced_evicted = true;
+  entry.already_decoded = true;
+  entry.writeback_complete = true;
+  apply();
+  require(history[720][0] == 7.0f, "completed row lost its final history");
+  entry.already_decoded = false;
+  entry.writeback_complete = false;
+  entry.source_level = 5;
+  apply();
+  require(history[720][0] == 7.0f, "forced Level 5 committed Level 6 history");
+  entry.source_level = 6;
+  apply();
+  std::size_t copied = 0;
+  for (std::size_t r = 0; r < history.rows(); ++r) {
+    for (std::size_t c = 0; c < history.cols(); ++c) {
+      const bool expected = c % 16u == 0u && c / 16u < 8u &&
+                            r >= 720u && r < 976u &&
+                            (r - 720u) / 32u == c / 16u &&
+                            (r - 720u) % 32u < 16u;
+      require((history[r][c] != 7.0f) == expected,
+              "forced prior used a different mapping from tile writeback");
+      if (history[r][c] != 7.0f) {
+        ++copied;
+        require(history[r][c] == qfloat::llr_to_float(work[r][c]),
+                "forced history changed prior scale or quantization");
+      }
+    }
+  }
+  require(copied == 128, "forced history did not commit exactly the old half");
+}
+
+void check_forced_prior_retirement_integration() {
+  newcode::Params p;
+  p.LEVEL56_BUFFER_ROWS = 0;
+  matrix::Matrix<float> work(1408, 128);
+  matrix::Matrix<float> history(1408, 128);
+  for (std::size_t r = 0; r < work.rows(); ++r) {
+    std::fill(work[r].begin(), work[r].end(), -4.0f);
+    std::fill(history[r].begin(), history[r].end(), 7.0f);
+  }
+  auto entries = make_entries(2);
+  for (auto& entry : entries) {
+    entry.source_global_row = 1024 + entry.source_local_row;
+    entry.pending = true;
+  }
+  entries.back().already_decoded = true;
+  entries.back().writeback_complete = true;
+  const auto finalize = [&](const Level56DispatchEntry& entry,
+                            const newcode::Params& params) {
+    newcode::detail::finalize_level56_forced_prior(work, &history, entry, params);
+  };
+
+  newcode::detail::Level56DualWindowState dual;
+  newcode::detail::initialize_level56_dual_window_state(&dual, p);
+  const auto l6 = make_dual_test_batch(&dual, p, 1024);
+  const auto l5 = make_dual_test_batch(&dual, p, 1056);
+  dual.slots[newcode::detail::level56_dual_decode_slot(dual.s6)] = l6;
+  dual.slots[newcode::detail::level56_dual_decode_slot(dual.s5)] = l5;
+  auto* batch = newcode::detail::level56_dual_batch(&dual, l6.batch_id);
+  batch->level5.terminal = true;
+  batch->level6.classified = true;
+  batch->level6.entries.assign(entries.begin() + 2, entries.end());
+  newcode::detail::level56_dual_batch(&dual, l5.batch_id)->level5.terminal = true;
+  dual.service_time = 1;
+  newcode::Level56DualWindowTimeSample sample;
+  std::vector<newcode::Level56DualWindowStepSample> steps;
+  std::size_t step = 0;
+  newcode::detail::level56_dual_advance_boundary(
+      &dual, {}, &sample, &step, &steps, finalize);
+  require(sample.forced_evicted6 == 1 && history[720][0] == -4.0f &&
+              history[721][1] == 7.0f,
+          "dual boundary did not preserve incomplete/completed history correctly");
+
+  for (std::size_t r = 0; r < history.rows(); ++r)
+    std::fill(history[r].begin(), history[r].end(), 7.0f);
+  newcode::detail::Level56BufferedFifoState<float> fifo;
+  newcode::detail::Level56BufferedBatch<float> head;
+  head.entries = entries;
+  head.params6 = p;
+  fifo.fifo.push_back(head);
+  const auto no_service = [](auto*) {};
+  const auto outcome = newcode::detail::service_level56_buffered_fifo_time(
+      &fifo, true, no_service, no_service, no_service,
+      [&](const auto& retired, auto reason) {
+        require(reason == newcode::Level56BufferedBatchRetirement::ForcedEvicted,
+                "test head unexpectedly completed");
+        for (const auto& entry : retired.entries) finalize(entry, retired.params6);
+      });
+  require(outcome.forced_evicted_batches == 1 && fifo.fifo.empty() &&
+              history[720][0] == -4.0f && history[721][1] == 7.0f,
+          "FIFO final retirement did not preserve incomplete/completed history");
+}
+
 }  // namespace
 
 int main() {
   try {
+    check_forced_prior_storage<float>();
+    const float old_clip = qfloat::qfloat<6>::current_clip();
+    qfloat::qfloat<6>::set_clip(16.0f);
+    check_forced_prior_storage<qfloat::qfloat<6>>();
+    qfloat::qfloat<6>::set_clip(old_clip);
+    check_forced_prior_retirement_integration();
     check_full_siso_uses_no_hiso();
     check_hiso_only_handles_siso_overflow();
     check_siso_only_rows_never_use_hiso();
@@ -1906,6 +2337,12 @@ int main() {
     check_buffered_end_to_end_full_early_stop();
     check_buffered_end_to_end_multiple_windows();
     check_full_frame_ber_keeps_all_evaluation_bits();
+    check_dual_window_end_to_end_full_early_stop_drain();
+    check_dual_window_cold_start_and_level6_latency();
+    check_dual_window_adjacent_pending_following();
+    check_dual_window_forced_eviction_boundaries();
+    check_dual_window_joint_recovery();
+    check_dual_window_inactive_level_has_no_side_effects();
     std::cout << "LEVEL56 shared scheduler regression checks passed\n";
     return 0;
   } catch (const std::exception& ex) {

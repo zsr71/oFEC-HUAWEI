@@ -196,9 +196,13 @@ void log_run_overview(const Config& cfg,
       << params.LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD
       << ", buffered_fifo = "
       << (params.LEVEL56_BUFFERED_FIFO_ENABLE ? "ON" : "OFF")
+      << ", dual_window = "
+      << (params.LEVEL56_DUAL_WINDOW_ENABLE ? "ON" : "OFF")
       << ", buffer_rows = " << params.LEVEL56_BUFFER_ROWS
-      << ", drain_at_frame_end = "
+      << ", fifo_drain_at_frame_end = "
       << (params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END ? "ON" : "OFF")
+      << ", dual_window_drain_at_frame_end = "
+      << (params.LEVEL56_DUAL_WINDOW_DRAIN_AT_FRAME_END ? "ON" : "OFF")
       << ", hiso_class_mask = 0x" << std::hex
       << params.LEVEL56_HISO_ALLOWED_CLASS_MASK << std::dec
       << ", HISO/SISO = "

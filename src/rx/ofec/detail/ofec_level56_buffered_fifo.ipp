@@ -115,7 +115,7 @@ inline void mark_level56_full_early_stop_complete(
 inline void mark_level56_batch_forced_evicted(
     std::vector<Level56DispatchEntry>* entries) {
   for (auto& entry : *entries) {
-    if (entry.already_decoded) {
+    if (entry.already_decoded && entry.writeback_complete) {
       continue;
     }
     entry.planned_hiso = false;
@@ -144,13 +144,14 @@ void initialize_level56_buffered_fifo_state(
 }
 
 template <typename LLR, typename ClassifyFn, typename OrdinaryServiceFn,
-          typename FullEarlyStopFn>
+          typename FullEarlyStopFn, typename RetireFn = Level56NoopRetirement>
 Level56BufferedServiceOutcome service_level56_buffered_fifo_time(
     Level56BufferedFifoState<LLR>* state,
     bool force_original_head_at_boundary,
     ClassifyFn classify,
     OrdinaryServiceFn ordinary_service,
-    FullEarlyStopFn full_early_stop) {
+    FullEarlyStopFn full_early_stop,
+    RetireFn finalize_retirement = {}) {
   Level56BufferedServiceOutcome outcome;
   if (state->fifo.empty()) {
     return outcome;
@@ -165,6 +166,7 @@ Level56BufferedServiceOutcome service_level56_buffered_fifo_time(
         .arrival_time = head.arrival_time,
         .reason = reason,
     });
+    finalize_retirement(head, reason);
     state->fifo.pop_front();
   };
 

@@ -112,6 +112,35 @@ const char* level56_buffered_retirement_name(
   return "Unknown";
 }
 
+const char* level56_dual_completion_name(
+    newcode::Level56DualWindowCompletionReason reason) {
+  switch (reason) {
+    case newcode::Level56DualWindowCompletionReason::None: return "None";
+    case newcode::Level56DualWindowCompletionReason::Normal: return "Normal";
+    case newcode::Level56DualWindowCompletionReason::FullEarlyStop:
+      return "FullEarlyStop";
+    case newcode::Level56DualWindowCompletionReason::ForcedEvicted:
+      return "ForcedEvicted";
+  }
+  return "Unknown";
+}
+
+const char* level56_dual_step_name(newcode::Level56DualWindowStepType type) {
+  switch (type) {
+    case newcode::Level56DualWindowStepType::BoundaryAdvance:
+      return "BoundaryAdvance";
+    case newcode::Level56DualWindowStepType::Classify: return "Classify";
+    case newcode::Level56DualWindowStepType::FullEarlyStop:
+      return "FullEarlyStop";
+    case newcode::Level56DualWindowStepType::OrdinarySchedule:
+      return "OrdinarySchedule";
+    case newcode::Level56DualWindowStepType::Recovery: return "Recovery";
+    case newcode::Level56DualWindowStepType::ForcedEviction:
+      return "ForcedEviction";
+  }
+  return "Unknown";
+}
+
 const char* level56_hybrid_class_name(uint8_t value) {
   switch (value) {
     case 0: return "None";
@@ -473,6 +502,68 @@ void dump_level56_buffered_times_csv(
   }
 }
 
+void dump_level56_dual_window_times_csv(
+    const std::vector<newcode::Level56DualWindowTimeSample>& samples,
+    const std::filesystem::path& output_path,
+    const std::string& run_id,
+    const std::string& label) {
+  const auto parent = output_path.parent_path();
+  if (!parent.empty()) std::filesystem::create_directories(parent);
+  std::ofstream out(output_path);
+  out << "run_id,label,t,drain,input_valid,input_batch,output_valid,"
+         "output_batch,S5_before,S6_before,S5_after,S6_after,H5_valid,H5,"
+         "H6_valid,H6,C5,C6,full_early_stop5,full_early_stop6,"
+         "forced_evicted5,forced_evicted6,entries_used,ordinary_rounds,"
+         "recovery_debt5,recovery_debt6\n";
+  for (const auto& sample : samples) {
+    out << run_id << ',' << label << ',' << sample.service_time << ','
+        << sample.drain << ',' << sample.input_valid << ',';
+    if (sample.input_valid) out << 'B' << sample.input_batch_id;
+    out << ',' << sample.output_valid << ',';
+    if (sample.output_valid) out << 'B' << sample.output_batch_id;
+    out << ',' << sample.s5_before << ',' << sample.s6_before << ','
+        << sample.s5_after << ',' << sample.s6_after << ','
+        << sample.h5_valid << ',';
+    if (sample.h5_valid) out << 'B' << sample.h5_batch_id;
+    out << ',' << sample.h6_valid << ',';
+    if (sample.h6_valid) out << 'B' << sample.h6_batch_id;
+    out << ',' << sample.c5 << ',' << sample.c6 << ','
+        << sample.full_early_stop5 << ',' << sample.full_early_stop6 << ','
+        << sample.forced_evicted5 << ',' << sample.forced_evicted6 << ','
+        << sample.ordinary_entries_used << ',' << sample.ordinary_rounds << ','
+        << sample.recovery_debt5 << ',' << sample.recovery_debt6 << '\n';
+  }
+}
+
+void dump_level56_dual_window_steps_csv(
+    const std::vector<newcode::Level56DualWindowStepSample>& samples,
+    const std::filesystem::path& output_path,
+    const std::string& run_id,
+    const std::string& label) {
+  const auto parent = output_path.parent_path();
+  if (!parent.empty()) std::filesystem::create_directories(parent);
+  std::ofstream out(output_path);
+  out << "run_id,label,t,step,type,S5,S6,H5_valid,H5,H6_valid,H6,"
+         "level5_active,level6_active,entries_before,entries_used,"
+         "entries_after,level5_reason,level6_reason,recovery_debt5,"
+         "recovery_debt6\n";
+  for (const auto& sample : samples) {
+    out << run_id << ',' << label << ',' << sample.service_time << ','
+        << sample.step_index << ',' << level56_dual_step_name(sample.type)
+        << ',' << sample.s5 << ',' << sample.s6 << ',' << sample.h5_valid
+        << ',';
+    if (sample.h5_valid) out << 'B' << sample.h5_batch_id;
+    out << ',' << sample.h6_valid << ',';
+    if (sample.h6_valid) out << 'B' << sample.h6_batch_id;
+    out << ',' << sample.level5_active << ',' << sample.level6_active << ','
+        << sample.entries_before << ',' << sample.entries_used << ','
+        << sample.entries_after << ','
+        << level56_dual_completion_name(sample.level5_reason) << ','
+        << level56_dual_completion_name(sample.level6_reason) << ','
+        << sample.recovery_debt5 << ',' << sample.recovery_debt6 << '\n';
+  }
+}
+
 void log_level56_buffered_summary(
     const std::vector<newcode::Level56BufferedTimeSample>& samples,
     io::DualWriter& log) {
@@ -713,6 +804,18 @@ int run_ofec_single(const Config& config) {
     dump_level56_buffered_times_csv(
         result.level56_buffered_time_samples, buffered_times_path,
         run_id, config.label);
+    const std::filesystem::path dual_times_path =
+        std::filesystem::path("data/level56_schedule") /
+        (config.label + "_level56_dual_window_times.csv");
+    const std::filesystem::path dual_steps_path =
+        std::filesystem::path("data/level56_schedule") /
+        (config.label + "_level56_dual_window_steps.csv");
+    dump_level56_dual_window_times_csv(
+        result.level56_dual_window_time_samples, dual_times_path,
+        run_id, config.label);
+    dump_level56_dual_window_steps_csv(
+        result.level56_dual_window_step_samples, dual_steps_path,
+        run_id, config.label);
     log_level56_schedule_summary(result.level56_schedule_samples, log);
     log_level56_buffered_summary(result.level56_buffered_time_samples, log);
     log << "[INFO] Level56 schedule rounds saved to "
@@ -721,6 +824,10 @@ int run_ofec_single(const Config& config) {
         << codes_path.string() << "\n";
     log << "[INFO] Level56 buffered times saved to "
         << buffered_times_path.string() << "\n";
+    log << "[INFO] Level56 dual-window times saved to "
+        << dual_times_path.string() << "\n";
+    log << "[INFO] Level56 dual-window steps saved to "
+        << dual_steps_path.string() << "\n";
   }
   if (config.dump_level56_equivalence_observation) {
     std::filesystem::path output_path =

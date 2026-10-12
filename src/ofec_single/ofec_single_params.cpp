@@ -233,9 +233,12 @@ std::optional<newcode::Params> build_params(const Config& cfg,
       cfg.level56_temporal_group_load_threshold;
   params.LEVEL56_BUFFERED_FIFO_ENABLE =
       cfg.level56_buffered_fifo_enable;
+  params.LEVEL56_DUAL_WINDOW_ENABLE = cfg.level56_dual_window_enable;
   params.LEVEL56_BUFFER_ROWS = cfg.level56_buffer_rows;
   params.LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END =
       cfg.level56_buffered_fifo_drain_at_frame_end;
+  params.LEVEL56_DUAL_WINDOW_DRAIN_AT_FRAME_END =
+      cfg.level56_dual_window_drain_at_frame_end;
   params.LEVEL56_HISO_ALLOWED_CLASS_MASK =
       cfg.level56_hiso_allowed_class_mask;
   params.LEVEL56_SHARED_HISO_ACTIVE = cfg.level56_shared_hiso_active;
@@ -292,9 +295,12 @@ std::optional<newcode::Params> build_params(const Config& cfg,
     log << "[ERROR] LEVEL56 temporal 组负载阈值必须在 [0,48]\n";
     return std::nullopt;
   }
-  if (params.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE &&
-      params.LEVEL56_BUFFERED_FIFO_ENABLE) {
-    log << "[ERROR] LEVEL56 temporal lookahead 与 buffered FIFO 不能同时开启\n";
+  const unsigned exclusive_level56_modes =
+      static_cast<unsigned>(params.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE) +
+      static_cast<unsigned>(params.LEVEL56_BUFFERED_FIFO_ENABLE) +
+      static_cast<unsigned>(params.LEVEL56_DUAL_WINDOW_ENABLE);
+  if (exclusive_level56_modes > 1u) {
+    log << "[ERROR] LEVEL56 temporal、buffered FIFO 与 dual-window 只能开启一种\n";
     return std::nullopt;
   }
   if (params.LEVEL56_SCHEDULE_MODE ==

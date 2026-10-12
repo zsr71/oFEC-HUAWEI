@@ -145,6 +145,9 @@ struct Params {
   int LEVEL56_TEMPORAL_GROUP_LOAD_THRESHOLD = 16;
   // 开启第五/六级完整 batch FIFO 和跨时刻 pending 延后方案。
   bool LEVEL56_BUFFERED_FIFO_ENABLE = false;
+  // 开启第五/六级共享 SRAM 双 22-row 窗口独立浮动方案。该模式与
+  // buffered FIFO、temporal lookahead 互斥。
+  bool LEVEL56_DUAL_WINDOW_ENABLE = false;
   // 连续 SRAM 中位于 44-row Level 5/6 解码区之前的可调 buffer 行数。
   size_t LEVEL56_BUFFER_ROWS = 32;
   // 仿真验证选项：帧内最后一次正常到达后，继续服务已进入 Level 5/6
@@ -152,6 +155,9 @@ struct Params {
   // 开启后不再引入新 batch，也不执行 Level 1--4，只用于获得“全帧已完成”
   // 的最终 BER。
   bool LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END = false;
+  // 双窗口模式的帧尾排空开关。开启后停止真实输入，以无效 2-BR 槽位
+  // 填充 SRAM，并保持固定物理推进直到所有真实对象流出。
+  bool LEVEL56_DUAL_WINDOW_DRAIN_AT_FRAME_END = false;
   // HISO 类别准入掩码，用于受控消融。bit 0..3 分别对应
   // ParityOnly / OneMain / OneMainPlusParity / TwoMain。默认 0x0f 保持
   // 原有“这四类均可走 HISO”的行为；未获准的非 EarlyStop code 仍是

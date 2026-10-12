@@ -92,7 +92,8 @@ static constexpr bool kHybridNormalizeSoftOnly = false;            // true=只�
 static constexpr bool kLevel56SharedEnable = true;                // true=第五/六级共享 HISO/SISO
 static constexpr bool kLevel56TemporalLookaheadEnable = false;    // 旧 t=0/t=1/t=2 三时刻 lookahead；与新 FIFO 互斥
 static constexpr int kLevel56TemporalGroupLoadThreshold = 16;     // temporal 分支阈值，默认等价于 K1+K2 < 16-X
-static constexpr bool kLevel56BufferedFifoEnable = true;          // 新方案：完整 64-code batch FIFO 与跨时刻 pending
+static constexpr bool kLevel56BufferedFifoEnable = false;         // 旧方案：完整 64-code batch FIFO 与跨时刻 pending
+static constexpr bool kLevel56DualWindowEnable = true;            // 双 22-row 窗口独立浮动
 static constexpr std::size_t kLevel56BufferRows = 32;             // R_buf，单位为 block row
 static constexpr int kLevel56SharedHisoActive = 8;                 // 第五/六级共享 HISO 容量
 static constexpr int kLevel56SharedSisoActive = 8;                 // 第五/六级共享 SISO 容量
@@ -184,9 +185,11 @@ static constexpr const char* kDecoderTraceCsvDir      = "data/chase_csv"; // Cha
 
 int main() {
   bool level56_buffered_fifo_enable = kLevel56BufferedFifoEnable;
+  bool level56_dual_window_enable = kLevel56DualWindowEnable;
   std::size_t level56_buffer_rows = kLevel56BufferRows;
   std::size_t num_info_bits = 0;
   bool level56_buffered_fifo_drain_at_frame_end = false;
+  bool level56_dual_window_drain_at_frame_end = true;
   unsigned level56_hiso_allowed_class_mask = 0x0fu;
   int bitgen_seed = kBitgenSeed;
   int channel_seed = kChannelSeed;
@@ -318,7 +321,6 @@ int main() {
       return 2;
     }
 
-    run_suffix += "_rbuf" + std::to_string(level56_buffer_rows);
   }
 
   if (const char* value = std::getenv("LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END")) {
@@ -331,8 +333,35 @@ int main() {
       std::cerr << "[ERROR] LEVEL56_BUFFERED_FIFO_DRAIN_AT_FRAME_END must be 0 or 1\n";
       return 2;
     }
-    run_suffix += level56_buffered_fifo_drain_at_frame_end ? "_drain1" : "_drain0";
   }
+
+  if (const char* value = std::getenv("LEVEL56_DUAL_WINDOW_ENABLE")) {
+    const std::string text(value);
+    if (text == "0") {
+      level56_dual_window_enable = false;
+    } else if (text == "1") {
+      level56_dual_window_enable = true;
+    } else {
+      std::cerr << "[ERROR] LEVEL56_DUAL_WINDOW_ENABLE must be 0 or 1\n";
+      return 2;
+    }
+  }
+
+  if (const char* value =
+          std::getenv("LEVEL56_DUAL_WINDOW_DRAIN_AT_FRAME_END")) {
+    const std::string text(value);
+    if (text == "0") {
+      level56_dual_window_drain_at_frame_end = false;
+    } else if (text == "1") {
+      level56_dual_window_drain_at_frame_end = true;
+    } else {
+      std::cerr << "[ERROR] LEVEL56_DUAL_WINDOW_DRAIN_AT_FRAME_END must be 0 or 1\n";
+      return 2;
+    }
+  }
+  run_suffix += level56_dual_window_enable ? "_dualwin1" : "_dualwin0";
+  run_suffix += "_rbuf" + std::to_string(level56_buffer_rows);
+  run_suffix += level56_dual_window_drain_at_frame_end ? "_drain1" : "_drain0";
 
   if (const char* value = std::getenv("LEVEL56_HISO_CLASS_MASK")) {
     const std::string text(value);
@@ -543,9 +572,12 @@ int main() {
     .level56_temporal_lookahead_enable = kLevel56TemporalLookaheadEnable,
     .level56_temporal_group_load_threshold = kLevel56TemporalGroupLoadThreshold,
     .level56_buffered_fifo_enable = level56_buffered_fifo_enable,
+    .level56_dual_window_enable = level56_dual_window_enable,
     .level56_buffer_rows = level56_buffer_rows,
     .level56_buffered_fifo_drain_at_frame_end =
         level56_buffered_fifo_drain_at_frame_end,
+    .level56_dual_window_drain_at_frame_end =
+        level56_dual_window_drain_at_frame_end,
     .level56_hiso_allowed_class_mask = level56_hiso_allowed_class_mask,
     .level56_shared_hiso_active = level56_shared_hiso_active,
     .level56_shared_siso_active = level56_shared_siso_active,

@@ -218,8 +218,8 @@ inline std::vector<std::size_t> level56_target_trace_error_positions(
 }
 
 // 将一个 256-bit BCH word 内的 bit k，按照本工程实际 Level 5/6
-// writeback 映射转换回 SRAM 的全局行/列。该函数只供观测；真实写回仍由
-// writeback_tile() 执行，二者使用相同的现有映射公式。
+// writeback 映射转换回 SRAM 的全局行/列，供观测和强制退出时提交 prior 使用。
+// 正常译码写回仍由 writeback_tile() 执行，二者使用相同的映射公式。
 inline std::pair<long, long> level56_codeword_bit_global_coordinate(
     int k, std::size_t row_global, const newcode::Params& params) {
   constexpr int B = static_cast<int>(newcode::Params::BITS_PER_SUBBLOCK_DIM);
@@ -254,6 +254,41 @@ inline std::pair<long, long> level56_codeword_bit_global_coordinate(
     return {rr_global, cc_global};
   }
   throw std::out_of_range("Level56 observation BCH bit index out of range");
+}
+
+// Control-only users can omit the final retirement hook.
+struct Level56NoopRetirement {
+  template <typename... Args>
+  void operator()(const Args&...) const {}
+};
+
+// Pending rows must not commit history during service. At final Level 6
+// eviction, no new result can arrive: preserve the current SRAM prior using
+// exactly the historical-half mapping used by writeback_tile(). Completed
+// rows already own extrinsic+prior history and must never be overwritten.
+template <typename LLR>
+void finalize_level56_forced_prior(
+    const matrix::Matrix<LLR>& work_llr,
+    matrix::Matrix<float>* history,
+    const Level56DispatchEntry& entry,
+    const newcode::Params& params) {
+  if (!history || entry.source_level != 6u || !entry.forced_evicted ||
+      (entry.already_decoded && entry.writeback_complete)) {
+    return;
+  }
+  constexpr int N = static_cast<int>(newcode::Params::NUM_SUBBLOCK_COLS *
+                                     newcode::Params::BITS_PER_SUBBLOCK_DIM);
+  for (int k = 0; k < N; ++k) {
+    const auto [row, col] = level56_codeword_bit_global_coordinate(
+        k, entry.source_global_row, params);
+    if (row < 0 || col < 0) continue;
+    const auto r = static_cast<std::size_t>(row);
+    const auto c = static_cast<std::size_t>(col);
+    if (r < work_llr.rows() && c < work_llr.cols() &&
+        r < history->rows() && c < history->cols()) {
+      (*history)[r][c] = qfloat::llr_to_float(work_llr[r][c]);
+    }
+  }
 }
 
 inline std::optional<std::size_t> level56_global_coordinate_to_info_bit_index(
@@ -664,16 +699,19 @@ inline float pick_level56_float(const std::vector<float>& values,
 inline void validate_level56_shared_config(const newcode::Params& p) {
   if (!p.LEVEL56_SHARED_ENABLE) {
     if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE ||
-        p.LEVEL56_BUFFERED_FIFO_ENABLE) {
+        p.LEVEL56_BUFFERED_FIFO_ENABLE || p.LEVEL56_DUAL_WINDOW_ENABLE) {
       throw std::invalid_argument(
-          "LEVEL56 temporal/buffered scheduling requires shared mode ON");
+          "LEVEL56 temporal/buffered/dual-window scheduling requires shared mode ON");
     }
     return;
   }
-  if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE &&
-      p.LEVEL56_BUFFERED_FIFO_ENABLE) {
+  const unsigned exclusive_modes =
+      static_cast<unsigned>(p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE) +
+      static_cast<unsigned>(p.LEVEL56_BUFFERED_FIFO_ENABLE) +
+      static_cast<unsigned>(p.LEVEL56_DUAL_WINDOW_ENABLE);
+  if (exclusive_modes > 1u) {
     throw std::invalid_argument(
-        "LEVEL56 temporal lookahead and buffered FIFO are mutually exclusive");
+        "LEVEL56 temporal lookahead, buffered FIFO and dual-window modes are mutually exclusive");
   }
   if (p.LEVEL56_TEMPORAL_LOOKAHEAD_ENABLE &&
       p.LEVEL56_SCHEDULE_MODE !=
@@ -715,6 +753,29 @@ inline void validate_level56_shared_config(const newcode::Params& p) {
     if (p.TILE_HEIGHT_BR != 22 || p.WINDOW_POP_PUSH != 2) {
       throw std::invalid_argument(
           "LEVEL56 buffered FIFO requires 22-row tiles and two-row push/pop");
+    }
+  }
+  if (p.LEVEL56_DUAL_WINDOW_ENABLE) {
+    if (p.LEVEL56_EARLY_STOP_GROUP_UPDATE_MODE !=
+        newcode::Level56EarlyStopGroupUpdateMode::AllGroups) {
+      throw std::invalid_argument(
+          "LEVEL56 dual-window mode requires AllGroups EarlyStop decisions");
+    }
+    if (p.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE) {
+      throw std::invalid_argument(
+          "LEVEL56 dual-window mode does not support dynamic single-level selection");
+    }
+    if (p.TILE_HEIGHT_BR != 22 || p.WINDOW_POP_PUSH != 2 ||
+        (p.LEVEL56_BUFFER_ROWS % 2u) != 0u) {
+      throw std::invalid_argument(
+          "LEVEL56 dual-window mode requires 22-row tiles, two-row push/pop and an even buffer length");
+    }
+    if (p.LEVEL56_SCHEDULE_MODE !=
+            newcode::Level56ScheduleMode::Group4LoadSortedMultiround ||
+        p.LEVEL56_GROUP4_MAX_ENTRIES != kLevel56MaxGroupEntries ||
+        p.LEVEL56_PRIORITY_MODE != newcode::Level56PriorityMode::Level5First) {
+      throw std::invalid_argument(
+          "LEVEL56 dual-window mode requires Level5First Group4 multiround scheduling with 8 entries");
     }
   }
   if (p.TILES_PER_WIN != 6 || p.CHASE_SBR != 2 ||
@@ -1611,6 +1672,34 @@ void append_level56_entries(const TilePrepared<LLR>& prep,
 }
 
 template <typename LLR>
+void append_level56_inactive_entries(
+    const TilePrepared<LLR>& prep,
+    std::size_t source_level,
+    std::vector<Level56DispatchEntry>* entries) {
+  for (std::size_t row = 0; row < prep.lin_matrix.rows(); ++row) {
+    Level56DispatchEntry entry;
+    entry.shared_row = entries->size();
+    entry.source_level = source_level;
+    entry.source_local_row = row;
+    entry.source_global_row = prep.row_global_lookup[row];
+    entry.already_decoded = true;
+    entry.needs_execution = false;
+    entry.decode_status = Level56DecodeStatus::CompletedNoWriteback;
+    entries->push_back(entry);
+  }
+}
+
+inline Level56EarlyStopEvaluation make_level56_inactive_early_stop(
+    std::size_t rows) {
+  Level56EarlyStopEvaluation evaluation;
+  evaluation.raw.row_passed_flags.assign(rows, false);
+  evaluation.raw.row_details.assign(rows, TileEarlyStopRowDetail{});
+  evaluation.raw.rows_total = rows;
+  evaluation.effective = evaluation.raw;
+  return evaluation;
+}
+
+template <typename LLR>
 void append_level56_early_stop_only_entries(
     const TilePrepared<LLR>& prep,
     const TileEarlyStopResult& early_stop,
@@ -1816,7 +1905,9 @@ Level56SharedResult<LLR> process_level56_shared(
     std::size_t target_trace_batch_id =
         std::numeric_limits<std::size_t>::max(),
     std::size_t target_trace_service_time =
-        std::numeric_limits<std::size_t>::max()) {
+        std::numeric_limits<std::size_t>::max(),
+    bool level5_active = true,
+    bool level6_active = true) {
   // 非 FIFO 的单批次 shared 路径没有显式的 buffered batch id。
   // 对只读 target trace 而言，一次 shared invocation 恰好对应一个逻辑
   // 64-code batch，因而默认用 invocation 作为稳定的逻辑 batch id。FIFO
@@ -1831,10 +1922,16 @@ Level56SharedResult<LLR> process_level56_shared(
                                    params5.CHASE_SBR, rows, tx_llr_ref);
   auto prep6 = prepare_tile_inputs(tile_in6, ch_tile6, params6, tile_top6,
                                    params6.CHASE_SBR, rows, tx_llr_ref);
-  const auto early5 = cached_early5 ? *cached_early5
-                                   : detect_level56_early_stop(prep5, params5);
-  const auto early6 = cached_early6 ? *cached_early6
-                                   : detect_level56_early_stop(prep6, params6);
+  const auto early5 = !level5_active
+                          ? make_level56_inactive_early_stop(rows)
+                          : (cached_early5
+                                 ? *cached_early5
+                                 : detect_level56_early_stop(prep5, params5));
+  const auto early6 = !level6_active
+                          ? make_level56_inactive_early_stop(rows)
+                          : (cached_early6
+                                 ? *cached_early6
+                                 : detect_level56_early_stop(prep6, params6));
   const std::size_t selected_level = select_level56_decode_level(
       early5.effective, early6.effective, params5);
 
@@ -1921,19 +2018,50 @@ Level56SharedResult<LLR> process_level56_shared(
                                 : Level56Eligibility::SisoOnly;
       }
     };
-    refresh_pending(prep5, 0, &entries);
-    refresh_pending(prep6, rows, &entries);
+    const auto deactivate_slice = [&](std::size_t begin) {
+      for (std::size_t row = 0; row < rows; ++row) {
+        auto& entry = entries[begin + row];
+        entry.early_stop_hit = false;
+        entry.planned_hiso = false;
+        entry.planned_siso = false;
+        entry.remaining_for_schedule = false;
+        entry.final_action = Level56FinalAction::Unscheduled;
+        entry.assigned_entry_slot = -1;
+        entry.assigned_core = -1;
+        entry.produced = false;
+        entry.needs_execution = false;
+        entry.already_decoded = true;
+        entry.pending = false;
+        entry.forced_evicted = false;
+        entry.writeback_complete = false;
+        entry.decode_status = Level56DecodeStatus::CompletedNoWriteback;
+      }
+    };
+    if (level5_active) {
+      refresh_pending(prep5, 0, &entries);
+    } else {
+      deactivate_slice(0);
+    }
+    if (level6_active) {
+      refresh_pending(prep6, rows, &entries);
+    } else {
+      deactivate_slice(rows);
+    }
   } else {
     const bool preserve_unselected_early_stop_action =
         params5.LEVEL56_UNSELECTED_EARLY_STOP_ACTION_ENABLE;
-    if (selected_level != 0 && selected_level != 5) {
+    if (!level5_active) {
+      append_level56_inactive_entries(prep5, 5, &entries);
+    } else if (selected_level != 0 && selected_level != 5) {
       append_level56_bypassed_entries(
           prep5, early5.effective, preserve_unselected_early_stop_action,
           5, &entries);
     } else {
       append_level56_entries(prep5, early5.effective, 5, &entries);
     }
-    if (selected_level != 0 && selected_level != 6) {
+    if (!level6_active) {
+      append_level56_inactive_entries(prep6, 6, &entries);
+    } else if (selected_level != 0 && selected_level != 6) {
       append_level56_bypassed_entries(
           prep6, early6.effective, preserve_unselected_early_stop_action,
           6, &entries);
@@ -1942,7 +2070,7 @@ Level56SharedResult<LLR> process_level56_shared(
     }
     for (auto& entry : entries) {
       entry.produced = false;
-      entry.needs_execution = true;
+      entry.needs_execution = !entry.already_decoded;
     }
   }
   Level56ScheduleSample schedule_sample;
@@ -1983,16 +2111,16 @@ Level56SharedResult<LLR> process_level56_shared(
   chase::DecoderCoreResult<SharedCoreLLR> decoded5{
       matrix::Matrix<float>(prep5.lin_matrix.rows(), prep5.lin_matrix.cols()),
       std::vector<bool>(prep5.lin_matrix.rows(), false)};
-  if (selected_level == 0 || selected_level == 5 ||
-      preserve_unselected_early_stop_action) {
+  if (level5_active && (selected_level == 0 || selected_level == 5 ||
+                        preserve_unselected_early_stop_action)) {
     decoded5 = execute_level56_slice(
         prep5, entries, 5, normalize_extrinsic, core_fn);
   }
   chase::DecoderCoreResult<SharedCoreLLR> decoded6{
       matrix::Matrix<float>(prep6.lin_matrix.rows(), prep6.lin_matrix.cols()),
       std::vector<bool>(prep6.lin_matrix.rows(), false)};
-  if (selected_level == 0 || selected_level == 6 ||
-      preserve_unselected_early_stop_action) {
+  if (level6_active && (selected_level == 0 || selected_level == 6 ||
+                        preserve_unselected_early_stop_action)) {
     decoded6 = execute_level56_slice(
         prep6, entries, 6, normalize_extrinsic, core_fn);
   }
@@ -2019,11 +2147,11 @@ Level56SharedResult<LLR> process_level56_shared(
   matrix::Matrix<LLR> tile_out5 = output_tile5 ? *output_tile5 : tile_in5;
   matrix::Matrix<LLR> tile_out6 = output_tile6 ? *output_tile6 : tile_in6;
   const bool trace_level5_before_writeback =
-      params5.LEVEL56_TARGET_TRACE_ENABLE &&
+      level5_active && params5.LEVEL56_TARGET_TRACE_ENABLE &&
       target_trace_batch_id == params5.LEVEL56_TARGET_TRACE_BATCH &&
       params5.LEVEL56_TARGET_TRACE_LEVEL == 5;
   const bool trace_level6_before_writeback =
-      params6.LEVEL56_TARGET_TRACE_ENABLE &&
+      level6_active && params6.LEVEL56_TARGET_TRACE_ENABLE &&
       target_trace_batch_id == params6.LEVEL56_TARGET_TRACE_BATCH &&
       params6.LEVEL56_TARGET_TRACE_LEVEL == 6;
   std::optional<matrix::Matrix<LLR>> trace_tile_before_writeback5;
@@ -2034,12 +2162,16 @@ Level56SharedResult<LLR> process_level56_shared(
   if (trace_level6_before_writeback) {
     trace_tile_before_writeback6 = tile_out6;
   }
-  writeback_tile(prep5, decoded5, params5, tile_top5, false,
-                 &tile_out5, nullptr);
-  writeback_tile(prep6, decoded6, params6, tile_top6, true,
-                 &tile_out6, last_tile_history_accum,
-                 /*preserve_history_when_not_produced=*/
-                     !buffered_fifo_semantics);
+  if (level5_active) {
+    writeback_tile(prep5, decoded5, params5, tile_top5, false,
+                   &tile_out5, nullptr);
+  }
+  if (level6_active) {
+    writeback_tile(prep6, decoded6, params6, tile_top6, true,
+                   &tile_out6, last_tile_history_accum,
+                   /*preserve_history_when_not_produced=*/
+                       !buffered_fifo_semantics);
+  }
   if (trace_level5_before_writeback) {
     for (const auto& entry : entries) {
       if (entry.source_level == 5 &&

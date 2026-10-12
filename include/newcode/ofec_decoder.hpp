@@ -45,6 +45,22 @@ enum class Level56BufferedBatchRetirement : uint8_t {
   ForcedEvicted
 };
 
+enum class Level56DualWindowCompletionReason : uint8_t {
+  None = 0,
+  Normal,
+  FullEarlyStop,
+  ForcedEvicted
+};
+
+enum class Level56DualWindowStepType : uint8_t {
+  BoundaryAdvance = 0,
+  Classify,
+  FullEarlyStop,
+  OrdinarySchedule,
+  Recovery,
+  ForcedEviction
+};
+
 struct Level56ScheduleRoundSample {
   std::size_t round_index = 0;
   std::size_t time_index = 1;
@@ -132,6 +148,57 @@ struct Level56BufferedTimeSample {
   std::size_t ordinary_schedule_invocation = 0;
   std::vector<Level56BufferedRetirementSample> retirements;
   std::vector<std::size_t> forced_evicted_global_rows;
+};
+
+struct Level56DualWindowTimeSample {
+  std::size_t service_time = 0;
+  bool drain = false;
+  bool input_valid = false;
+  std::size_t input_batch_id = 0;
+  bool output_valid = false;
+  std::size_t output_batch_id = 0;
+  std::size_t s5_before = 0;
+  std::size_t s6_before = 0;
+  std::size_t s5_after = 0;
+  std::size_t s6_after = 0;
+  bool h5_valid = false;
+  std::size_t h5_batch_id = 0;
+  bool h6_valid = false;
+  std::size_t h6_batch_id = 0;
+  std::size_t c5 = 0;
+  std::size_t c6 = 0;
+  std::size_t full_early_stop5 = 0;
+  std::size_t full_early_stop6 = 0;
+  std::size_t forced_evicted5 = 0;
+  std::size_t forced_evicted6 = 0;
+  std::size_t ordinary_entries_used = 0;
+  std::size_t ordinary_rounds = 0;
+  std::size_t recovery_debt5 = 0;
+  std::size_t recovery_debt6 = 0;
+};
+
+struct Level56DualWindowStepSample {
+  std::size_t service_time = 0;
+  std::size_t step_index = 0;
+  Level56DualWindowStepType type =
+      Level56DualWindowStepType::BoundaryAdvance;
+  std::size_t s5 = 0;
+  std::size_t s6 = 0;
+  bool h5_valid = false;
+  std::size_t h5_batch_id = 0;
+  bool h6_valid = false;
+  std::size_t h6_batch_id = 0;
+  bool level5_active = false;
+  bool level6_active = false;
+  std::size_t entries_before = 0;
+  std::size_t entries_used = 0;
+  std::size_t entries_after = 0;
+  Level56DualWindowCompletionReason level5_reason =
+      Level56DualWindowCompletionReason::None;
+  Level56DualWindowCompletionReason level6_reason =
+      Level56DualWindowCompletionReason::None;
+  std::size_t recovery_debt5 = 0;
+  std::size_t recovery_debt6 = 0;
 };
 
 struct Level56ScheduleSample {
@@ -225,6 +292,8 @@ struct TileEarlyStopCounter {
   std::vector<HybridClassCount> hybrid_class_counts;
   std::vector<Level56ScheduleSample> level56_schedule_samples;
   std::vector<Level56BufferedTimeSample> level56_buffered_time_samples;
+  std::vector<Level56DualWindowTimeSample> level56_dual_window_time_samples;
+  std::vector<Level56DualWindowStepSample> level56_dual_window_step_samples;
 };
 
 template <typename LLR>

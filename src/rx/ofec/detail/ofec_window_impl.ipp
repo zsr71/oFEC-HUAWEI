@@ -3,6 +3,7 @@
 #include "ofec_tile_impl.ipp"
 #include "ofec_level56_shared.ipp"
 #include "ofec_level56_buffered_fifo.ipp"
+#include "ofec_level56_dual_window.ipp"
 
 #include "newcode/ofec_decoder.hpp"
 #include "newcode/common/qfloat/llr_utils.hpp"
@@ -27,7 +28,8 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
                          matrix::Matrix<float>* last_tile_history_accum,
                          std::size_t* level56_shared_invocation,
                          Level56TemporalState<LLR>* level56_temporal_state = nullptr,
-                         Level56BufferedFifoState<LLR>* level56_buffered_state = nullptr)
+                         Level56BufferedFifoState<LLR>* level56_buffered_state = nullptr,
+                         Level56DualWindowState* level56_dual_window_state = nullptr)
 {
   // 输入:
   // - work_llr: 当前全局工作矩阵，保存已经累积的外信息/历史信息，会被原地更新。
@@ -270,6 +272,15 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
           }
           auto params5 = make_tile_params(kLevel5TileIndex);
           auto params6 = make_tile_params(kLevel6TileIndex);
+          if (level56_dual_window_state && p.LEVEL56_DUAL_WINDOW_ENABLE) {
+            service_level56_dual_window_time(
+                work_llr, channel_llr, p, top5, params5, params6, tile_stats,
+                normalize_extrinsic, tx_llr_ref, core_fn,
+                last_tile_history_accum, level56_shared_invocation,
+                level56_dual_window_state, false);
+            ++t;
+            continue;
+          }
           if (level56_buffered_state && p.LEVEL56_BUFFERED_FIFO_ENABLE) {
             initialize_level56_buffered_fifo_state(level56_buffered_state, p);
 
@@ -402,7 +413,16 @@ void process_window_impl(matrix::Matrix<LLR>& work_llr,
             const auto service_outcome = service_level56_buffered_fifo_time(
                 level56_buffered_state,
                 time_sample.window_start_before == 0,
-                classify_head, ordinary_service, full_early_stop);
+                classify_head, ordinary_service, full_early_stop,
+                [&](const Level56BufferedBatch<LLR>& head,
+                    Level56BufferedBatchRetirement reason) {
+                  if (reason != Level56BufferedBatchRetirement::ForcedEvicted)
+                    return;
+                  for (const auto& entry : head.entries) {
+                    finalize_level56_forced_prior(
+                        work_llr, last_tile_history_accum, entry, head.params6);
+                  }
+                });
             time_sample.had_head_before = service_outcome.had_head_before;
             time_sample.head_batch_id_before =
                 service_outcome.head_batch_id_before;

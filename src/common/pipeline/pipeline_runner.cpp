@@ -165,6 +165,30 @@ std::vector<Level56BufferedTimeSample> collect_level56_buffered_time_samples(
   return samples;
 }
 
+std::vector<Level56DualWindowTimeSample>
+collect_level56_dual_window_time_samples(
+    const std::vector<TileEarlyStopCounter>& counters) {
+  std::vector<Level56DualWindowTimeSample> samples;
+  for (const auto& counter : counters) {
+    samples.insert(samples.end(),
+                   counter.level56_dual_window_time_samples.begin(),
+                   counter.level56_dual_window_time_samples.end());
+  }
+  return samples;
+}
+
+std::vector<Level56DualWindowStepSample>
+collect_level56_dual_window_step_samples(
+    const std::vector<TileEarlyStopCounter>& counters) {
+  std::vector<Level56DualWindowStepSample> samples;
+  for (const auto& counter : counters) {
+    samples.insert(samples.end(),
+                   counter.level56_dual_window_step_samples.begin(),
+                   counter.level56_dual_window_step_samples.end());
+  }
+  return samples;
+}
+
 std::vector<std::size_t> collect_need_siso_before_mux_counts(
     const std::vector<TileEarlyStopCounter>& counters)
 {
@@ -440,6 +464,10 @@ PipelineResult run_pipeline(const Params& params,
   auto rx_info_bits_post = matrix::rx_info_from_bit_llr(decode_result.post_decoder_llr, params);
   auto level56_buffered_time_samples =
       collect_level56_buffered_time_samples(decode_result.tile_stats);
+  auto level56_dual_window_time_samples =
+      collect_level56_dual_window_time_samples(decode_result.tile_stats);
+  auto level56_dual_window_step_samples =
+      collect_level56_dual_window_step_samples(decode_result.tile_stats);
 
   if (verbose) {
     log << "[INFO] (" << label << ") rx_info_bits: " << rx_info_bits_pre.size()
@@ -490,6 +518,10 @@ PipelineResult run_pipeline(const Params& params,
       collect_level56_schedule_samples(decode_result.tile_stats);
   result.level56_buffered_time_samples =
       std::move(level56_buffered_time_samples);
+  result.level56_dual_window_time_samples =
+      std::move(level56_dual_window_time_samples);
+  result.level56_dual_window_step_samples =
+      std::move(level56_dual_window_step_samples);
   result.tile_hard_finish_count =
       collect_hard_finish_counts(decode_result.tile_stats);
   result.tile_hard_finish_pct =
