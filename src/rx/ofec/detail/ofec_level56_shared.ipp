@@ -821,15 +821,11 @@ inline void validate_level56_shared_config(const newcode::Params& p) {
       newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
     const int grouped_capacity =
         static_cast<int>(p.LEVEL56_GROUP4_MAX_ENTRIES);
-    const bool grouped_siso_only = p.LEVEL56_SHARED_HISO_ACTIVE == 0 &&
-                                   p.LEVEL56_SHARED_SISO_ACTIVE ==
-                                       grouped_capacity;
-    if (!grouped_siso_only &&
-        (p.LEVEL56_SHARED_HISO_ACTIVE != grouped_capacity ||
-         p.LEVEL56_SHARED_SISO_ACTIVE != grouped_capacity)) {
+    if (!newcode::level56_group4_capacity_valid(
+            p.LEVEL56_SHARED_HISO_ACTIVE,
+            p.LEVEL56_SHARED_SISO_ACTIVE, grouped_capacity)) {
       throw std::invalid_argument(
-          "LEVEL56 grouped multiround mode requires HISO/SISO capacity equal "
-          "to Group4 entry capacity, or explicit SISO-only capacity 0/entry");
+          "LEVEL56 Group4 requires symmetric, SISO-only, or 8-entry 2S1H/1S2H capacity");
     }
     if (p.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE) {
       throw std::invalid_argument(
@@ -1168,7 +1164,7 @@ inline void plan_level56_group_entry(
     std::vector<Level56DispatchEntry>* entries,
     std::size_t group_index,
     int entry_slot,
-    bool siso_only_mode) {
+    bool siso_only_mode, int siso_width = 1, int hiso_width = 1) {
   const std::size_t begin = group_index * kLevel56CodesPerGroup;
   const std::size_t end = begin + kLevel56CodesPerGroup;
   std::vector<std::size_t> siso_only_candidates;
@@ -1211,39 +1207,34 @@ inline void plan_level56_group_entry(
                                         : lhs < rhs;
   });
 
-  std::optional<std::size_t> siso_index;
-  if (!siso_only_candidates.empty()) {
-    siso_index = siso_only_candidates.front();
-  } else if (!flexible.empty()) {
-    siso_index = flexible.front();
-    flexible.erase(flexible.begin());
-  }
-
-  const std::optional<std::size_t> hiso_index =
-      siso_only_mode || flexible.empty()
-          ? std::nullopt
-          : std::optional<std::size_t>(flexible.front());
-
-  if (!siso_index && !hiso_index) {
-    throw std::logic_error(
-        "LEVEL56 grouped scheduler selected a group without a candidate");
-  }
-
-  if (siso_index) {
-    auto& entry = (*entries)[*siso_index];
+  bool selected = false;
+  for (int lane = 0; lane < siso_width; ++lane) {
+    std::vector<std::size_t>* candidates =
+        !siso_only_candidates.empty() ? &siso_only_candidates : &flexible;
+    if (candidates->empty()) break;
+    auto& entry = (*entries)[candidates->front()];
+    candidates->erase(candidates->begin());
     entry.planned_siso = true;
     entry.remaining_for_schedule = false;
     entry.final_action = Level56FinalAction::SisoDecode;
     entry.assigned_entry_slot = entry_slot;
-    entry.assigned_core = entry_slot;
+    entry.assigned_core = entry_slot * siso_width + lane;
+    selected = true;
   }
-  if (hiso_index) {
-    auto& entry = (*entries)[*hiso_index];
+  for (int lane = 0; !siso_only_mode && lane < hiso_width; ++lane) {
+    if (flexible.empty()) break;
+    auto& entry = (*entries)[flexible.front()];
+    flexible.erase(flexible.begin());
     entry.planned_hiso = true;
     entry.remaining_for_schedule = false;
     entry.final_action = Level56FinalAction::HisoDecode;
     entry.assigned_entry_slot = entry_slot;
-    entry.assigned_core = entry_slot;
+    entry.assigned_core = entry_slot * hiso_width + lane;
+    selected = true;
+  }
+  if (!selected) {
+    throw std::logic_error(
+        "LEVEL56 grouped scheduler selected a group without a candidate");
   }
 }
 
@@ -1267,12 +1258,11 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
       static_cast<int>(p.LEVEL56_GROUP4_MAX_ENTRIES);
   const bool siso_only = p.LEVEL56_SHARED_HISO_ACTIVE == 0 &&
                          p.LEVEL56_SHARED_SISO_ACTIVE == grouped_capacity;
-  if (!siso_only &&
-      (p.LEVEL56_SHARED_HISO_ACTIVE != grouped_capacity ||
-       p.LEVEL56_SHARED_SISO_ACTIVE != grouped_capacity)) {
+  if (!newcode::level56_group4_capacity_valid(
+          p.LEVEL56_SHARED_HISO_ACTIVE,
+          p.LEVEL56_SHARED_SISO_ACTIVE, grouped_capacity)) {
     throw std::invalid_argument(
-        "LEVEL56 grouped multiround mode requires HISO/SISO capacity equal "
-        "to Group4 entry capacity, or explicit SISO-only capacity 0/entry");
+        "LEVEL56 Group4 requires symmetric, SISO-only, or 8-entry 2S1H/1S2H capacity");
   }
   if (p.LEVEL56_PRIORITY_MODE != newcode::Level56PriorityMode::Level5First) {
     throw std::invalid_argument(
@@ -1285,6 +1275,8 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
         "FriendS1S3WithS0Classifier");
   }
   validate_level56_grouped_entries(*entries);
+  const int siso_width = p.LEVEL56_SHARED_SISO_ACTIVE / grouped_capacity;
+  const int hiso_width = p.LEVEL56_SHARED_HISO_ACTIVE / grouped_capacity;
 
   if (sample) {
     *sample = Level56ScheduleSample{};
@@ -1361,7 +1353,7 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
           entries, groups[i],
           static_cast<int>(entry_slot_offset +
                            static_cast<std::size_t>(used_group_entries)),
-          siso_only);
+          siso_only, siso_width, hiso_width);
       group_entered[groups[i]] = true;
       if (sample) {
         ++sample->group_entry_counts[groups[i]];
@@ -1507,7 +1499,10 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
       if (entry.assigned_entry_slot < 0 ||
           entry.assigned_entry_slot >=
               static_cast<int>(kLevel56MaxReferenceGroupEntries) ||
-          entry.assigned_core != entry.assigned_entry_slot ||
+          entry.assigned_core < entry.assigned_entry_slot *
+              (entry.planned_siso ? siso_width : hiso_width) ||
+          entry.assigned_core >= (entry.assigned_entry_slot + 1) *
+              (entry.planned_siso ? siso_width : hiso_width) ||
           entry.remaining_for_schedule) {
         throw std::logic_error(
             "LEVEL56 grouped scheduler produced an invalid entry-slot route");
@@ -1517,8 +1512,8 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     planned_siso += entry.planned_siso;
   }
   if (used_group_entries > static_cast<int>(max_group_entries) ||
-      planned_hiso > max_group_entries ||
-      planned_siso > max_group_entries) {
+      planned_hiso > max_group_entries * hiso_width ||
+      planned_siso > max_group_entries * siso_width) {
     throw std::logic_error(
         "LEVEL56 grouped scheduler exceeded its configured entry budget");
   }
@@ -1531,6 +1526,9 @@ inline void schedule_level56_rows_group4_load_sorted_multiround(
     sample->total_group_entries =
         entry_slot_offset + static_cast<std::size_t>(used_group_entries);
     sample->entry_capacity = max_group_entries;
+    sample->entry_slot_offset = entry_slot_offset;
+    sample->hiso_capacity = max_group_entries * hiso_width;
+    sample->siso_capacity = max_group_entries * siso_width;
     sample->planned_hiso_count = planned_hiso;
     sample->planned_siso_count = planned_siso;
     for (auto& round : sample->rounds) {
@@ -1592,9 +1590,13 @@ inline void route_level56_g1(std::vector<Level56DispatchEntry>* entries,
   if (p.LEVEL56_SCHEDULE_MODE ==
       newcode::Level56ScheduleMode::Group4LoadSortedMultiround) {
     for (const auto& entry : *entries) {
+      const int width = (entry.planned_siso ? p.LEVEL56_SHARED_SISO_ACTIVE
+                                            : p.LEVEL56_SHARED_HISO_ACTIVE) /
+                        static_cast<int>(p.LEVEL56_GROUP4_MAX_ENTRIES);
       if ((entry.planned_hiso || entry.planned_siso) &&
           (entry.assigned_entry_slot < 0 ||
-           entry.assigned_core != entry.assigned_entry_slot)) {
+           entry.assigned_core < entry.assigned_entry_slot * width ||
+           entry.assigned_core >= (entry.assigned_entry_slot + 1) * width)) {
         throw std::logic_error(
             "LEVEL56 grouped routing lost its entry-slot assignment");
       }

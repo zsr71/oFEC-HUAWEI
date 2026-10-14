@@ -498,6 +498,11 @@ int main() {
                   "C" + std::to_string(level56_target_trace_code);
   }
 
+  run_suffix += "_resources_siso" + std::to_string(level56_shared_siso_active) +
+                "_hiso" + std::to_string(level56_shared_hiso_active);
+  std::cout << "[INFO] Level56 SISO/HISO capacity="
+            << level56_shared_siso_active << '/' << level56_shared_hiso_active
+            << ", entries=" << level56_group4_max_entries << '\n';
   if (!run_suffix.empty()) {
     run_label += run_suffix;
     level56_schedule_rounds_path =

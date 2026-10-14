@@ -469,7 +469,8 @@ std::size_t run_level56_dual_shared_round(
     matrix::Matrix<float>* last_tile_history_accum,
     std::size_t* level56_shared_invocation,
     Level56DualWindowState* state,
-    std::vector<TileEarlyStopCounter>* tile_stats) {
+    std::vector<TileEarlyStopCounter>* tile_stats,
+    Level56DualWindowTimeSample* time_sample = nullptr) {
   const auto h5 = level56_dual_visible_batch_id(*state, 5u);
   const auto h6 = level56_dual_visible_batch_id(*state, 6u);
   if ((level5_active && !h5) || (level6_active && !h6) ||
@@ -578,6 +579,10 @@ std::size_t run_level56_dual_shared_round(
 
   std::size_t used = 0;
   for (const auto& entry : result.dispatch) {
+    if (time_sample) {
+      time_sample->hiso_calls += entry.planned_hiso;
+      time_sample->siso_calls += entry.planned_siso;
+    }
     if (entry.assigned_entry_slot >= static_cast<int>(entry_offset)) {
       used = std::max(
           used, static_cast<std::size_t>(entry.assigned_entry_slot) + 1u -
@@ -667,7 +672,7 @@ void service_level56_dual_window_time(
       (void)run_level56_dual_shared_round(
           work_llr, channel_llr, full5, full6, 0u, entries_used,
           normalize_extrinsic, tx_llr_ref, core_fn, last_tile_history_accum,
-          level56_shared_invocation, state, tile_stats);
+          level56_shared_invocation, state, tile_stats, &time_sample);
       Level56DualWindowCompletionReason reason5 =
           Level56DualWindowCompletionReason::None;
       Level56DualWindowCompletionReason reason6 =
@@ -710,7 +715,7 @@ void service_level56_dual_window_time(
     const std::size_t used = run_level56_dual_shared_round(
         work_llr, channel_llr, active5, active6, remaining, entries_used,
         normalize_extrinsic, tx_llr_ref, core_fn, last_tile_history_accum,
-        level56_shared_invocation, state, tile_stats);
+        level56_shared_invocation, state, tile_stats, &time_sample);
     ++time_sample.ordinary_rounds;
     entries_used += used;
     Level56DualWindowCompletionReason reason5 =
@@ -750,6 +755,14 @@ void service_level56_dual_window_time(
   }
 
   time_sample.ordinary_entries_used = entries_used;
+  if (auto* stage = level56_dual_visible_stage(state, 5u)) {
+    for (const auto& entry : stage->entries)
+      time_sample.pending5 += entry.remaining_for_schedule;
+  }
+  if (auto* stage = level56_dual_visible_stage(state, 6u)) {
+    for (const auto& entry : stage->entries)
+      time_sample.pending6 += entry.remaining_for_schedule;
+  }
   time_sample.s5_after = state->s5;
   time_sample.s6_after = state->s6;
   if (const auto h5 = level56_dual_visible_batch_id(*state, 5u)) {

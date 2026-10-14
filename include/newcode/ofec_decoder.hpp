@@ -173,6 +173,10 @@ struct Level56DualWindowTimeSample {
   std::size_t forced_evicted6 = 0;
   std::size_t ordinary_entries_used = 0;
   std::size_t ordinary_rounds = 0;
+  std::size_t hiso_calls = 0;
+  std::size_t siso_calls = 0;
+  std::size_t pending5 = 0;
+  std::size_t pending6 = 0;
   std::size_t recovery_debt5 = 0;
   std::size_t recovery_debt6 = 0;
 };
@@ -230,10 +234,12 @@ struct Level56ScheduleSample {
   std::vector<Level56ScheduleRoundSample> rounds;
   std::array<std::size_t, 16> group_entry_counts{};
   std::size_t total_group_entries = 0;
-  // Capacity of one HISO/SISO lane for this scheduling invocation.  It is
-  // normally the hardware Group4 width (8), but software-only immediate
-  // reference runs may deliberately use up to 32 entries.
+  // Remaining group-entry budget of this invocation (not decoder capacity).
+  // Decoder capacities below include the type-specific lanes per entry.
   std::size_t entry_capacity = 8;
+  std::size_t entry_slot_offset = 0;
+  std::size_t hiso_capacity = 8;
+  std::size_t siso_capacity = 8;
   std::size_t planned_hiso_count = 0;
   std::size_t planned_siso_count = 0;
   std::vector<Level56ScheduleCodeSample> codes;

@@ -2288,10 +2288,91 @@ void check_forced_prior_retirement_integration() {
           "FIFO final retirement did not preserve incomplete/completed history");
 }
 
+void check_grouped_resource_profiles() {
+  for (const auto& [sw, hw] : {std::pair{1, 1}, std::pair{2, 1}, std::pair{1, 2}}) {
+    auto p = make_grouped_params();
+    p.LEVEL56_SHARED_SISO_ACTIVE = 8 * sw;
+    p.LEVEL56_SHARED_HISO_ACTIVE = 8 * hw;
+    for (bool only_soft : {false, true}) {
+      auto entries = make_all_early_stop_grouped_entries();
+      for (std::size_t g = 0; g < 16; ++g) {
+        activate_group_prefix(&entries, g, 4);
+        entries[g * 4].eligibility = Level56Eligibility::SisoOnly;
+        if (only_soft)
+          for (std::size_t i = 0; i < 4; ++i)
+            entries[g * 4 + i].eligibility = Level56Eligibility::SisoOnly;
+      }
+      newcode::Level56ScheduleSample sample;
+      // Consume only the remaining three slots of a physical t.
+      newcode::detail::schedule_level56_rows_group4_load_sorted_multiround(
+          &entries, p, 0, &sample, 3, 5);
+      newcode::detail::route_level56_g1(&entries, p);
+      require(sample.total_group_entries == 8 && sample.entry_slot_offset == 5,
+              "resource profiles must preserve the remaining entry budget");
+      require(sample.planned_siso_count == 3u * sw &&
+                  sample.planned_hiso_count == (only_soft ? 0u : 3u * hw),
+              "resource profiles selected the wrong number of code");
+      std::vector<bool> seen_s(16), seen_h(16);
+      for (const auto& entry : entries) {
+        require(!(entry.planned_hiso && entry.planned_siso), "duplicate route");
+        if (!entry.planned_hiso && !entry.planned_siso) continue;
+        const int width = entry.planned_siso ? sw : hw;
+        require(entry.assigned_entry_slot >= 5 && entry.assigned_entry_slot < 8 &&
+                    entry.assigned_core / width == entry.assigned_entry_slot,
+                "profile core route lost physical entry offset");
+        auto& seen = entry.planned_siso ? seen_s : seen_h;
+        require(!seen.at(entry.assigned_core), "core assigned twice");
+        seen.at(entry.assigned_core) = true;
+        require(!entry.remaining_for_schedule, "selected code remains pending");
+      }
+      require(entries[0].planned_siso, "SisoOnly must be selected first");
+      require(sample.hiso_capacity == 3u * hw && sample.siso_capacity == 3u * sw,
+              "profile capacity accounting is incorrect");
+    }
+    for (std::size_t n = 1; n <= 4; ++n) {
+      auto entries = make_all_early_stop_grouped_entries();
+      activate_group_prefix(&entries, 8, n);  // Level6 only.
+      newcode::Level56ScheduleSample sample;
+      newcode::detail::schedule_level56_rows_group4_load_sorted_multiround(
+          &entries, p, 0, &sample, 1, 0);
+      require(sample.planned_siso_count + sample.planned_hiso_count ==
+                  std::min(n, static_cast<std::size_t>(sw + hw)),
+              "underfilled group must not invent candidates");
+      // Completed code must not be admitted again on the next micro-round.
+      for (auto& entry : entries) {
+        if (entry.planned_siso || entry.planned_hiso) {
+          entry.already_decoded = true;
+          entry.hybrid_class = newcode::detail::HybridRowClass::TwoMain;
+        }
+      }
+      newcode::detail::schedule_level56_rows_group4_load_sorted_multiround(
+          &entries, p, 0, &sample, 1, 1);
+      for (const auto& entry : entries)
+        require(!entry.already_decoded || (!entry.planned_hiso && !entry.planned_siso),
+                "AlreadyDecoded re-entered mux");
+    }
+    // Verify exclusive-soft re-entry: four code require 4/sw entries.
+    auto entries = make_all_early_stop_grouped_entries();
+    activate_group_prefix(&entries, 0, 4, newcode::detail::HybridRowClass::HardFail,
+                          Level56Eligibility::SisoOnly);
+    newcode::Level56ScheduleSample sample;
+    newcode::detail::schedule_level56_rows(&entries, p, 0, &sample);
+    require(sample.total_group_entries == static_cast<std::size_t>(4 / sw) &&
+                sample.planned_siso_count == 4 && sample.planned_hiso_count == 0,
+            "exclusive-soft multi-entry service is incorrect");
+  }
+  require(!newcode::level56_group4_capacity_valid(16, 16, 8) &&
+              !newcode::level56_group4_capacity_valid(8, 12, 8) &&
+              newcode::level56_group4_capacity_valid(0, 8, 8) &&
+              newcode::level56_group4_capacity_valid(32, 32, 32),
+          "resource profile validation failed");
+}
+
 }  // namespace
 
 int main() {
   try {
+    check_grouped_resource_profiles();
     check_forced_prior_storage<float>();
     const float old_clip = qfloat::qfloat<6>::current_clip();
     qfloat::qfloat<6>::set_clip(16.0f);

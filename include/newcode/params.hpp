@@ -39,6 +39,17 @@ enum class Level56EarlyStopGroupUpdateMode : uint8_t {
   FillIdleEntries = 2
 };
 
+// Group4 profiles: existing symmetric/SISO-only reference configurations,
+// plus the two asymmetric eight-entry hardware configurations.
+inline bool level56_group4_capacity_valid(int hiso, int siso, std::size_t entries) {
+  if (entries == 0 || entries > 64 || hiso < 0 || hiso > 64 ||
+      siso < 0 || siso > 64) return false;
+  const int e = static_cast<int>(entries);
+  return (hiso == e && siso == e) || (hiso == 0 && siso == e) ||
+         (e == 8 && ((hiso == 8 && siso == 16) ||
+                     (hiso == 16 && siso == 8)));
+}
+
 struct Params {
   // ===== 编码结构常量（与 oFEC 布局一致） =====
   static constexpr size_t NUM_SUBBLOCK_COLS     = 8;   // 每行包含的子块数量

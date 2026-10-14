@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <chrono>
+#include <charconv>
+#include <cstdlib>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -92,10 +94,10 @@ static constexpr bool kLevel56TemporalLookaheadEnable = false;      // 旧三时
 static constexpr int kLevel56TemporalGroupLoadThreshold = 16;       // temporal 分支阈值：X+K1+K2 小于该值时补解 t=0
 static constexpr bool kLevel56BufferedFifoEnable = false;           // 旧方案：完整 64-code batch FIFO
 static constexpr bool kLevel56DualWindowEnable = true;              // 双 22-row 窗口独立浮动
-static constexpr std::size_t kLevel56BufferRows = 32;               // R_buf，单位为 block row
+static std::size_t kLevel56BufferRows = 32;                        // R_buf，支持环境变量覆盖
 static constexpr bool kLevel56DualWindowDrainAtFrameEnd = true;     // 帧尾以无效槽位排空
-static constexpr int kLevel56SharedHisoActive = 8;                  // 新分组方案固定使用 8 个共享 HISO entry slot
-static constexpr int kLevel56SharedSisoActive = 8;                  // 新分组方案固定使用 8 个共享 SISO entry slot
+static int kLevel56SharedHisoActive = 8;                            // HISO 总容量
+static int kLevel56SharedSisoActive = 8;                            // SISO 总容量
 static constexpr newcode::Level56PriorityMode kLevel56PriorityMode =
     newcode::Level56PriorityMode::Level5First; // Level5First=组负载相同时 Level 5 优先；Level6First=Level 6 优先
 static constexpr newcode::Level56ScheduleMode kLevel56ScheduleMode =
@@ -1047,9 +1049,35 @@ ofec_sweep::SweepParameterConfig build_config() {
 }  // namespace
 
 int main() {
+  const auto parse_env = [](const char* name, auto* destination) {
+    const char* raw = std::getenv(name);
+    if (!raw) return;
+    const std::string value(raw);
+    const auto parsed = std::from_chars(value.data(), value.data() + value.size(),
+                                         *destination);
+    if (value.empty() || parsed.ec != std::errc{} ||
+        parsed.ptr != value.data() + value.size())
+      throw std::invalid_argument(std::string(name) + ": invalid integer");
+  };
+  try {
+    parse_env("LEVEL56_SHARED_HISO_ACTIVE", &kLevel56SharedHisoActive);
+    parse_env("LEVEL56_SHARED_SISO_ACTIVE", &kLevel56SharedSisoActive);
+    parse_env("LEVEL56_BUFFER_ROWS", &kLevel56BufferRows);
+    if (!newcode::level56_group4_capacity_valid(kLevel56SharedHisoActive,
+                                               kLevel56SharedSisoActive, 8) ||
+        kLevel56BufferRows % 2 != 0)
+      throw std::invalid_argument("invalid Group4 capacities or odd buffer rows");
+  } catch (const std::exception& ex) {
+    std::cerr << "[ERROR] " << ex.what() << '\n';
+    return 2;
+  }
+  const std::string resource_tag = "_siso" + std::to_string(kLevel56SharedSisoActive) +
+      "_hiso" + std::to_string(kLevel56SharedHisoActive) +
+      "_rbuf" + std::to_string(kLevel56BufferRows);
+  std::cout << "[INFO] Level56 resources" << resource_tag << ", entries=8\n";
   const std::filesystem::path data_dir = "data";
   io::ensure_dir(data_dir);
-  const std::string run_id = utils::now_stamp();
+  const std::string run_id = utils::now_stamp() + resource_tag;
   const std::string log_path =
       (data_dir / ("run_" + run_id + "_sweep3.log")).string();
   ofec_sweep::detail::DualOut out(std::cout, log_path, !kQuietConsole);

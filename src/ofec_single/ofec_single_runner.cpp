@@ -241,7 +241,8 @@ void dump_level56_schedule_rounds_csv(
          "used_entries_after,initial_counts,remaining_before,selected_groups_1based,"
          "remaining_after,group_entry_counts,t0_group_entry_counts,"
          "t1_group_entry_counts,total_group_entries,planned_hiso,"
-         "planned_siso,idle_hiso_capacity,idle_siso_capacity\n";
+         "planned_siso,idle_hiso_capacity,idle_siso_capacity,entry_slot_offset,"
+         "entry_capacity,hiso_capacity,siso_capacity,consumed_entries\n";
   for (const auto& sample : samples) {
     const auto write_row = [&](long round_index,
                                std::size_t time_index,
@@ -297,12 +298,15 @@ void dump_level56_schedule_rounds_csv(
           << sample.total_group_entries << ','
           << sample.planned_hiso_count << ','
           << sample.planned_siso_count << ','
-          << (sample.entry_capacity >= sample.planned_hiso_count
-                  ? sample.entry_capacity - sample.planned_hiso_count
+          << (sample.hiso_capacity >= sample.planned_hiso_count
+                  ? sample.hiso_capacity - sample.planned_hiso_count
                   : 0u) << ','
-          << (sample.entry_capacity >= sample.planned_siso_count
-                  ? sample.entry_capacity - sample.planned_siso_count
-                  : 0u) << '\n';
+          << (sample.siso_capacity >= sample.planned_siso_count
+                  ? sample.siso_capacity - sample.planned_siso_count
+                  : 0u) << ',' << sample.entry_slot_offset << ','
+          << sample.entry_capacity << ',' << sample.hiso_capacity << ','
+          << sample.siso_capacity << ','
+          << (sample.total_group_entries - sample.entry_slot_offset) << '\n';
     };
     if (sample.rounds.empty()) {
       const std::vector<std::size_t> no_groups;
@@ -514,7 +518,7 @@ void dump_level56_dual_window_times_csv(
          "output_batch,S5_before,S6_before,S5_after,S6_after,H5_valid,H5,"
          "H6_valid,H6,C5,C6,full_early_stop5,full_early_stop6,"
          "forced_evicted5,forced_evicted6,entries_used,ordinary_rounds,"
-         "recovery_debt5,recovery_debt6\n";
+         "recovery_debt5,recovery_debt6,hiso_calls,siso_calls,pending5,pending6\n";
   for (const auto& sample : samples) {
     out << run_id << ',' << label << ',' << sample.service_time << ','
         << sample.drain << ',' << sample.input_valid << ',';
@@ -531,7 +535,9 @@ void dump_level56_dual_window_times_csv(
         << sample.full_early_stop5 << ',' << sample.full_early_stop6 << ','
         << sample.forced_evicted5 << ',' << sample.forced_evicted6 << ','
         << sample.ordinary_entries_used << ',' << sample.ordinary_rounds << ','
-        << sample.recovery_debt5 << ',' << sample.recovery_debt6 << '\n';
+        << sample.recovery_debt5 << ',' << sample.recovery_debt6 << ','
+        << sample.hiso_calls << ',' << sample.siso_calls << ','
+        << sample.pending5 << ',' << sample.pending6 << '\n';
   }
 }
 
@@ -599,7 +605,9 @@ void log_level56_buffered_summary(
 
 void log_level56_schedule_summary(
     const std::vector<newcode::Level56ScheduleSample>& samples,
-    io::DualWriter& log) {
+    io::DualWriter& log,
+    const std::vector<newcode::Level56DualWindowTimeSample>& times,
+    int hiso_capacity, int siso_capacity) {
   std::array<std::size_t, 4> branch_counts{};
   std::array<std::size_t, 5> temporal_branch_counts{};
   std::array<std::size_t, 5> temporal_t0_pending_reduced{};
@@ -641,7 +649,7 @@ void log_level56_schedule_summary(
             sample.temporal_t0_new_produced;
       }
     }
-    total_entries += sample.total_group_entries;
+    total_entries += sample.total_group_entries - sample.entry_slot_offset;
     total_hiso += sample.planned_hiso_count;
     total_siso += sample.planned_siso_count;
     for (std::size_t group = 0; group < group_entries.size(); ++group) {
@@ -702,10 +710,24 @@ void log_level56_schedule_summary(
     }
     log << "]\n";
   }
-  log << "[RESULT] Level56 entry/HISO/SISO/idle-HISO/idle-SISO totals = "
-      << total_entries << '/' << total_hiso << '/' << total_siso << '/'
-      << (samples.size() * 8u - total_hiso) << '/'
-      << (samples.size() * 8u - total_siso) << "\n";
+  log << "[RESULT] Level56 entry/HISO/SISO totals = "
+      << total_entries << '/' << total_hiso << '/' << total_siso << "\n";
+  if (!times.empty()) {
+    std::size_t h = 0, s = 0, peak_h = 0, peak_s = 0;
+    for (const auto& t : times) {
+      h += t.hiso_calls;
+      s += t.siso_calls;
+      peak_h = std::max(peak_h, t.hiso_calls);
+      peak_s = std::max(peak_s, t.siso_calls);
+    }
+    log << "[RESULT] Dual resource HISO/SISO totals=" << h << '/' << s
+        << ", mean_per_t=" << double(h) / times.size() << '/'
+        << double(s) / times.size() << ", peak_per_t=" << peak_h << '/'
+        << peak_s << ", utilization="
+        << (hiso_capacity ? double(h) / (times.size() * hiso_capacity) : 0)
+        << '/' << (siso_capacity ? double(s) / (times.size() * siso_capacity) : 0)
+        << "\n";
+  }
   log << "[RESULT] Level56 per-group entry counts = ["
       << join_numbers(group_entries, ',') << "]\n";
   log << "[RESULT] Level5 actions(EarlyStop,HISO,SISO,Unscheduled) = ["
@@ -816,7 +838,9 @@ int run_ofec_single(const Config& config) {
     dump_level56_dual_window_steps_csv(
         result.level56_dual_window_step_samples, dual_steps_path,
         run_id, config.label);
-    log_level56_schedule_summary(result.level56_schedule_samples, log);
+    log_level56_schedule_summary(result.level56_schedule_samples, log,
+        result.level56_dual_window_time_samples,
+        config.level56_shared_hiso_active, config.level56_shared_siso_active);
     log_level56_buffered_summary(result.level56_buffered_time_samples, log);
     log << "[INFO] Level56 schedule rounds saved to "
         << rounds_path.string() << "\n";

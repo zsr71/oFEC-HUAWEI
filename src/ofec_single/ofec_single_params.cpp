@@ -311,14 +311,10 @@ std::optional<newcode::Params> build_params(const Config& cfg,
     }
     const int grouped_capacity =
         static_cast<int>(params.LEVEL56_GROUP4_MAX_ENTRIES);
-    const bool grouped_siso_only = params.LEVEL56_SHARED_HISO_ACTIVE == 0 &&
-                                   params.LEVEL56_SHARED_SISO_ACTIVE ==
-                                       grouped_capacity;
-    if (!grouped_siso_only &&
-        (params.LEVEL56_SHARED_HISO_ACTIVE != grouped_capacity ||
-         params.LEVEL56_SHARED_SISO_ACTIVE != grouped_capacity)) {
-      log << "[ERROR] LEVEL56 分组多轮调度要求 HISO/SISO 容量等于 "
-             "Group4 entry 数，或显式 SISO-only 的 0/entry 数\n";
+    if (!newcode::level56_group4_capacity_valid(
+            params.LEVEL56_SHARED_HISO_ACTIVE,
+            params.LEVEL56_SHARED_SISO_ACTIVE, grouped_capacity)) {
+      log << "[ERROR] Group4 requires symmetric, SISO-only, or eight-entry 2S1H/1S2H capacities\n";
       return std::nullopt;
     }
     if (params.LEVEL56_SINGLE_LEVEL_SELECT_ENABLE) {
